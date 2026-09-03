@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
 
 import { requireProfile } from "@/app/lib/auth/session";
-import { getMyTicketById } from "@/app/lib/db/tickets";
+import { getMyTicketById, getTicketForStaff, ALLOWED_STATUS_TRANSITIONS } from "@/app/lib/db/tickets";
+import { listComments } from "@/app/lib/db/comments";
+import { CommentForm } from "./CommentForm";
+import { StaffControls } from "./StaffControls";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -17,18 +20,26 @@ export default async function TicketDetailPage({
   }
 
   const profile = await requireProfile();
-  // getMyTicketById filters by customer_id server-side (backed by RLS too),
-  // so a ticket belonging to another user comes back as null here -- it
-  // renders as a plain 404, never distinguishing "not yours" from "doesn't
+  const isStaff = profile.role !== "customer";
+
+  // Customers and staff go through entirely different queries -- a
+  // customer's view is scoped to customer_id = them (RLS + app filter both
+  // enforce this), a staff view relies on the agent/admin visibility rule
+  // in tickets_select. Either path returning null renders as a plain 404,
+  // never distinguishing "not yours" / "not assigned to you" from "doesn't
   // exist" to the caller.
-  const ticket = await getMyTicketById(profile.id, id);
+  const ticket = isStaff
+    ? await getTicketForStaff(id)
+    : await getMyTicketById(profile.id, id);
 
   if (!ticket) {
     notFound();
   }
 
+  const comments = await listComments(id, isStaff);
+
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-8">
+    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-8">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
           {ticket.subject}
@@ -46,6 +57,50 @@ export default async function TicketDetailPage({
         <dt>Category</dt>
         <dd>{ticket.category ?? "Not triaged yet"}</dd>
       </dl>
+
+      {isStaff ? (
+        <StaffControls
+          ticketId={ticket.id}
+          status={ticket.status}
+          assigneeId={ticket.assignee_id}
+          currentUserId={profile.id}
+          allowedNext={ALLOWED_STATUS_TRANSITIONS[ticket.status]}
+        />
+      ) : null}
+
+      <div className="flex flex-col gap-3 border-t border-black/[.08] pt-6 dark:border-white/[.145]">
+        <h2 className="text-sm font-semibold text-black dark:text-zinc-50">
+          Comments
+        </h2>
+        {comments.length === 0 ? (
+          <p className="text-sm text-zinc-500 dark:text-zinc-500">
+            No comments yet.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {comments.map((comment) => (
+              <li
+                key={comment.id}
+                className={`rounded-lg border px-4 py-3 text-sm ${
+                  comment.is_internal
+                    ? "border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30"
+                    : "border-black/[.08] dark:border-white/[.145]"
+                }`}
+              >
+                {comment.is_internal ? (
+                  <span className="mb-1 block text-xs font-medium text-amber-700 dark:text-amber-400">
+                    Internal note
+                  </span>
+                ) : null}
+                <p className="whitespace-pre-wrap text-zinc-700 dark:text-zinc-300">
+                  {comment.body}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+        <CommentForm ticketId={ticket.id} isStaff={isStaff} />
+      </div>
     </div>
   );
 }

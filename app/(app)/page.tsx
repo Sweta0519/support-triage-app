@@ -15,17 +15,29 @@ export default async function HomePage() {
         Signed in as <span className="font-medium">{profile.email}</span> --
         role: <span className="font-medium">{profile.role}</span>
       </p>
-      <Link
-        href="/tickets"
-        className="rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
-      >
-        My tickets
-      </Link>
-      {profile.role !== "customer" ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-500">
-          The agent queue and admin views land in later milestones.
-        </p>
-      ) : null}
+      {profile.role === "customer" ? (
+        <Link
+          href="/tickets"
+          className="rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
+        >
+          My tickets
+        </Link>
+      ) : (
+        <>
+          <Link
+            href="/queue"
+            className="rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
+          >
+            Queue
+          </Link>
+          {profile.role === "admin" ? (
+            <p className="text-sm text-zinc-500 dark:text-zinc-500">
+              Admin-specific views (user/role management, analytics) land in
+              a later milestone.
+            </p>
+          ) : null}
+        </>
+      )}
       <form action={signOutAction}>
         <button
           type="submit"
