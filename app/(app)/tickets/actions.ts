@@ -2,16 +2,20 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 import { requireProfile, requireStaff } from "@/app/lib/auth/session";
 import {
   createTicket,
   claimTicket,
+  getTicketForStaff,
   updateTicketStatus,
   type TicketStatus,
 } from "@/app/lib/db/tickets";
 import { addComment } from "@/app/lib/db/comments";
 import { RateLimitError } from "@/app/lib/db/rate-limit";
+import { isAiConfigured } from "@/app/lib/ai/openrouter";
+import { rerunTriage, runTriage } from "@/app/lib/ai/triage";
 
 const RATE_LIMITED_MESSAGE =
   "You're doing that too often. Please wait a few minutes and try again.";
@@ -40,7 +44,29 @@ export async function createTicketAction(
     }
     throw err;
   }
+
+  // Triage runs after the response is sent (after() still fires through the
+  // redirect below), so the customer never waits on the model. If the key
+  // isn't configured the ticket simply stays `pending` and everything else
+  // works.
+  if (isAiConfigured()) {
+    after(() => runTriage(ticketId));
+  }
   redirect(`/tickets/${ticketId}`);
+}
+
+export async function rerunTriageAction(formData: FormData) {
+  await requireStaff();
+  const ticketId = String(formData.get("ticketId") ?? "");
+  // The caller must be able to see this ticket through their own RLS before
+  // we touch it with the service role.
+  const ticket = await getTicketForStaff(ticketId);
+  if (!ticket) {
+    return;
+  }
+  await rerunTriage(ticketId);
+  revalidatePath(`/tickets/${ticketId}`);
+  revalidatePath("/queue");
 }
 
 export async function claimTicketAction(formData: FormData) {

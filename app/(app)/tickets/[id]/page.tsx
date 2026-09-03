@@ -3,8 +3,10 @@ import { notFound } from "next/navigation";
 import { requireProfile } from "@/app/lib/auth/session";
 import { getMyTicketById, getTicketForStaff, ALLOWED_STATUS_TRANSITIONS } from "@/app/lib/db/tickets";
 import { listComments } from "@/app/lib/db/comments";
+import { getLatestTriageResult } from "@/app/lib/db/triage";
 import { CommentForm } from "./CommentForm";
 import { StaffControls } from "./StaffControls";
+import { TriagePanel } from "./TriagePanel";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -36,7 +38,12 @@ export default async function TicketDetailPage({
     notFound();
   }
 
-  const comments = await listComments(id, isStaff);
+  // Triage output is staff-only (RLS enforces it too); customers never even
+  // issue the query.
+  const [comments, triage] = await Promise.all([
+    listComments(id, isStaff),
+    isStaff ? getLatestTriageResult(id) : Promise.resolve(null),
+  ]);
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-8">
@@ -59,13 +66,20 @@ export default async function TicketDetailPage({
       </dl>
 
       {isStaff ? (
-        <StaffControls
-          ticketId={ticket.id}
-          status={ticket.status}
-          assigneeId={ticket.assignee_id}
-          currentUserId={profile.id}
-          allowedNext={ALLOWED_STATUS_TRANSITIONS[ticket.status]}
-        />
+        <>
+          <StaffControls
+            ticketId={ticket.id}
+            status={ticket.status}
+            assigneeId={ticket.assignee_id}
+            currentUserId={profile.id}
+            allowedNext={ALLOWED_STATUS_TRANSITIONS[ticket.status]}
+          />
+          <TriagePanel
+            ticketId={ticket.id}
+            triageStatus={ticket.triage_status}
+            triage={triage}
+          />
+        </>
       ) : null}
 
       <div className="flex flex-col gap-3 border-t border-black/[.08] pt-6 dark:border-white/[.145]">
@@ -99,7 +113,11 @@ export default async function TicketDetailPage({
             ))}
           </ul>
         )}
-        <CommentForm ticketId={ticket.id} isStaff={isStaff} />
+        <CommentForm
+          ticketId={ticket.id}
+          isStaff={isStaff}
+          draft={isStaff ? (triage?.suggested_reply ?? null) : null}
+        />
       </div>
     </div>
   );

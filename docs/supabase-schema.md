@@ -121,6 +121,46 @@ zero policies, zero grants to `authenticated`. Only reachable through the RPC.
 | `window_start` | `timestamptz` | Start of the fixed window. Part of the primary key. |
 | `count`        | `int`         | Requests seen in this window.                      |
 
+### `ticketing.triage_results`
+
+What the AI said about a ticket, one row per run (re-runs append). Written only by the
+service role from `app/lib/ai/triage.ts`. See `docs/ai-triage.md` for field meanings.
+
+| Column               | Type                        | Notes                                                        |
+|----------------------|-----------------------------|--------------------------------------------------------------|
+| `id`                 | `uuid`                      | Primary key.                                                 |
+| `ticket_id`          | `uuid`                      | FK -> `tickets.id`, `on delete cascade`.                     |
+| `model`              | `text`                      | OpenRouter slug that produced the row.                       |
+| `prompt_version`     | `text`                      | `PROMPT_VERSION` in `app/lib/ai/triage.ts`.                  |
+| `summary`            | `text`                      |                                                              |
+| `category`           | `ticketing.ticket_category` |                                                              |
+| `priority`           | `ticketing.ticket_priority` |                                                              |
+| `priority_reason`    | `text`                      |                                                              |
+| `team`               | `ticketing.ticket_team`     |                                                              |
+| `frustration`        | `smallint`                  | 1..5 (check constraint).                                     |
+| `is_escalation_risk` | `boolean`                   |                                                              |
+| `duplicate_of`       | `uuid`                      | FK -> `tickets.id`, `on delete set null`.                    |
+| `related_ticket_ids` | `uuid[]`                    |                                                              |
+| `suggested_reply`    | `text`                      | Draft only; never sent automatically.                        |
+| `missing_info`       | `text[]`                    |                                                              |
+| `confidence`         | `real`                      | 0..1 (check constraint).                                     |
+| `needs_human_review` | `boolean`                   | Set when validation fell back or confidence `< 0.5`.         |
+| `raw`                | `jsonb`                     | The model's exact JSON, for debugging.                       |
+| `prompt_tokens`, `completion_tokens`, `latency_ms` | `int` | Cost/latency tracking.                          |
+| `created_at`         | `timestamptz`               |                                                              |
+
+### `ticketing.ticket_embeddings`
+
+Requires the `vector` extension (`create extension vector with schema extensions`). **Deny-all**
+to end users; service role only.
+
+| Column            | Type                       | Notes                                                                 |
+|-------------------|----------------------------|-----------------------------------------------------------------------|
+| `ticket_id`       | `uuid`                     | Primary key. FK -> `tickets.id`, `on delete cascade`.                 |
+| `embedding`       | `extensions.vector(1536)`  | HNSW index with `vector_cosine_ops`. **Dimension is pinned** -- do not change. |
+| `embedding_model` | `text`                     | Always `openai/text-embedding-3-small` today; recorded so a model change can find rows to re-embed. |
+| `created_at`, `updated_at` | `timestamptz`     |                                                                       |
+
 ## Row Level Security
 
 All grants to `authenticated` are the minimum each table needs; `service_role` has `all` on
@@ -133,6 +173,8 @@ every table and bypasses RLS entirely (it is confined to server-only code).
 | `ticket_comments` | `can_view_ticket(ticket_id)` and (`not is_internal` or `is_staff()`)                          | `author_id = auth.uid()` and `can_view_ticket(ticket_id)` and (`not is_internal` or `is_staff()`) | none                                                               | none   |
 | `ticket_events`   | `is_staff()`                                                                                  | none (trigger only)                                                                 | none                                                               | none   |
 | `rate_limits`     | none                                                                                          | none                                                                                | none                                                               | none   |
+| `triage_results`  | `is_staff()` and `can_view_ticket(ticket_id)`                                                 | none (service role only)                                                            | none                                                               | none   |
+| `ticket_embeddings` | none                                                                                        | none                                                                                | none                                                               | none   |
 
 Two things RLS deliberately does *not* try to do, because it can't:
 
@@ -157,6 +199,7 @@ Two things RLS deliberately does *not* try to do, because it can't:
 | `guard_ticket_update()` (trigger, `before update` on `tickets`) | DEFINER | Immutable `customer_id`/`subject`/`body`; legal status transitions (agents only -- admins bypass); stamps `resolved_at`/`closed_at`; writes `ticket_events`. DEFINER so it can insert into `ticket_events`. |
 | `stamp_first_response()` (trigger, `after insert` on `ticket_comments`) | DEFINER | Sets `tickets.first_response_at` on the first public staff comment.                                    |
 | `consume_rate_limit(text, int, int)`                  | DEFINER   | Fixed-window counter. Derives the key's identity half from `auth.uid()` *inside* the function -- a caller can't target another user's bucket. Returns `false` when over the limit. |
+| `match_tickets(vector(1536), int, uuid)`              | INVOKER   | Nearest tickets by cosine distance (`<=>`), returning subject + latest summary only. EXECUTE revoked from PUBLIC; granted to `service_role` only. |
 
 ### Status transition map
 
@@ -185,5 +228,6 @@ the dashboard (Authentication -> Rate Limits) and are **not** captured by migrat
 
 ## Not in this schema (yet)
 
-AI triage (`triage_results`, `ticket_embeddings` with `vector(1536)`) and the admin surface are
-later milestones and will be added as further migrations.
+The admin surface (user/role management, analytics) is a later milestone. The `triaged` status
+value exists in the enum and the transition map (`assigned -> triaged`) but nothing sets it
+automatically -- AI triage is advisory and never changes `status`.

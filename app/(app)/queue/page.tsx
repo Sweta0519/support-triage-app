@@ -29,6 +29,17 @@ export default async function QueuePage() {
                   {ticket.subject}
                 </span>
                 <span className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-500">
+                  {ticket.priority ? (
+                    <span
+                      className={`rounded-full px-2 py-0.5 ${
+                        ticket.priority === "urgent" || ticket.priority === "high"
+                          ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
+                          : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                      }`}
+                    >
+                      {ticket.priority}
+                    </span>
+                  ) : null}
                   {ticket.assignee_id === null ? (
                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
                       Unassigned
