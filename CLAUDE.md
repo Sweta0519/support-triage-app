@@ -48,9 +48,10 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
   code.
 - `OPENROUTER_API_KEY` lives in `.env.local` and must never have a `NEXT_PUBLIC_` prefix or be
   passed to client components.
-- Model: `anthropic/claude-sonnet-4.6` (pinned in `app/lib/ai/openrouter.ts`). Note the
-  **dot**: OpenRouter slugs use dotted versions; `anthropic/claude-sonnet-4-6` does not exist
-  there.
+- Model: `anthropic/claude-haiku-4.5` (pinned as `TRIAGE_MODEL` in `app/lib/ai/openrouter.ts`).
+  Chosen because this OpenRouter workspace's guardrail blocks Sonnet-tier endpoints -- check
+  `GET https://openrouter.ai/api/v1/models/user` with the key before changing the slug, and note
+  OpenRouter slugs use **dotted** versions (`4.5`), not Anthropic's hyphenated ids.
 - Embeddings: `openai/text-embedding-3-small` via OpenRouter, used for duplicate/related-ticket
   detection.
 - The `ticketing.ticket_embeddings` table's `embedding` column is `vector(1536)` -- do not

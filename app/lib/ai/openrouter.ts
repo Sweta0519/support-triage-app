@@ -5,9 +5,12 @@ import "server-only";
 
 const BASE_URL = "https://openrouter.ai/api/v1";
 
-// OpenRouter slugs use dotted versions ("4.6"), unlike Anthropic's own
-// hyphenated ids -- "anthropic/claude-sonnet-4-6" does not exist there.
-export const TRIAGE_MODEL = "anthropic/claude-sonnet-4.6";
+// OpenRouter slugs use dotted versions ("4.5"), unlike Anthropic's own
+// hyphenated ids. Haiku 4.5 rather than Sonnet 4.6: this workspace's
+// OpenRouter guardrail blocks Sonnet-tier endpoints (GET /api/v1/models/user
+// lists what the key may actually use), and closed-schema classification is
+// squarely Haiku's job. Switching models is a one-line change here.
+export const TRIAGE_MODEL = "anthropic/claude-haiku-4.5";
 export const EMBEDDING_MODEL = "openai/text-embedding-3-small";
 // Must match ticketing.ticket_embeddings.embedding's vector(1536). Never
 // change one without the other -- and never change the embedding model at

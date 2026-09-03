@@ -45,7 +45,9 @@ it from the ticket page.
    (`vector(1536)`, HNSW cosine index).
 3. **Find candidates.** `match_tickets()` returns the 5 nearest tickets by cosine distance --
    **subject and prior summary only, never bodies**.
-4. **Assess.** One `POST /chat/completions` to `anthropic/claude-sonnet-4.6` with
+4. **Assess.** One `POST /chat/completions` to `anthropic/claude-haiku-4.5` (this workspace's
+   OpenRouter guardrail blocks Sonnet-tier endpoints; Haiku is well suited to closed-schema
+   classification and 3x cheaper) with
    `response_format: { type: "json_schema", strict: true }` and `provider.require_parameters:
    true` (so OpenRouter can't route to a provider that ignores the schema). The schema is built
    per request: `duplicate_of` and `related_ticket_ids` are `enum`s of the candidate ids, so the
