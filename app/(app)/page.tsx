@@ -31,10 +31,12 @@ export default async function HomePage() {
             Queue
           </Link>
           {profile.role === "admin" ? (
-            <p className="text-sm text-zinc-500 dark:text-zinc-500">
-              Admin-specific views (user/role management, analytics) land in
-              a later milestone.
-            </p>
+            <Link
+              href="/admin"
+              className="rounded-full border border-black/[.08] px-5 py-2 text-sm font-medium transition-colors hover:bg-black/[.05] dark:border-white/[.145] dark:hover:bg-white/[.06]"
+            >
+              Admin
+            </Link>
           ) : null}
         </>
       )}

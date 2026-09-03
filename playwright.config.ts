@@ -23,14 +23,16 @@ export default defineConfig({
   /* Chromium only for this course. */
   projects: [
     {
+      // auth.setup.ts (sign in customer A) and reset.setup.ts (clear test
+      // accounts' rate-limit counters) both run here, before every suite run.
       name: "setup",
-      testMatch: /auth\.setup\.ts/,
+      testMatch: /\.setup\.ts$/,
     },
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"], storageState: "playwright/.auth/customerA.json" },
       dependencies: ["setup"],
-      testIgnore: /auth\.setup\.ts/,
+      testIgnore: /\.setup\.ts$/,
     },
   ],
 

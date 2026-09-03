@@ -173,6 +173,27 @@ export async function claimTicket(
   return data;
 }
 
+// Admin reassignment (RLS: only is_admin() may set assignee_id to someone
+// other than themselves). `null` unassigns, returning the ticket to the
+// shared queue. The guard trigger rejects a non-staff assignee.
+export async function assignTicket(
+  ticketId: string,
+  assigneeId: string | null
+): Promise<Ticket> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("tickets")
+    .update({ assignee_id: assigneeId })
+    .eq("id", ticketId)
+    .select(TICKET_COLUMNS)
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data;
+}
+
 export async function updateTicketStatus(
   ticketId: string,
   status: TicketStatus

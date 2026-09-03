@@ -194,9 +194,9 @@ Two things RLS deliberately does *not* try to do, because it can't:
 | `can_view_ticket(uuid)`                               | **INVOKER** | "Can the caller see this ticket?" for child tables. INVOKER on purpose: it inherits the caller's own `tickets` RLS. Making it DEFINER would bypass ticket RLS for every child table. |
 | `handle_new_user()` (trigger)                         | DEFINER   | On `auth.users` insert: creates a `profiles` row with `role` **hard-coded to `customer`**, ignoring signup metadata (blocks self-escalation). |
 | `ensure_profile()`                                    | DEFINER   | Get-or-create the caller's profile (needed because `auth.users` is shared with notes-collections). Always creates as `customer`. |
-| `admin_set_role(uuid, app_role)`                      | DEFINER   | The only path to change a role. Re-checks `is_admin()` internally.                                            |
+| `admin_set_role(uuid, app_role)`                      | DEFINER   | The only path to change a role. Re-checks `is_admin()`; refuses changing your own role and demoting the last admin; demoting staff to `customer` unassigns their tickets so they return to the shared queue. |
 | `set_updated_at()` (trigger)                          | INVOKER   | Maintains `tickets.updated_at`.                                                                               |
-| `guard_ticket_update()` (trigger, `before update` on `tickets`) | DEFINER | Immutable `customer_id`/`subject`/`body`; legal status transitions (agents only -- admins bypass); stamps `resolved_at`/`closed_at`; writes `ticket_events`. DEFINER so it can insert into `ticket_events`. |
+| `guard_ticket_update()` (trigger, `before update` on `tickets`) | DEFINER | Immutable `customer_id`/`subject`/`body`; `assignee_id` must be an agent or admin; legal status transitions (agents only -- admins bypass); stamps `resolved_at`/`closed_at`; writes `ticket_events`. DEFINER so it can insert into `ticket_events`. |
 | `stamp_first_response()` (trigger, `after insert` on `ticket_comments`) | DEFINER | Sets `tickets.first_response_at` on the first public staff comment.                                    |
 | `consume_rate_limit(text, int, int)`                  | DEFINER   | Fixed-window counter. Derives the key's identity half from `auth.uid()` *inside* the function -- a caller can't target another user's bucket. Returns `false` when over the limit. |
 | `match_tickets(vector(1536), int, uuid)`              | INVOKER   | Nearest tickets by cosine distance (`<=>`), returning subject + latest summary only. EXECUTE revoked from PUBLIC; granted to `service_role` only. |
@@ -226,8 +226,16 @@ Both surface as a friendly form error (`RateLimitError` caught in the Server Act
 unhandled exception. Supabase Auth's own built-in sign-up/sign-in rate limits are configured in
 the dashboard (Authentication -> Rate Limits) and are **not** captured by migrations.
 
-## Not in this schema (yet)
+## Admin surface
 
-The admin surface (user/role management, analytics) is a later milestone. The `triaged` status
+`/admin` (overview analytics) and `/admin/users` (role management) are gated by `requireAdmin()`
+in the route-segment layout and again in each page. Analytics are aggregated in app code over a
+bounded select that runs as the signed-in admin -- RLS is what makes it "all tickets". Role
+changes call `admin_set_role()`; reassignment is a plain `tickets` update permitted for admins by
+`tickets_update_staff` and validated by `guard_ticket_update()`.
+
+## Notes
+
+The `triaged` status
 value exists in the enum and the transition map (`assigned -> triaged`) but nothing sets it
 automatically -- AI triage is advisory and never changes `status`.

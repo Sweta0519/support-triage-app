@@ -4,6 +4,7 @@ import { requireProfile } from "@/app/lib/auth/session";
 import { getMyTicketById, getTicketForStaff, ALLOWED_STATUS_TRANSITIONS } from "@/app/lib/db/tickets";
 import { listComments } from "@/app/lib/db/comments";
 import { getLatestTriageResult } from "@/app/lib/db/triage";
+import { listStaffProfiles, type StaffProfile } from "@/app/lib/db/profiles";
 import { CommentForm } from "./CommentForm";
 import { StaffControls } from "./StaffControls";
 import { TriagePanel } from "./TriagePanel";
@@ -40,9 +41,12 @@ export default async function TicketDetailPage({
 
   // Triage output is staff-only (RLS enforces it too); customers never even
   // issue the query.
-  const [comments, triage] = await Promise.all([
+  const isAdmin = profile.role === "admin";
+  const [comments, triage, staff] = await Promise.all([
     listComments(id, isStaff),
     isStaff ? getLatestTriageResult(id) : Promise.resolve(null),
+    // Only admins reassign, so only admins get the staff list.
+    isAdmin ? listStaffProfiles() : Promise.resolve([] as StaffProfile[]),
   ]);
 
   return (
@@ -73,6 +77,8 @@ export default async function TicketDetailPage({
             assigneeId={ticket.assignee_id}
             currentUserId={profile.id}
             allowedNext={ALLOWED_STATUS_TRANSITIONS[ticket.status]}
+            isAdmin={isAdmin}
+            staff={staff}
           />
           <TriagePanel
             ticketId={ticket.id}

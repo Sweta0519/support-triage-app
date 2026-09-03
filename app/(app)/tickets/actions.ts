@@ -4,14 +4,16 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
-import { requireProfile, requireStaff } from "@/app/lib/auth/session";
+import { requireAdmin, requireProfile, requireStaff } from "@/app/lib/auth/session";
 import {
+  assignTicket,
   createTicket,
   claimTicket,
   getTicketForStaff,
   updateTicketStatus,
   type TicketStatus,
 } from "@/app/lib/db/tickets";
+import { listStaffProfiles } from "@/app/lib/db/profiles";
 import { addComment } from "@/app/lib/db/comments";
 import { RateLimitError } from "@/app/lib/db/rate-limit";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
@@ -80,6 +82,27 @@ export async function claimTicketAction(formData: FormData) {
     revalidatePath(`/tickets/${ticketId}`);
     return;
   }
+  revalidatePath(`/tickets/${ticketId}`);
+  revalidatePath("/queue");
+}
+
+// Admin-only. An empty assigneeId unassigns. The assignee must be current
+// staff -- checked here for a clean no-op, and enforced by the
+// guard_ticket_update trigger regardless.
+export async function assignTicketAction(formData: FormData) {
+  await requireAdmin();
+  const ticketId = String(formData.get("ticketId") ?? "");
+  const rawAssignee = String(formData.get("assigneeId") ?? "");
+  const assigneeId = rawAssignee === "" ? null : rawAssignee;
+
+  if (assigneeId) {
+    const staff = await listStaffProfiles();
+    if (!staff.some((s) => s.id === assigneeId)) {
+      return;
+    }
+  }
+
+  await assignTicket(ticketId, assigneeId);
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/queue");
 }
