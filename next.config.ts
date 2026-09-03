@@ -1,5 +1,33 @@
 import type { NextConfig } from "next";
 
+const isDev = process.env.NODE_ENV === "development";
+
+// Next's inline bootstrap scripts need 'unsafe-inline' for script-src
+// without a per-request nonce; dev additionally needs 'unsafe-eval' for
+// React Fast Refresh. Everything else is locked to same-origin. The browser
+// never talks to Supabase or OpenRouter directly (all data access is via
+// Server Actions / server components), so connect-src stays 'self'.
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+].join("; ");
+
+const securityHeaders = [
+  { key: "Content-Security-Policy", value: contentSecurityPolicy },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+];
+
 const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
@@ -9,6 +37,9 @@ const nextConfig: NextConfig = {
       // fronted by a proxy or custom domain whose Host header differs.
       allowedOrigins: ["support-triage-app-one.vercel.app"],
     },
+  },
+  async headers() {
+    return [{ source: "/(.*)", headers: securityHeaders }];
   },
 };
 
