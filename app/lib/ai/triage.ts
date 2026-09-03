@@ -190,6 +190,20 @@ ${body}
 </ticket_body>`;
 }
 
+// The prompt forbids timeframe promises in the draft reply, but the model
+// doesn't obey that reliably ("I'll follow up shortly"). Enforce it here:
+// drop any sentence that commits to a when. Agents edit the draft anyway.
+const TIMEFRAME_RE =
+  /\b(shortly|soon|as soon as possible|asap|right away|immediately|promptly|within (?:\d+|one|two|three|a few|the next) (?:minutes?|hours?|business days?|working days?|days?|weeks?)|by (?:tomorrow|end of (?:the )?day|eod|end of (?:the )?week))\b/i;
+
+function stripTimeframePromises(reply: string): string {
+  const sentences = reply.split(/(?<=[.!?])\s+/);
+  return sentences
+    .filter((sentence) => !TIMEFRAME_RE.test(sentence))
+    .join(" ")
+    .trim();
+}
+
 function sanitizeCandidateText(text: string | null, maxLength: number): string {
   if (!text) {
     return "(none)";
@@ -250,7 +264,9 @@ function normalize(
       is_escalation_risk: Boolean(raw.is_escalation_risk),
       duplicate_of,
       related_ticket_ids,
-      suggested_reply: String(raw.suggested_reply ?? "").trim().slice(0, 2_000),
+      suggested_reply: stripTimeframePromises(
+        String(raw.suggested_reply ?? "").trim().slice(0, 2_000)
+      ),
       missing_info: Array.isArray(raw.missing_info)
         ? raw.missing_info.filter((s): s is string => typeof s === "string").slice(0, 10)
         : [],

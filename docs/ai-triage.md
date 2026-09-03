@@ -70,6 +70,10 @@ Two OpenRouter calls per ticket; `max_tokens` is capped at 1,200 and one retry o
   map would reject `new -> triaged` from the service role anyway; the design doesn't rely on
   that -- `applyTriageToTicket()` simply never writes `status`.
 - **Never sends a reply.** "Use suggested reply" only pre-fills the agent's comment box.
+- **Never promises a when.** The prompt forbids timeframes in the draft, but the model doesn't
+  obey that reliably, so `normalize()` also drops any sentence containing a timeframe promise
+  ("shortly", "within one business day", "right away", ...). Rules the model must follow are
+  enforced in code wherever they can be, not just asked for.
 - **Never runs in the browser.** `OPENROUTER_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are read
   only in `server-only` modules (`app/lib/ai/`, `app/lib/supabase/service.ts`).
 
