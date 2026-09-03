@@ -1,12 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 
-async function login(page: Page, email: string, password: string) {
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
-}
+import { login } from "./helpers";
 
 // Hits the real OpenRouter API (two calls, a few cents). The customer's
 // submit must return immediately; the assessment lands afterwards via

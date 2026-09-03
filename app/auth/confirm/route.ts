@@ -15,9 +15,12 @@ const OTP_TYPES: readonly EmailOtpType[] = [
   "email",
 ];
 
-// Only a same-origin path is ever used as the post-confirmation target. A
-// prefix check alone isn't enough: browsers treat "/\evil.example" as a
-// protocol-relative URL, so resolve against our own origin and compare.
+// Only a same-origin path is ever used as the post-confirmation target.
+// Two traps: browsers treat "/\evil.example" and "//evil.example" as
+// protocol-relative, so (1) resolve against our own origin and compare, and
+// (2) even for a same-origin URL, refuse a *pathname* that itself begins
+// with "//" or "/\" -- `new URL("https://site//evil.com").pathname` is
+// "//evil.com", and a Location header of that value leaves the site.
 function safeNextPath(raw: string | null): string {
   if (!raw) {
     return "/";
@@ -29,6 +32,9 @@ function safeNextPath(raw: string | null): string {
     return "/";
   }
   if (resolved.origin !== new URL(SITE_URL).origin) {
+    return "/";
+  }
+  if (!/^\/(?![/\\])/.test(resolved.pathname)) {
     return "/";
   }
   return `${resolved.pathname}${resolved.search}`;

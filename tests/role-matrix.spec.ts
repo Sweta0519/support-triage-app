@@ -1,20 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 
-async function login(page: Page, email: string, password: string) {
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
-}
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Set ${name} in .env.local.`);
-  }
-  return value;
-}
+import { login, requireEnv } from "./helpers";
 
 // Direct-URL checks for every role boundary not already covered by the
 // feature tests: customer -> staff routes, and agent -> a ticket owned by

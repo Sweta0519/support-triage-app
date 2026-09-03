@@ -4,7 +4,12 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
-import { requireAdmin, requireProfile, requireStaff } from "@/app/lib/auth/session";
+import {
+  requireAdmin,
+  requireProfile,
+  requireRole,
+  requireStaff,
+} from "@/app/lib/auth/session";
 import {
   assignTicket,
   createTicket,
@@ -32,7 +37,8 @@ export async function createTicketAction(
   _prevState: TicketFormState,
   formData: FormData
 ): Promise<TicketFormState> {
-  const profile = await requireProfile();
+  // Tickets are filed by customers; staff work them.
+  const profile = await requireRole("customer");
   const subject = String(formData.get("subject") ?? "").trim();
   const body = String(formData.get("body") ?? "").trim();
 

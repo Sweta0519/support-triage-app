@@ -19,8 +19,9 @@ export function isAppRole(value: unknown): value is AppRole {
   return typeof value === "string" && (APP_ROLES as readonly string[]).includes(value);
 }
 
-// Staff can read every profile (profiles_select_staff); a customer calling
-// this would get only their own row back from RLS.
+// RLS decides what comes back: admins get every profile, agents only staff
+// rows, a customer only their own. Only the admin-gated /admin/users page
+// calls this.
 export async function listProfiles(): Promise<Profile[]> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase

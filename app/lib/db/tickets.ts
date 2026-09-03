@@ -189,14 +189,15 @@ export async function claimTicket(
 export async function assignTicket(
   ticketId: string,
   assigneeId: string | null
-): Promise<Ticket> {
+): Promise<Ticket | null> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("tickets")
     .update({ assignee_id: assigneeId })
     .eq("id", ticketId)
     .select(TICKET_COLUMNS)
-    .single();
+    // null = RLS hid the row (or it doesn't exist): a no-op, not a 500.
+    .maybeSingle();
 
   if (error) {
     throw new Error(error.message);
@@ -207,14 +208,14 @@ export async function assignTicket(
 export async function updateTicketStatus(
   ticketId: string,
   status: TicketStatus
-): Promise<Ticket> {
+): Promise<Ticket | null> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("tickets")
     .update({ status })
     .eq("id", ticketId)
     .select(TICKET_COLUMNS)
-    .single();
+    .maybeSingle();
 
   if (error) {
     throw new Error(error.message);

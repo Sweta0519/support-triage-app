@@ -84,7 +84,12 @@ urgent" is a given. Mitigations are structural, not just prompt wording:
 
 - The system prompt states that ticket text is data, never instructions, and that
   self-declared urgency is not urgency.
-- Untrusted text is delimited in `<ticket_subject>` / `<ticket_body>` tags.
+- Untrusted text is delimited in `<ticket_subject>` / `<ticket_body>` tags, and every `<` / `>`
+  in it is replaced with a full-width equivalent first -- so a ticket body cannot contain
+  `</ticket_body>` and "close" the delimiter to start dictating instructions.
+- Any URL or email address in the draft reply that does not appear in the ticket being assessed
+  is replaced with `[link removed]` before storing. A link can only have come from the model or
+  from another customer's text; neither belongs in a reply an agent might paste unreviewed.
 - Other customers' text reaches the prompt too, via candidate subjects and summaries. It is
   flattened, length-capped, wrapped in `<candidate_tickets>`, and the system prompt names it as
   untrusted and forbids copying any of it into `suggested_reply` -- so one customer's ticket

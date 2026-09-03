@@ -1,10 +1,10 @@
 import Link from "next/link";
 
-import { requireProfile } from "@/app/lib/auth/session";
+import { requireRole } from "@/app/lib/auth/session";
 import { listMyTickets } from "@/app/lib/db/tickets";
 
 export default async function TicketsPage() {
-  const profile = await requireProfile();
+  const profile = await requireRole("customer");
   const tickets = await listMyTickets(profile.id);
 
   return (
