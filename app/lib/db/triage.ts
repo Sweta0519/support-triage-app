@@ -83,14 +83,22 @@ export async function claimTicketForTriage(ticketId: string): Promise<TriageTick
 }
 
 // Used by the manual "re-run triage" path: put a completed/failed ticket
-// back to pending so claimTicketForTriage() can pick it up again.
+// back to pending so claimTicketForTriage() can pick it up again. A ticket
+// that is `processing` is only reset if it has been stuck there for more
+// than five minutes (updated_at is bumped by the claim) -- otherwise a
+// re-run could interrupt a live run and both would write results.
+const STALE_PROCESSING_MS = 5 * 60_000;
+
 export async function resetTriageStatus(ticketId: string): Promise<void> {
   const supabase = createServiceSupabaseClient();
+  const staleBefore = new Date(Date.now() - STALE_PROCESSING_MS).toISOString();
   const { error } = await supabase
     .from("tickets")
     .update({ triage_status: "pending" })
     .eq("id", ticketId)
-    .in("triage_status", ["completed", "failed", "processing"]);
+    .or(
+      `triage_status.in.(completed,failed),and(triage_status.eq.processing,updated_at.lt.${staleBefore})`
+    );
 
   if (error) {
     throw new Error(error.message);

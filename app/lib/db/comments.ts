@@ -1,10 +1,9 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
-import { checkRateLimit } from "@/app/lib/db/rate-limit";
+import { RateLimitError } from "@/app/lib/db/rate-limit";
 
-const ADD_COMMENT_LIMIT = 30;
-const ADD_COMMENT_WINDOW_SECONDS = 10 * 60;
+export const COMMENT_MAX_LENGTH = 10_000;
 
 export type Comment = {
   id: string;
@@ -46,8 +45,6 @@ export async function addComment(
   body: string,
   isInternal: boolean
 ): Promise<Comment> {
-  await checkRateLimit("add_comment", ADD_COMMENT_LIMIT, ADD_COMMENT_WINDOW_SECONDS);
-
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("ticket_comments")
@@ -56,6 +53,10 @@ export async function addComment(
     .single();
 
   if (error) {
+    // Limit enforced by a BEFORE INSERT trigger; see createTicket().
+    if (error.message.includes("rate_limited")) {
+      throw new RateLimitError("add_comment");
+    }
     throw new Error(error.message);
   }
   return data;

@@ -2,10 +2,16 @@ import "server-only";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import type { AppRole } from "@/app/lib/db/profiles";
-import { checkRateLimit } from "@/app/lib/db/rate-limit";
+import { RateLimitError } from "@/app/lib/db/rate-limit";
 
-const CREATE_TICKET_LIMIT = 10;
-const CREATE_TICKET_WINDOW_SECONDS = 60 * 60;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
+export const SUBJECT_MAX_LENGTH = 200;
+export const BODY_MAX_LENGTH = 20_000;
 
 export type TicketStatus =
   | "new"
@@ -91,8 +97,6 @@ export async function createTicket(
   subject: string,
   body: string
 ): Promise<TicketSummary> {
-  await checkRateLimit("create_ticket", CREATE_TICKET_LIMIT, CREATE_TICKET_WINDOW_SECONDS);
-
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("tickets")
@@ -101,6 +105,12 @@ export async function createTicket(
     .single();
 
   if (error) {
+    // The per-user limit is enforced by a BEFORE INSERT trigger in the
+    // database (so it also applies to direct Data API calls); this just
+    // translates its signal into the friendly form error.
+    if (error.message.includes("rate_limited")) {
+      throw new RateLimitError("create_ticket");
+    }
     throw new Error(error.message);
   }
   return data;

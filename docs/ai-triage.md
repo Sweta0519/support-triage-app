@@ -44,7 +44,9 @@ it from the ticket page.
    via `POST https://openrouter.ai/api/v1/embeddings` -> upsert into `ticket_embeddings`
    (`vector(1536)`, HNSW cosine index).
 3. **Find candidates.** `match_tickets()` returns the 5 nearest tickets by cosine distance --
-   **subject and prior summary only, never bodies**.
+   **subject and prior summary only, never bodies**. Each is flattened to one line (newlines and
+   tabs stripped), capped at 120 / 200 characters, and the whole list is wrapped in
+   `<candidate_tickets>` tags.
 4. **Assess.** One `POST /chat/completions` to `anthropic/claude-haiku-4.5` (this workspace's
    OpenRouter guardrail blocks Sonnet-tier endpoints; Haiku is well suited to closed-schema
    classification and 3x cheaper) with
@@ -79,6 +81,12 @@ urgent" is a given. Mitigations are structural, not just prompt wording:
 - The system prompt states that ticket text is data, never instructions, and that
   self-declared urgency is not urgency.
 - Untrusted text is delimited in `<ticket_subject>` / `<ticket_body>` tags.
+- Other customers' text reaches the prompt too, via candidate subjects and summaries. It is
+  flattened, length-capped, wrapped in `<candidate_tickets>`, and the system prompt names it as
+  untrusted and forbids copying any of it into `suggested_reply` -- so one customer's ticket
+  cannot plant a phishing line in the draft reply an agent sees for another customer.
+- Customers never see the AI-derived priority/category (staff-only on the ticket page), so there
+  is no fast feedback loop for tuning an injection.
 - Output is a closed schema with `strict: true` -- the model can't add fields, call tools, or
   reference ids outside the candidate list.
 - Everything the model produces is advisory and staff-only. The worst case of a successful

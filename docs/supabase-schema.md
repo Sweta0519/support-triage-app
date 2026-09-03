@@ -53,9 +53,10 @@ One row per `auth.users.id`. Created automatically on signup, or lazily via
 | `updated_at` | `timestamptz`        | Default `now()`.                                         |
 
 `role` can **only** change via the `ticketing.admin_set_role()` RPC. Clients are granted
-`update` on `email`/`full_name`/`updated_at` only -- `role` is excluded at the column-privilege
-level, independent of RLS, so even an RLS policy bug could not let a client rewrite their own
-role.
+`update` on `full_name`/`updated_at` only -- `role` and `email` are excluded at the
+column-privilege level, independent of RLS, so even an RLS policy bug could not let a client
+rewrite their own role or impersonate another address in the admin UI. `email` is unique
+(`lower(email)`) and kept in sync from `auth.users` by trigger.
 
 ### `ticketing.tickets`
 
@@ -168,10 +169,10 @@ every table and bypasses RLS entirely (it is confined to server-only code).
 
 | Table             | select                                                                                        | insert                                                                              | update                                                             | delete |
 |-------------------|-----------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------|--------------------------------------------------------------------|--------|
-| `profiles`        | own row; or any row if `is_staff()`                                                           | none (trigger/RPC only)                                                             | own row, non-`role` columns only                                   | none   |
-| `tickets`         | `customer_id = auth.uid()`; or `is_admin()`; or agent and (`assignee_id = auth.uid()` or null) | customer only, row must be in pristine state (see `tickets_insert_customer`)        | `is_admin()`; or agent and (`assignee_id = auth.uid()` or null) on **both** old and new row | none   |
-| `ticket_comments` | `can_view_ticket(ticket_id)` and (`not is_internal` or `is_staff()`)                          | `author_id = auth.uid()` and `can_view_ticket(ticket_id)` and (`not is_internal` or `is_staff()`) | none                                                               | none   |
-| `ticket_events`   | `is_staff()`                                                                                  | none (trigger only)                                                                 | none                                                               | none   |
+| `profiles`        | own row; admins: every row; agents: staff rows only                                           | none (trigger/RPC only)                                                             | own row, `full_name`/`updated_at` only (`email` is synced from `auth.users`, `role` via RPC) | none   |
+| `tickets`         | `customer_id = auth.uid()`; or `is_admin()`; or agent and (`assignee_id = auth.uid()` or null) | customer only, row must be in pristine state (see `tickets_insert_customer`); per-user rate limit enforced by trigger | `is_admin()`; or agent and (`assignee_id = auth.uid()` or null) on **both** old and new row -- and only columns `status, assignee_id, priority, category, team` | none   |
+| `ticket_comments` | `can_view_ticket(ticket_id)` and (`not is_internal` or `is_staff()`)                          | `author_id = auth.uid()` and `can_view_ticket(ticket_id)` and (`not is_internal` or `is_staff()`); per-user rate limit enforced by trigger | none                                                               | none   |
+| `ticket_events`   | `is_staff()` and `can_view_ticket(ticket_id)`                                                 | none (trigger only)                                                                 | none                                                               | none   |
 | `rate_limits`     | none                                                                                          | none                                                                                | none                                                               | none   |
 | `triage_results`  | `is_staff()` and `can_view_ticket(ticket_id)`                                                 | none (service role only)                                                            | none                                                               | none   |
 | `ticket_embeddings` | none                                                                                        | none                                                                                | none                                                               | none   |
@@ -198,7 +199,9 @@ Two things RLS deliberately does *not* try to do, because it can't:
 | `set_updated_at()` (trigger)                          | INVOKER   | Maintains `tickets.updated_at`.                                                                               |
 | `guard_ticket_update()` (trigger, `before update` on `tickets`) | DEFINER | Immutable `customer_id`/`subject`/`body`; `assignee_id` must be an agent or admin; legal status transitions (agents only -- admins bypass); stamps `resolved_at`/`closed_at`; writes `ticket_events`. DEFINER so it can insert into `ticket_events`. |
 | `stamp_first_response()` (trigger, `after insert` on `ticket_comments`) | DEFINER | Sets `tickets.first_response_at` on the first public staff comment.                                    |
-| `consume_rate_limit(text, int, int)`                  | DEFINER   | Fixed-window counter. Derives the key's identity half from `auth.uid()` *inside* the function -- a caller can't target another user's bucket. Returns `false` when over the limit. |
+| `consume_rate_limit(text, int, int)`                  | DEFINER   | Fixed-window counter. Derives the key's identity half from `auth.uid()` *inside* the function -- a caller can't target another user's bucket. Returns `false` when over the limit. Rejects non-positive limit/window; prunes windows older than a day on ~1% of calls. |
+| `rate_limit_ticket_insert()`, `rate_limit_comment_insert()` (triggers, `before insert`) | INVOKER | Call `consume_rate_limit()` for the inserting user and raise `rate_limited:<action>` when over -- so the limit applies to direct Data API calls too, not just the app. Skipped for `service_role` (`auth.uid()` is null). |
+| `sync_profile_email()` (trigger, `after update of email` on `auth.users`) | DEFINER | Keeps `profiles.email` equal to the auth email. Users cannot update `profiles.email` themselves. |
 | `match_tickets(vector(1536), int, uuid)`              | INVOKER   | Nearest tickets by cosine distance (`<=>`), returning subject + latest summary only. EXECUTE revoked from PUBLIC; granted to `service_role` only. |
 
 ### Status transition map
@@ -217,13 +220,17 @@ Enforced for agents by `guard_ticket_update()`; mirrored in `ALLOWED_STATUS_TRAN
 
 ## Rate limits in use
 
-| Action          | Limit | Window     | Where enforced                       |
-|-----------------|-------|------------|--------------------------------------|
-| `create_ticket` | 10    | 60 minutes | `createTicket()` in `app/lib/db/tickets.ts`  |
-| `add_comment`   | 30    | 10 minutes | `addComment()` in `app/lib/db/comments.ts`   |
+| Action          | Limit | Window     | Where enforced                                                     |
+|-----------------|-------|------------|--------------------------------------------------------------------|
+| `create_ticket` | 10    | 60 minutes | `BEFORE INSERT` trigger on `tickets` (database)                    |
+| `add_comment`   | 30    | 10 minutes | `BEFORE INSERT` trigger on `ticket_comments` (database)            |
+| `rerun_triage`  | 5     | 10 minutes | `rerunTriageAction()` via `checkRateLimit()` (no row is inserted) |
 
-Both surface as a friendly form error (`RateLimitError` caught in the Server Action), never an
-unhandled exception. Supabase Auth's own built-in sign-up/sign-in rate limits are configured in
+The insert limits are enforced in the database so that a user calling the Data API directly with
+their session token is limited exactly like the app. The app maps the trigger's
+`rate_limited:*` exception to a friendly form error (`RateLimitError`), never an unhandled
+exception. Text lengths are also constrained in the database: `subject` 1-200, ticket `body`
+1-20000, comment `body` 1-10000, `full_name` <= 120. Supabase Auth's own built-in sign-up/sign-in rate limits are configured in
 the dashboard (Authentication -> Rate Limits) and are **not** captured by migrations.
 
 ## Admin surface
