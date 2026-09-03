@@ -2,6 +2,10 @@ import "server-only";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import type { AppRole } from "@/app/lib/db/profiles";
+import { checkRateLimit } from "@/app/lib/db/rate-limit";
+
+const CREATE_TICKET_LIMIT = 10;
+const CREATE_TICKET_WINDOW_SECONDS = 60 * 60;
 
 export type TicketStatus =
   | "new"
@@ -87,6 +91,8 @@ export async function createTicket(
   subject: string,
   body: string
 ): Promise<TicketSummary> {
+  await checkRateLimit("create_ticket", CREATE_TICKET_LIMIT, CREATE_TICKET_WINDOW_SECONDS);
+
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("tickets")

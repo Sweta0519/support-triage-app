@@ -11,6 +11,10 @@ import {
   type TicketStatus,
 } from "@/app/lib/db/tickets";
 import { addComment } from "@/app/lib/db/comments";
+import { RateLimitError } from "@/app/lib/db/rate-limit";
+
+const RATE_LIMITED_MESSAGE =
+  "You're doing that too often. Please wait a few minutes and try again.";
 
 export type TicketFormState = { error: string } | undefined;
 
@@ -26,8 +30,17 @@ export async function createTicketAction(
     return { error: "Subject and description are both required." };
   }
 
-  const ticket = await createTicket(profile.id, subject, body);
-  redirect(`/tickets/${ticket.id}`);
+  let ticketId: string;
+  try {
+    const ticket = await createTicket(profile.id, subject, body);
+    ticketId = ticket.id;
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return { error: RATE_LIMITED_MESSAGE };
+    }
+    throw err;
+  }
+  redirect(`/tickets/${ticketId}`);
 }
 
 export async function claimTicketAction(formData: FormData) {
@@ -70,7 +83,14 @@ export async function addCommentAction(
     return { error: "Comment can't be empty." };
   }
 
-  await addComment(ticketId, profile.id, body, isInternal);
+  try {
+    await addComment(ticketId, profile.id, body, isInternal);
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return { error: RATE_LIMITED_MESSAGE };
+    }
+    throw err;
+  }
   revalidatePath(`/tickets/${ticketId}`);
   return undefined;
 }

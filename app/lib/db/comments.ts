@@ -1,6 +1,10 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
+import { checkRateLimit } from "@/app/lib/db/rate-limit";
+
+const ADD_COMMENT_LIMIT = 30;
+const ADD_COMMENT_WINDOW_SECONDS = 10 * 60;
 
 export type Comment = {
   id: string;
@@ -42,6 +46,8 @@ export async function addComment(
   body: string,
   isInternal: boolean
 ): Promise<Comment> {
+  await checkRateLimit("add_comment", ADD_COMMENT_LIMIT, ADD_COMMENT_WINDOW_SECONDS);
+
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("ticket_comments")
