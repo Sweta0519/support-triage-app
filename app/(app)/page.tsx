@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { requireProfile } from "@/app/lib/auth/session";
 import { signOutAction } from "@/app/lib/auth/actions";
 
@@ -13,10 +15,17 @@ export default async function HomePage() {
         Signed in as <span className="font-medium">{profile.email}</span> --
         role: <span className="font-medium">{profile.role}</span>
       </p>
-      <p className="text-sm text-zinc-500 dark:text-zinc-500">
-        Ticket creation, the agent queue, and admin views land in later
-        milestones.
-      </p>
+      <Link
+        href="/tickets"
+        className="rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
+      >
+        My tickets
+      </Link>
+      {profile.role !== "customer" ? (
+        <p className="text-sm text-zinc-500 dark:text-zinc-500">
+          The agent queue and admin views land in later milestones.
+        </p>
+      ) : null}
       <form action={signOutAction}>
         <button
           type="submit"
