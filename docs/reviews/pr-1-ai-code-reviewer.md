@@ -80,4 +80,69 @@ ticket creation, `.maybeSingle()`) are covered by the second reviewer pass recor
 
 ## Second reviewer pass (final PR state)
 
-See the appended section below, added after the audit-2 fixes were committed.
+- Scope: `git diff f61026d` (everything after the first pass -- the audit-2 fixes, test helper
+  refactor, docs) plus the full diff against `main`
+- Result: **1 blocking, 2 should-fix, 3 nits** -- all addressed before merge
+
+### Actions taken
+
+| # | Finding | Resolution |
+|---|---|---|
+| 1 | Blocking: `audit-2-fresh-context-rescan.md` and this file referenced `audit-3-fresh-context-rescan.md` before it existed | Audit #3 was already running as a fresh agent when this review landed; its report is recorded at `docs/security/audit-3-fresh-context-rescan.md` before merge |
+| 2 | Should fix: `requireRole("customer")` gates ticket creation in the app, but `tickets_insert_customer` never checked the caller's role -- an agent/admin could still `POST /rest/v1/tickets` directly | Migration `20260903080000_customer_only_insert.sql`: the policy now requires `(select ticketing.app_role()) = 'customer'` |
+| 3 | Should fix: no test for the reverse role boundary (staff -> `/tickets`, `/tickets/new`) | Added "staff are bounced from the customer ticket pages" to `tests/role-matrix.spec.ts` |
+| 4 | Nit: `URL_OR_EMAIL_RE` swallows trailing punctuation, so a link that appears in the ticket could still be replaced in the reply (fails safe, over-strips) | Compare with trailing punctuation stripped on both sides; keep the punctuation in the replacement |
+| 5 | Nit: the redirect comment named the wrong case (the `//evil.example` forms are already caught by the origin check; the pathname rule is for a *same-origin* URL whose pathname starts with `//`) | Comment rewritten to describe the actual case |
+| 6 | Nit: `service_role` EXECUTE grants on the helper functions are probably not load-bearing (the triage code only calls `match_tickets`) | Left in place -- harmless and explicit; noted here |
+
+### Report (verbatim)
+
+**Blocking**
+
+1. `docs/security/audit-2-fresh-context-rescan.md:14` and `docs/reviews/pr-1-ai-code-reviewer.md:13`
+   both assert that a third audit, `docs/security/audit-3-fresh-context-rescan.md`, was run and
+   "now exists," but that file does not exist anywhere in the repo. This is the exact defect
+   class the first-pass review already flagged -- it has recurred, this time inside the audit
+   trail itself. Fix: produce the file before merging, or remove the references.
+
+**Should fix**
+
+2. RLS gap behind the new `requireRole("customer")` checks -- `tickets_insert_customer`
+   (`20260903010000_tickets.sql:84-95`) only checks `customer_id = auth.uid()` and the row's
+   pristine state; it never checks the caller's role. An authenticated agent or admin can still
+   `POST /rest/v1/tickets` directly and create a ticket for themselves, bypassing the Server
+   Action's gate. The very next fix in the same migration (W2, column-level INSERT grants) exists
+   precisely because a direct REST POST is a recognised attack surface here. Suggest adding
+   `and ticketing.app_role() = 'customer'` to the `WITH CHECK` clause.
+
+3. Missing test coverage for the new route restriction -- `tests/role-matrix.spec.ts` has "a
+   customer is bounced from the staff queue" but nothing for the reverse: staff hitting `/tickets`
+   or `/tickets/new` now get `/403`. A genuine, intentional behaviour change that should get the
+   same assertion.
+
+**Nits**
+
+4. `app/lib/ai/triage.ts` (`stripForeignLinks`/`URL_OR_EMAIL_RE`) -- the regex can swallow
+   trailing punctuation: `"...http://good.example/ticket/123, thanks"` matches with the comma
+   included when building the "allowed" set, so the same URL without the comma in the reply is
+   replaced with `[link removed]`. Fails safe; reduces usefulness.
+5. `app/auth/confirm/route.ts:18-23` comment -- the two literal examples it names are already
+   caught by the origin check; the added pathname rule is needed for a *same-origin* absolute URL
+   whose pathname starts with `//`. The fix and regex are correct; only the framing is off.
+6. `20260903070000_audit2_fixes.sql:44-50` grants EXECUTE on the helpers to `service_role`; the
+   only direct service-role RPC is `match_tickets`, so this is likely harmless but possibly
+   unnecessary.
+
+**What I checked and found sound**
+
+- Column-level INSERT grants match exactly what `createTicket()`/`addComment()` insert.
+- `consume_rate_limit`'s whitelist covers exactly the three call sites.
+- `.maybeSingle()` in `assignTicket`/`updateTicketStatus`: both callers ignore the return and
+  revalidate, matching `claimTicket` -- closes a real RLS-hidden-row -> 500 bug, no regression.
+- `handle_new_user`/`ensure_profile` null-email guards consistent with each other and CLAUDE.md.
+- Open-redirect fix verified with concrete repros for `//evil.example`, `/\evil.example`,
+  `https://site//evil.example`, `/tickets`.
+- `neutralizeTags` applied to both injection surfaces (current ticket and candidates).
+- `tsc --noEmit` and `eslint` clean; no leftovers from extracting `login()`/`requireEnv()`.
+- `requireProfile()` still has legitimate callers. Docs accurately reflect the new grants and
+  mitigations. No new npm packages, no secrets in source, no custom auth logic.

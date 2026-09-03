@@ -2,28 +2,24 @@ import "server-only";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 
+export type RateLimitedAction = "create_ticket" | "add_comment" | "rerun_triage";
+
 export class RateLimitError extends Error {
-  constructor(action: string) {
+  constructor(action: RateLimitedAction) {
     super(`Rate limit exceeded for ${action}`);
     this.name = "RateLimitError";
   }
 }
 
-// Fixed-window counter keyed on the caller's uid + action, tracked in
-// ticketing.rate_limits via consume_rate_limit(). The uid half of the key
-// comes from the JWT inside the RPC, not from here, so nothing a client
-// sends can target another user's bucket.
-export async function checkRateLimit(
-  action: string,
-  limit: number,
-  windowSeconds: number
-): Promise<void> {
+// Fixed-window counter keyed on the caller's uid + action. The limit and
+// window for each action live inside ticketing.consume_rate_limit() -- the
+// caller only names the action, so nothing a client sends can change how
+// much it is allowed or target another user's bucket. create_ticket and
+// add_comment are enforced by BEFORE INSERT triggers; this is only for
+// rerun_triage, which inserts nothing.
+export async function checkRateLimit(action: RateLimitedAction): Promise<void> {
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase.rpc("consume_rate_limit", {
-    p_action: action,
-    p_limit: limit,
-    p_window_seconds: windowSeconds,
-  });
+  const { data, error } = await supabase.rpc("consume_rate_limit", { p_action: action });
 
   if (error) {
     throw new Error(error.message);

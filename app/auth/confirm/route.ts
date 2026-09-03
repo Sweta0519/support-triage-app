@@ -16,11 +16,14 @@ const OTP_TYPES: readonly EmailOtpType[] = [
 ];
 
 // Only a same-origin path is ever used as the post-confirmation target.
-// Two traps: browsers treat "/\evil.example" and "//evil.example" as
-// protocol-relative, so (1) resolve against our own origin and compare, and
-// (2) even for a same-origin URL, refuse a *pathname* that itself begins
-// with "//" or "/\" -- `new URL("https://site//evil.com").pathname` is
-// "//evil.com", and a Location header of that value leaves the site.
+// (1) Resolving against our own origin and comparing origins rejects
+// anything cross-origin, including protocol-relative forms like
+// "//evil.example" and "/\evil.example". (2) That is not enough on its own:
+// a *same-origin* absolute URL can carry a pathname that itself begins with
+// "//" -- `new URL("https://site//evil.example").pathname` is
+// "//evil.example" -- and a Location header of just that pathname is read
+// by browsers as protocol-relative and leaves the site. So the pathname
+// must start with exactly one slash.
 function safeNextPath(raw: string | null): string {
   if (!raw) {
     return "/";

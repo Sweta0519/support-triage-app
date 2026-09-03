@@ -27,9 +27,11 @@ One `ticketing.triage_results` row per run:
 | `missing_info`           | What the agent still needs from the customer before they can act.                     |
 | `confidence`             | 0..1 for category + priority together. `< 0.5` sets `needs_human_review`.              |
 
-`priority`/`category`/`team` are also copied onto the ticket's working fields
-(`ticketing.tickets`) so the queue can sort and badge by them; the `triage_results` row stays as
-the audit record of what the model said, so "AI said High -> agent set Normal" is visible.
+`priority`/`category`/`team` are also copied into the ticket's *working state*
+(`ticketing.ticket_triage_state`, a **staff-only** table) so the queue can sort and badge by
+them; the `triage_results` row stays as the append-only audit record of what the model said.
+Nothing AI-derived is on the `tickets` row itself -- that is what keeps the model's verdict away
+from the customer who wrote the ticket, in the UI *and* through the Data API.
 
 ## Pipeline (`app/lib/ai/triage.ts`)
 
@@ -57,8 +59,9 @@ it from the ticket page.
 5. **Validate again in TypeScript.** Enums re-checked, ids filtered to the candidate set,
    confidence clamped. Anything off-schema falls back to safe defaults and sets
    `needs_human_review`. Strict mode makes this mostly redundant; it's cheap insurance.
-6. **Persist.** Insert `triage_results`; update the ticket's `priority`/`category`/`team` and set
-   `triage_status = 'completed'`; write a `triage_completed` event with `actor_id = null`.
+6. **Persist.** Insert `triage_results`; update the staff-only `ticket_triage_state` row
+   (`priority`/`category`/`team`, `triage_status = 'completed'`); write a `triage_completed` event
+   with `actor_id = null`.
 7. **On any failure**: `triage_status = 'failed'`, a `triage_failed` event, and a server-side log
    line. The ticket stays fully usable. Failure never surfaces to the customer.
 
@@ -94,8 +97,9 @@ urgent" is a given. Mitigations are structural, not just prompt wording:
   flattened, length-capped, wrapped in `<candidate_tickets>`, and the system prompt names it as
   untrusted and forbids copying any of it into `suggested_reply` -- so one customer's ticket
   cannot plant a phishing line in the draft reply an agent sees for another customer.
-- Customers never see the AI-derived priority/category (staff-only on the ticket page), so there
-  is no fast feedback loop for tuning an injection.
+- Customers cannot read the AI-derived priority/category at all -- not in the UI and not via the
+  Data API, because those fields live in `ticket_triage_state`, whose RLS returns no rows to a
+  customer -- so there is no fast feedback loop for tuning an injection.
 - Output is a closed schema with `strict: true` -- the model can't add fields, call tools, or
   reference ids outside the candidate list.
 - Everything the model produces is advisory and staff-only. The worst case of a successful
@@ -105,6 +109,11 @@ Do not add any behaviour that lets triage output change ticket state or reach a 
 without revisiting this section.
 
 ## Privacy
+
+Ticket text is customer data and often contains PII, and it leaves the system: it is sent to
+OpenRouter and on to a model provider. Both calls set `provider.data_collection = "deny"`, so
+OpenRouter will only route to providers that do not retain or train on inputs. Review this if
+the model or provider is ever changed.
 
 Duplicate detection means customer A's ticket subject (and prior summary) can appear in the
 prompt that assesses customer B's ticket. This is contained because:

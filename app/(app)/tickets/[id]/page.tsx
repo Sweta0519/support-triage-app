@@ -64,15 +64,17 @@ export default async function TicketDetailPage({
       <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
         {ticket.body}
       </p>
-      {/* Priority/category are seeded by the AI. Showing them to the customer
-          would give anyone probing the triage prompt an instant feedback
-          loop ("did my injected text make it urgent?"), so they're staff-only. */}
+      {/* Priority/category are seeded by the AI and live in the staff-only
+          ticket_triage_state table -- for a customer, triage_state is null
+          because RLS never returns the row, so there is no feedback loop
+          for probing the triage prompt ("did my injected text make it
+          urgent?") through the UI or the Data API. */}
       {isStaff ? (
         <dl className="grid grid-cols-2 gap-2 text-xs text-zinc-500 dark:text-zinc-500">
           <dt>Priority</dt>
-          <dd>{ticket.priority ?? "Not triaged yet"}</dd>
+          <dd>{ticket.triage_state?.priority ?? "Not triaged yet"}</dd>
           <dt>Category</dt>
-          <dd>{ticket.category ?? "Not triaged yet"}</dd>
+          <dd>{ticket.triage_state?.category ?? "Not triaged yet"}</dd>
         </dl>
       ) : null}
 
@@ -89,7 +91,7 @@ export default async function TicketDetailPage({
           />
           <TriagePanel
             ticketId={ticket.id}
-            triageStatus={ticket.triage_status}
+            triageStatus={ticket.triage_state?.triage_status ?? "pending"}
             triage={triage}
           />
         </>

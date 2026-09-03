@@ -83,7 +83,7 @@ export async function rerunTriageAction(formData: FormData) {
   }
   // Each re-run is two paid model calls, so throttle it per staff member.
   try {
-    await checkRateLimit("rerun_triage", 5, 10 * 60);
+    await checkRateLimit("rerun_triage");
   } catch (err) {
     if (err instanceof RateLimitError) {
       return;

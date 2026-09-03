@@ -27,9 +27,10 @@ of the product is that a human never has to read a ticket cold:
 
 Remove it and the app has no reason to exist over a shared inbox.
 
-The AI is deliberately **advisory**: it seeds the ticket's working fields (priority, category,
-team) and records its full assessment in an append-only audit table, but it never changes ticket
-status and never sends anything to a customer. Its output is visible to staff only.
+The AI is deliberately **advisory**: it seeds a staff-only working-state record (priority,
+category, team) and records its full assessment in an append-only audit table, but it never
+changes ticket status and never sends anything to a customer. Nothing it produces is readable by
+the customer who filed the ticket -- not in the UI and not through the database API.
 
 ## Stack
 

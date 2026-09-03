@@ -93,6 +93,9 @@ export async function embed(text: string): Promise<number[]> {
   const res = await post<EmbeddingsResponse>("/embeddings", {
     model: EMBEDDING_MODEL,
     input: text,
+    // Ticket text is customer data, often PII: never route to a provider
+    // that may retain or train on inputs.
+    provider: { data_collection: "deny" },
   });
   const vector = res.data?.[0]?.embedding;
   if (!Array.isArray(vector) || vector.length !== EMBEDDING_DIMENSIONS) {
@@ -133,7 +136,10 @@ export async function completeJson<T>(opts: {
       type: "json_schema",
       json_schema: { name: opts.schemaName, strict: true, schema: opts.schema },
     },
-    provider: { require_parameters: true },
+    // require_parameters: never route to a provider that would ignore the
+    // schema. data_collection deny: never route to one that may retain or
+    // train on the ticket text (customer data, often PII).
+    provider: { require_parameters: true, data_collection: "deny" },
     max_tokens: opts.maxTokens,
     temperature: 0.2,
   });

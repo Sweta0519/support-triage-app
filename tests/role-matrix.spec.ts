@@ -11,6 +11,17 @@ test("a customer is bounced from the staff queue", async ({ page }) => {
   await expect(page).toHaveURL(/\/403$/);
 });
 
+test("staff are bounced from the customer ticket pages", async ({ browser }) => {
+  const agentContext = await browser.newContext();
+  const agentPage = await agentContext.newPage();
+  await login(agentPage, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
+  await agentPage.goto("/tickets");
+  await expect(agentPage).toHaveURL(/\/403$/);
+  await agentPage.goto("/tickets/new");
+  await expect(agentPage).toHaveURL(/\/403$/);
+  await agentContext.close();
+});
+
 test("an agent gets a 404 for a ticket assigned to someone else", async ({
   page,
   browser,

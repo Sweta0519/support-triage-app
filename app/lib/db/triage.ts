@@ -68,18 +68,31 @@ export type TriageTicket = {
 // triage when e.g. a retry and the original both fire.
 export async function claimTicketForTriage(ticketId: string): Promise<TriageTicket | null> {
   const supabase = createServiceSupabaseClient();
-  const { data, error } = await supabase
-    .from("tickets")
+  const { data: claimed, error: claimError } = await supabase
+    .from("ticket_triage_state")
     .update({ triage_status: "processing" })
-    .eq("id", ticketId)
+    .eq("ticket_id", ticketId)
     .eq("triage_status", "pending")
+    .select("ticket_id")
+    .maybeSingle();
+
+  if (claimError) {
+    throw new Error(claimError.message);
+  }
+  if (!claimed) {
+    return null;
+  }
+
+  const { data: ticket, error } = await supabase
+    .from("tickets")
     .select("id, subject, body, status")
+    .eq("id", ticketId)
     .maybeSingle();
 
   if (error) {
     throw new Error(error.message);
   }
-  return data;
+  return ticket;
 }
 
 // Used by the manual "re-run triage" path: put a completed/failed ticket
@@ -93,9 +106,9 @@ export async function resetTriageStatus(ticketId: string): Promise<void> {
   const supabase = createServiceSupabaseClient();
   const staleBefore = new Date(Date.now() - STALE_PROCESSING_MS).toISOString();
   const { error } = await supabase
-    .from("tickets")
+    .from("ticket_triage_state")
     .update({ triage_status: "pending" })
-    .eq("id", ticketId)
+    .eq("ticket_id", ticketId)
     .or(
       `triage_status.in.(completed,failed),and(triage_status.eq.processing,updated_at.lt.${staleBefore})`
     );
@@ -162,18 +175,18 @@ export async function insertTriageResult(row: NewTriageResult): Promise<void> {
   }
 }
 
-// Seeds the ticket's *working* fields from the AI's suggestion. Deliberately
-// never touches `status` -- triage is advisory, and the guard trigger's
-// transition map would reject it anyway.
+// Seeds the ticket's *working* fields (staff-only ticket_triage_state) from
+// the AI's suggestion. Deliberately never touches tickets.status -- triage is
+// advisory, and the guard trigger's transition map would reject it anyway.
 export async function applyTriageToTicket(
   ticketId: string,
   fields: { priority: string | null; category: string | null; team: string | null }
 ): Promise<void> {
   const supabase = createServiceSupabaseClient();
   const { error } = await supabase
-    .from("tickets")
+    .from("ticket_triage_state")
     .update({ ...fields, triage_status: "completed" })
-    .eq("id", ticketId);
+    .eq("ticket_id", ticketId);
 
   if (error) {
     throw new Error(error.message);
@@ -183,9 +196,9 @@ export async function applyTriageToTicket(
 export async function markTriageFailed(ticketId: string): Promise<void> {
   const supabase = createServiceSupabaseClient();
   const { error } = await supabase
-    .from("tickets")
+    .from("ticket_triage_state")
     .update({ triage_status: "failed" })
-    .eq("id", ticketId);
+    .eq("ticket_id", ticketId);
 
   if (error) {
     throw new Error(error.message);

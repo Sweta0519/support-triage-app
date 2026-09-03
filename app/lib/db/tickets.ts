@@ -33,28 +33,40 @@ export const ALLOWED_STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = 
   closed: [],
 };
 
+// AI-derived working state lives in ticketing.ticket_triage_state, a
+// staff-only table (RLS). It is embedded into staff reads and comes back as
+// null for customers -- the columns simply aren't on anything they can read.
+export type TriageState = {
+  triage_status: string;
+  priority: string | null;
+  category: string | null;
+  team: string | null;
+};
+
 export type TicketSummary = {
   id: string;
   subject: string;
   status: TicketStatus;
-  priority: string | null;
   created_at: string;
 };
 
-export type Ticket = TicketSummary & {
+export type QueueTicketSummary = TicketSummary & {
+  assignee_id: string | null;
+  triage_state: TriageState | null;
+};
+
+export type TicketBase = TicketSummary & {
   body: string;
-  category: string | null;
-  team: string | null;
-  triage_status: string;
   updated_at: string;
   customer_id: string;
   assignee_id: string | null;
 };
 
-export type QueueTicketSummary = TicketSummary & { assignee_id: string | null };
+export type Ticket = TicketBase & { triage_state: TriageState | null };
 
-const TICKET_COLUMNS =
-  "id, subject, body, status, priority, category, team, triage_status, created_at, updated_at, customer_id, assignee_id";
+const TRIAGE_STATE_EMBED = "triage_state:ticket_triage_state(triage_status, priority, category, team)";
+const TICKET_BASE_COLUMNS = "id, subject, body, status, created_at, updated_at, customer_id, assignee_id";
+const TICKET_COLUMNS = `${TICKET_BASE_COLUMNS}, ${TRIAGE_STATE_EMBED}`;
 
 // Every query here also filters by customer_id explicitly, even though RLS
 // already enforces it -- scoping doesn't depend on RLS alone (same defense-
@@ -64,7 +76,7 @@ export async function listMyTickets(userId: string): Promise<TicketSummary[]> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("tickets")
-    .select("id, subject, status, priority, created_at")
+    .select("id, subject, status, created_at")
     .eq("customer_id", userId)
     .order("created_at", { ascending: false });
 
@@ -89,19 +101,22 @@ export async function getMyTicketById(
   if (error) {
     throw new Error(error.message);
   }
-  return data;
+  // Without generated DB types supabase-js types the embed as an array; the
+  // FK is the child's primary key, so PostgREST returns a single object (or
+  // null -- always null for a customer, whose RLS hides the row).
+  return data as unknown as Ticket | null;
 }
 
 export async function createTicket(
   userId: string,
   subject: string,
   body: string
-): Promise<TicketSummary> {
+): Promise<{ id: string }> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("tickets")
     .insert({ customer_id: userId, subject, body })
-    .select("id, subject, status, priority, created_at")
+    .select("id")
     .single();
 
   if (error) {
@@ -127,7 +142,7 @@ export async function listQueueTickets(
   const supabase = await createServerSupabaseClient();
   let query = supabase
     .from("tickets")
-    .select("id, subject, status, priority, created_at, assignee_id")
+    .select(`id, subject, status, created_at, assignee_id, ${TRIAGE_STATE_EMBED}`)
     .neq("status", "closed")
     .order("created_at", { ascending: true });
 
@@ -139,7 +154,7 @@ export async function listQueueTickets(
   if (error) {
     throw new Error(error.message);
   }
-  return data;
+  return data as unknown as QueueTicketSummary[];
 }
 
 export async function getTicketForStaff(ticketId: string): Promise<Ticket | null> {
@@ -153,7 +168,7 @@ export async function getTicketForStaff(ticketId: string): Promise<Ticket | null
   if (error) {
     throw new Error(error.message);
   }
-  return data;
+  return data as unknown as Ticket | null;
 }
 
 // Atomic claim: the WHERE clause (not just the RLS policy) requires
@@ -165,14 +180,14 @@ export async function getTicketForStaff(ticketId: string): Promise<Ticket | null
 export async function claimTicket(
   agentId: string,
   ticketId: string
-): Promise<Ticket | null> {
+): Promise<TicketBase | null> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("tickets")
     .update({ assignee_id: agentId, status: "assigned" })
     .eq("id", ticketId)
     .is("assignee_id", null)
-    .select(TICKET_COLUMNS)
+    .select(TICKET_BASE_COLUMNS)
     .maybeSingle();
 
   if (error) {
@@ -189,13 +204,13 @@ export async function claimTicket(
 export async function assignTicket(
   ticketId: string,
   assigneeId: string | null
-): Promise<Ticket | null> {
+): Promise<TicketBase | null> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("tickets")
     .update({ assignee_id: assigneeId })
     .eq("id", ticketId)
-    .select(TICKET_COLUMNS)
+    .select(TICKET_BASE_COLUMNS)
     // null = RLS hid the row (or it doesn't exist): a no-op, not a 500.
     .maybeSingle();
 
@@ -208,13 +223,13 @@ export async function assignTicket(
 export async function updateTicketStatus(
   ticketId: string,
   status: TicketStatus
-): Promise<Ticket | null> {
+): Promise<TicketBase | null> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("tickets")
     .update({ status })
     .eq("id", ticketId)
-    .select(TICKET_COLUMNS)
+    .select(TICKET_BASE_COLUMNS)
     .maybeSingle();
 
   if (error) {

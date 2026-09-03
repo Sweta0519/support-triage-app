@@ -208,15 +208,27 @@ function neutralizeTags(text: string): string {
 // being assessed can only have come from the model or from another
 // customer's text -- neither is something an agent should paste to a
 // customer unreviewed.
-const URL_OR_EMAIL_RE = /\bhttps?:\/\/[^\s)<>"']+|\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b/gi;
+// Scheme URLs, bare "host.tld/path" links, and email addresses.
+const URL_OR_EMAIL_RE =
+  /\bhttps?:\/\/[^\s)<>"']+|\b(?:[a-z0-9-]+\.)+[a-z]{2,}\/[^\s)<>"']*|\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b/gi;
+// A URL at the end of a sentence drags its punctuation into the match
+// ("…/ticket/123,"); compare without it so the same link in the ticket and
+// in the reply is recognised as the same link.
+const TRAILING_PUNCT_RE = /[.,;:!?)\]]+$/;
+
+function linkKey(match: string): string {
+  return match.replace(TRAILING_PUNCT_RE, "").toLowerCase();
+}
 
 function stripForeignLinks(reply: string, ticketText: string): string {
-  const allowed = new Set(
-    (ticketText.match(URL_OR_EMAIL_RE) ?? []).map((s) => s.toLowerCase())
-  );
-  return reply.replace(URL_OR_EMAIL_RE, (match) =>
-    allowed.has(match.toLowerCase()) ? match : "[link removed]"
-  );
+  const allowed = new Set((ticketText.match(URL_OR_EMAIL_RE) ?? []).map(linkKey));
+  return reply.replace(URL_OR_EMAIL_RE, (match) => {
+    if (allowed.has(linkKey(match))) {
+      return match;
+    }
+    const trailing = match.match(TRAILING_PUNCT_RE)?.[0] ?? "";
+    return `[link removed]${trailing}`;
+  });
 }
 
 function stripTimeframePromises(reply: string): string {
@@ -296,7 +308,10 @@ function normalize(
         ticketText
       ),
       missing_info: Array.isArray(raw.missing_info)
-        ? raw.missing_info.filter((s): s is string => typeof s === "string").slice(0, 10)
+        ? raw.missing_info
+            .filter((s): s is string => typeof s === "string")
+            .slice(0, 10)
+            .map((s) => s.trim().slice(0, 200))
         : [],
       confidence,
     },

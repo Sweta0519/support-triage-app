@@ -21,11 +21,23 @@ export type AdminStats = {
 
 // Aggregated in app code over a bounded select. Runs as the signed-in admin,
 // so RLS is what makes this "all tickets" -- an agent calling it would only
-// aggregate the rows they can see. Fine at this app's scale; if the table
-// grows past the cap this should move to a SQL aggregate.
-const MAX_ROWS = 5_000;
+// aggregate the rows they can see. PostgREST caps any single response at
+// 1,000 rows (the project's max_rows), so asking for more would silently
+// return 1,000 anyway; match it so `sampled` is truthful. If the table grows
+// past this, move the aggregation to a SQL function.
+const MAX_ROWS = 1_000;
 
-function tally(values: (string | null)[]): Record<string, number> {
+type TicketRow = {
+  status: string;
+  assignee_id: string | null;
+  created_at: string;
+  first_response_at: string | null;
+  triage_state: { triage_status: string; priority: string | null } | null;
+};
+
+type TriageRow = { needs_human_review: boolean; latency_ms: number | null };
+
+function tally(values: (string | null | undefined)[]): Record<string, number> {
   const out: Record<string, number> = {};
   for (const v of values) {
     const key = v ?? "unset";
@@ -40,7 +52,9 @@ export async function getAdminStats(): Promise<AdminStats> {
   const [ticketsRes, triageRes] = await Promise.all([
     supabase
       .from("tickets")
-      .select("status, priority, assignee_id, triage_status, created_at, first_response_at")
+      .select(
+        "status, assignee_id, created_at, first_response_at, triage_state:ticket_triage_state(triage_status, priority)"
+      )
       .order("created_at", { ascending: false })
       .limit(MAX_ROWS),
     supabase
@@ -57,15 +71,15 @@ export async function getAdminStats(): Promise<AdminStats> {
     throw new Error(triageRes.error.message);
   }
 
-  const tickets = ticketsRes.data;
-  const triage = triageRes.data;
+  const tickets = ticketsRes.data as unknown as TicketRow[];
+  const triage = triageRes.data as TriageRow[];
 
   const openStatuses = new Set(["new", "triaged", "assigned", "in_progress"]);
   const unassignedOpen = tickets.filter(
     (t) => t.assignee_id === null && openStatuses.has(t.status)
   ).length;
 
-  const triageCounts = tally(tickets.map((t) => t.triage_status));
+  const triageCounts = tally(tickets.map((t) => t.triage_state?.triage_status));
 
   const latencies = triage
     .map((r) => r.latency_ms)
@@ -91,7 +105,7 @@ export async function getAdminStats(): Promise<AdminStats> {
   return {
     total: tickets.length,
     byStatus: tally(tickets.map((t) => t.status)),
-    byPriority: tally(tickets.map((t) => t.priority)),
+    byPriority: tally(tickets.map((t) => t.triage_state?.priority)),
     unassignedOpen,
     triage: {
       pending: triageCounts.pending ?? 0,
