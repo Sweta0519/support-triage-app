@@ -19,7 +19,20 @@ export function SharePanel({
   canPublish: boolean;
 }) {
   const [state, action, pending] = useActionState(publishSummaryAction, undefined);
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+
+  function copyLink(url: string) {
+    if (!navigator.clipboard?.writeText) {
+      setCopyState("failed");
+      setTimeout(() => setCopyState("idle"), 1500);
+      return;
+    }
+    navigator.clipboard
+      .writeText(url)
+      .then(() => setCopyState("copied"))
+      .catch(() => setCopyState("failed"))
+      .finally(() => setTimeout(() => setCopyState("idle"), 1500));
+  }
 
   if (share) {
     const url = `${siteUrl}/s/${share.token}`;
@@ -35,15 +48,14 @@ export function SharePanel({
           </code>
           <button
             type="button"
-            onClick={() => {
-              navigator.clipboard.writeText(url).then(() => {
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
-              });
-            }}
+            onClick={() => copyLink(url)}
             className="rounded-full border border-black/[.08] px-3 py-1 text-xs font-medium transition-colors hover:bg-black/[.05] dark:border-white/[.145] dark:hover:bg-white/[.06]"
           >
-            {copied ? "Copied" : "Copy link"}
+            {copyState === "copied"
+              ? "Copied"
+              : copyState === "failed"
+                ? "Couldn't copy -- select the link above"
+                : "Copy link"}
           </button>
           <form action={revokeShareAction}>
             <input type="hidden" name="ticketId" value={ticketId} />

@@ -1,6 +1,7 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
-import { getPublicSharedSummary } from "@/app/lib/db/shares";
+import { getPublicSharedSummary, PublicShareRateLimitError } from "@/app/lib/db/shares";
 
 // Deliberately outside the (app) route group: this page has no signed-in
 // user at all. It renders exactly one thing -- the snapshot behind this
@@ -12,7 +13,27 @@ export default async function SharedStatusPage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const share = await getPublicSharedSummary(token);
+  // Vercel sets x-forwarded-for at the edge for every request reaching this
+  // function; it isn't attacker-overridable the way it would be on a
+  // self-hosted origin behind no proxy. Used only as a rate-limit bucket
+  // key, never for anything security-sensitive beyond that.
+  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+
+  let share;
+  try {
+    share = await getPublicSharedSummary(token, ip);
+  } catch (err) {
+    if (err instanceof PublicShareRateLimitError) {
+      return (
+        <div className="mx-auto flex w-full max-w-lg flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            Too many requests. Please try again in a few minutes.
+          </p>
+        </div>
+      );
+    }
+    throw err;
+  }
 
   if (!share) {
     notFound();
