@@ -1,6 +1,16 @@
 import { requireAdmin } from "@/app/lib/auth/session";
 import { getAdminStats, MAX_ROWS } from "@/app/lib/db/admin";
 
+// Same precision reasoning as the per-ticket cost badge on the ticket page:
+// these are small dollar amounts and a plain toFixed(2) would round most of
+// them to "$0.00".
+function formatCostUsd(cost: number): string {
+  if (cost <= 0) {
+    return "$0.00";
+  }
+  return cost < 0.01 ? `$${cost.toFixed(4)}` : `$${cost.toFixed(2)}`;
+}
+
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="rounded-lg border border-black/[.08] p-4 dark:border-white/[.145]">
@@ -39,7 +49,7 @@ export default async function AdminOverviewPage() {
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Overview</h1>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Stat label="Tickets" value={stats.total} />
         <Stat label="Open & unassigned" value={stats.unassignedOpen} />
         <Stat
@@ -52,6 +62,7 @@ export default async function AdminOverviewPage() {
           label="Avg triage latency"
           value={stats.triage.avgLatencyMs != null ? `${stats.triage.avgLatencyMs} ms` : "-"}
         />
+        <Stat label="AI spend (recent)" value={formatCostUsd(stats.triage.totalCostUsd)} />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">

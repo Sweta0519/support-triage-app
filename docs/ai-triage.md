@@ -26,6 +26,7 @@ One `ticketing.triage_results` row per run:
 | `suggested_reply`        | A *draft* first reply. Never sent automatically.                                       |
 | `missing_info`           | What the agent still needs from the customer before they can act.                     |
 | `confidence`             | 0..1 for category + priority together. `< 0.5` sets `needs_human_review`.              |
+| `cost_usd`               | The real cost OpenRouter billed for this run (embedding + completion), from `usage.cost` on each response -- not an estimate. |
 
 `priority`/`category`/`team` are also copied into the ticket's *working state*
 (`ticketing.ticket_triage_state`, a **staff-only** table) so the queue can sort and badge by
@@ -66,6 +67,16 @@ it from the ticket page.
    line. The ticket stays fully usable. Failure never surfaces to the customer.
 
 Two OpenRouter calls per ticket; `max_tokens` is capped at 1,200 and one retry on 429/5xx.
+
+## Cost tracking (optional task)
+
+OpenRouter includes the actual billed cost in `usage.cost` on every response -- the old
+`usage: { include: true }` request flag is deprecated and now a no-op; cost is always returned.
+Both calls' costs are summed into `triage_results.cost_usd`, shown per ticket in the footer of
+the triage panel (`app/(app)/tickets/[id]/TriagePanel.tsx`) and as a running total on
+`/admin` (`app/lib/db/admin.ts`). A real run costs roughly $0.003 with Haiku 4.5 on this
+prompt -- small enough that per-ticket cost matters more for visibility than for budgeting, but
+the same field would scale directly if the model were changed to something pricier.
 
 ## What it deliberately does not do
 
