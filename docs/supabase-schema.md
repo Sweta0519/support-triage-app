@@ -163,6 +163,7 @@ service role from `app/lib/ai/triage.ts`. See `docs/ai-triage.md` for field mean
 | `needs_human_review` | `boolean`                   | Set when validation fell back or confidence `< 0.5`.         |
 | `raw`                | `jsonb`                     | The model's exact JSON, for debugging.                       |
 | `prompt_tokens`, `completion_tokens`, `latency_ms` | `int` | Cost/latency tracking.                          |
+| `cost_usd`           | `numeric(12,8)`             | Real combined embedding + completion cost billed by OpenRouter (`usage.cost`), not an estimate. Nullable for rows written before this column existed. |
 | `created_at`         | `timestamptz`               |                                                              |
 
 ### `ticketing.ticket_embeddings`

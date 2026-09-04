@@ -2,26 +2,13 @@ import Link from "next/link";
 
 import { rerunTriageAction } from "../actions";
 import type { TriageResult } from "@/app/lib/db/triage";
+import { formatCostUsd } from "@/app/lib/format";
 
 const STATUS_COPY: Record<string, string> = {
   pending: "Queued -- the assessment usually lands within a few seconds. Refresh to check.",
   processing: "Running...",
   failed: "Triage failed. You can re-run it.",
 };
-
-// Costs here are sub-cent (embedding + a short Haiku completion), so a
-// plain toFixed(2) would show "$0.00" for every run -- not useful for
-// judging whether triage is cheap. Show enough precision to see the number
-// move.
-function formatCostUsd(cost: number): string {
-  if (cost <= 0) {
-    return "$0.00";
-  }
-  if (cost < 0.01) {
-    return `$${cost.toFixed(5)}`;
-  }
-  return `$${cost.toFixed(4)}`;
-}
 
 export function TriagePanel({
   ticketId,
