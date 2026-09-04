@@ -4,8 +4,10 @@ import { signOutAction } from "@/app/lib/auth/actions";
 import { roleBadgeClasses } from "@/app/lib/badges";
 import type { Profile } from "@/app/lib/db/profiles";
 
-const linkClasses =
-  "text-sm font-medium text-zinc-600 transition-colors hover:text-black dark:text-zinc-400 dark:hover:text-zinc-50";
+// Nav links and Sign out share this exact pill shape so the whole header
+// reads as one row of buttons -- no plain, un-boxed link text next to them.
+const navButtonClasses =
+  "rounded-full border border-black/[.08] px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-black/[.05] dark:border-white/[.145] dark:text-zinc-300 dark:hover:bg-white/[.06]";
 
 export function AppHeader({ profile }: { profile: Profile }) {
   const initial = profile.email.charAt(0).toUpperCase();
@@ -23,18 +25,18 @@ export function AppHeader({ profile }: { profile: Profile }) {
             </span>
             Support Triage
           </Link>
-          <nav className="hidden items-center gap-5 sm:flex">
+          <nav className="hidden items-center gap-2 sm:flex">
             {profile.role === "customer" ? (
-              <Link href="/tickets" className={linkClasses}>
+              <Link href="/tickets" className={navButtonClasses}>
                 My tickets
               </Link>
             ) : (
               <>
-                <Link href="/queue" className={linkClasses}>
+                <Link href="/queue" className={navButtonClasses}>
                   Queue
                 </Link>
                 {profile.role === "admin" ? (
-                  <Link href="/admin" className={linkClasses}>
+                  <Link href="/admin" className={navButtonClasses}>
                     Admin
                   </Link>
                 ) : null}
@@ -60,10 +62,7 @@ export function AppHeader({ profile }: { profile: Profile }) {
             </div>
           </div>
           <form action={signOutAction}>
-            <button
-              type="submit"
-              className="rounded-full border border-black/[.08] px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-black/[.05] dark:border-white/[.145] dark:text-zinc-300 dark:hover:bg-white/[.06]"
-            >
+            <button type="submit" className={navButtonClasses}>
               Sign out
             </button>
           </form>

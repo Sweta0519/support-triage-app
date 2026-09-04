@@ -24,8 +24,8 @@ function DashboardCard({
         <span className="text-2xl font-semibold text-indigo-600 dark:text-indigo-400">{stat}</span>
       </div>
       <p className="text-xs text-zinc-500 dark:text-zinc-500">{description}</p>
-      <span className="text-xs font-medium text-indigo-600 group-hover:underline dark:text-indigo-400">
-        Open &rarr;
+      <span className="inline-flex w-fit items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-600 transition-colors group-hover:bg-indigo-100 dark:bg-indigo-950/40 dark:text-indigo-400 dark:group-hover:bg-indigo-950/60">
+        Open <span aria-hidden="true">&rarr;</span>
       </span>
     </Link>
   );
