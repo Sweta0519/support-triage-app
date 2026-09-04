@@ -4,39 +4,30 @@ import { useActionState } from "react";
 import Link from "next/link";
 
 import { signInAction } from "@/app/lib/auth/actions";
+import { inputClass, primaryButtonClass } from "@/app/lib/styles";
 
 export function LoginForm() {
   const [state, action, pending] = useActionState(signInAction, undefined);
 
   return (
-    <form action={action} className="flex w-full max-w-sm flex-col gap-4">
-      <input
-        name="email"
-        type="email"
-        placeholder="Email"
-        required
-        className="rounded-lg border border-black/[.08] bg-white px-4 py-2 text-black outline-none focus:border-black/30 dark:border-white/[.145] dark:bg-black dark:text-zinc-50 dark:focus:border-white/30"
-      />
+    <form action={action} className="flex w-full flex-col gap-4">
+      <input name="email" type="email" placeholder="Email" required className={inputClass} />
       <input
         name="password"
         type="password"
         placeholder="Password"
         required
-        className="rounded-lg border border-black/[.08] bg-white px-4 py-2 text-black outline-none focus:border-black/30 dark:border-white/[.145] dark:bg-black dark:text-zinc-50 dark:focus:border-white/30"
+        className={inputClass}
       />
       {state?.error ? (
         <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>
       ) : null}
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] disabled:opacity-50 dark:hover:bg-[#ccc]"
-      >
+      <button type="submit" disabled={pending} className={`${primaryButtonClass} w-full`}>
         Sign in
       </button>
       <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
         No account?{" "}
-        <Link href="/signup" className="underline">
+        <Link href="/signup" className="font-medium text-indigo-600 hover:underline dark:text-indigo-400">
           Sign up
         </Link>
       </p>

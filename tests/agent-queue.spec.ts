@@ -38,7 +38,8 @@ test("agent can claim a ticket, move its status, and post an internal note the c
   await expect(agentPage.getByText("Assigned to you")).toBeVisible();
 
   await agentPage.getByRole("button", { name: "Move to In progress" }).click();
-  await expect(agentPage.locator("span", { hasText: "in_progress" }).first()).toBeVisible();
+  // Status labels are humanized for display (underscores -> spaces).
+  await expect(agentPage.locator("span", { hasText: "in progress" }).first()).toBeVisible();
 
   const noteText = `Internal note ${Date.now()}: checking logs.`;
   await agentPage.getByPlaceholder("Write a comment...").fill(noteText);

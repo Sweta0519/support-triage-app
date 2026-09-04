@@ -3,6 +3,7 @@
 import { useActionState, useRef } from "react";
 
 import { addCommentAction } from "../actions";
+import { inputClass, primaryButtonClass } from "@/app/lib/styles";
 
 export function CommentForm({
   ticketId,
@@ -35,7 +36,7 @@ export function CommentForm({
         placeholder="Write a comment..."
         required
         rows={3}
-        className="rounded-lg border border-black/[.08] bg-white px-4 py-2 text-sm text-black outline-none focus:border-black/30 dark:border-white/[.145] dark:bg-black dark:text-zinc-50 dark:focus:border-white/30"
+        className={inputClass}
       />
       <div className="flex flex-wrap items-center gap-3">
         {isStaff ? (
@@ -48,7 +49,7 @@ export function CommentForm({
           <button
             type="button"
             onClick={fillDraft}
-            className="text-xs underline text-zinc-600 dark:text-zinc-400"
+            className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
           >
             Use suggested reply
           </button>
@@ -60,7 +61,7 @@ export function CommentForm({
       <button
         type="submit"
         disabled={pending}
-        className="self-start rounded-full bg-foreground px-4 py-1.5 text-xs font-medium text-background transition-colors hover:bg-[#383838] disabled:opacity-50 dark:hover:bg-[#ccc]"
+        className={`self-start ${primaryButtonClass} !px-4 !py-1.5 !text-xs`}
       >
         Add comment
       </button>

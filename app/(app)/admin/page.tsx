@@ -4,29 +4,38 @@ import { formatCostUsd } from "@/app/lib/format";
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-lg border border-black/[.08] p-4 dark:border-white/[.145]">
-      <p className="text-xs text-zinc-500 dark:text-zinc-500">{label}</p>
-      <p className="text-2xl font-semibold text-black dark:text-zinc-50">{value}</p>
+    <div className="rounded-xl border border-black/[.08] p-4 dark:border-white/[.145]">
+      <p className="text-xs font-medium text-zinc-500 dark:text-zinc-500">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-black dark:text-zinc-50">{value}</p>
     </div>
   );
 }
 
 function Breakdown({ title, data }: { title: string; data: Record<string, number> }) {
   const entries = Object.entries(data).sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((sum, [, count]) => sum + count, 0);
   return (
-    <div className="rounded-lg border border-black/[.08] p-4 dark:border-white/[.145]">
-      <p className="mb-2 text-xs font-medium text-zinc-500 dark:text-zinc-500">{title}</p>
+    <div className="rounded-xl border border-black/[.08] p-4 dark:border-white/[.145]">
+      <p className="mb-3 text-xs font-medium text-zinc-500 dark:text-zinc-500">{title}</p>
       {entries.length === 0 ? (
         <p className="text-xs text-zinc-400">No data.</p>
       ) : (
-        <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-sm">
+        <ul className="flex flex-col gap-2">
           {entries.map(([key, count]) => (
-            <div key={key} className="contents">
-              <dt className="text-zinc-700 dark:text-zinc-300">{key}</dt>
-              <dd className="text-right font-medium text-black dark:text-zinc-50">{count}</dd>
-            </div>
+            <li key={key} className="flex flex-col gap-1">
+              <div className="flex items-center justify-between text-sm">
+                <span className="capitalize text-zinc-700 dark:text-zinc-300">{key}</span>
+                <span className="font-medium text-black dark:text-zinc-50">{count}</span>
+              </div>
+              <div className="h-1 overflow-hidden rounded-full bg-black/[.05] dark:bg-white/[.08]">
+                <div
+                  className="h-full rounded-full bg-indigo-500"
+                  style={{ width: total > 0 ? `${(count / total) * 100}%` : "0%" }}
+                />
+              </div>
+            </li>
           ))}
-        </dl>
+        </ul>
       )}
     </div>
   );
@@ -38,8 +47,7 @@ export default async function AdminOverviewPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Overview</h1>
-
+      <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-500">Overview</h2>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Stat label="Tickets" value={stats.total} />
         <Stat label="Open & unassigned" value={stats.unassignedOpen} />

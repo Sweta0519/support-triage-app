@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireProfile } from "@/app/lib/auth/session";
@@ -11,6 +12,8 @@ import { listComments } from "@/app/lib/db/comments";
 import { getLatestTriageResult } from "@/app/lib/db/triage";
 import { listStaffProfiles, type StaffProfile } from "@/app/lib/db/profiles";
 import { getActiveShareForTicket } from "@/app/lib/db/shares";
+import { Badge } from "@/app/components/Badge";
+import { priorityBadgeClasses, statusBadgeClasses, statusLabel } from "@/app/lib/badges";
 import { CommentForm } from "./CommentForm";
 import { StaffControls } from "./StaffControls";
 import { TriagePanel } from "./TriagePanel";
@@ -58,29 +61,45 @@ export default async function TicketDetailPage({
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
-          {ticket.subject}
-        </h1>
-        <span className="rounded-full border border-black/[.08] px-3 py-1 text-xs text-zinc-600 dark:border-white/[.145] dark:text-zinc-400">
-          {ticket.status}
-        </span>
+      <div>
+        <Link
+          href={isStaff ? "/queue" : "/tickets"}
+          className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+        >
+          &larr; {isStaff ? "Queue" : "My tickets"}
+        </Link>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
+            {ticket.subject}
+          </h1>
+          <div className="flex items-center gap-2">
+            {isStaff && ticket.triage_state?.priority ? (
+              <Badge
+                label={ticket.triage_state.priority}
+                colorClasses={priorityBadgeClasses(ticket.triage_state.priority)}
+              />
+            ) : null}
+            <Badge label={statusLabel(ticket.status)} colorClasses={statusBadgeClasses(ticket.status)} />
+          </div>
+        </div>
       </div>
-      <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
+
+      <p className="whitespace-pre-wrap rounded-xl border border-black/[.08] p-4 text-sm text-zinc-700 dark:border-white/[.145] dark:text-zinc-300">
         {ticket.body}
       </p>
-      {/* Priority/category are seeded by the AI and live in the staff-only
+
+      {/* Category is seeded by the AI and lives in the staff-only
           ticket_triage_state table -- for a customer, triage_state is null
           because RLS never returns the row, so there is no feedback loop
           for probing the triage prompt ("did my injected text make it
           urgent?") through the UI or the Data API. */}
       {isStaff ? (
-        <dl className="grid grid-cols-2 gap-2 text-xs text-zinc-500 dark:text-zinc-500">
-          <dt>Priority</dt>
-          <dd>{ticket.triage_state?.priority ?? "Not triaged yet"}</dd>
-          <dt>Category</dt>
-          <dd>{ticket.triage_state?.category ?? "Not triaged yet"}</dd>
-        </dl>
+        <p className="text-xs text-zinc-500 dark:text-zinc-500">
+          Category:{" "}
+          <span className="font-medium text-zinc-700 dark:text-zinc-300">
+            {ticket.triage_state?.category ?? "Not triaged yet"}
+          </span>
+        </p>
       ) : null}
 
       {isStaff ? (
@@ -109,13 +128,9 @@ export default async function TicketDetailPage({
       ) : null}
 
       <div className="flex flex-col gap-3 border-t border-black/[.08] pt-6 dark:border-white/[.145]">
-        <h2 className="text-sm font-semibold text-black dark:text-zinc-50">
-          Comments
-        </h2>
+        <h2 className="text-sm font-semibold text-black dark:text-zinc-50">Comments</h2>
         {comments.length === 0 ? (
-          <p className="text-sm text-zinc-500 dark:text-zinc-500">
-            No comments yet.
-          </p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-500">No comments yet.</p>
         ) : (
           <ul className="flex flex-col gap-3">
             {comments.map((comment) => (

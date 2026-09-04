@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 
 import { publishSummaryAction, revokeShareAction } from "../actions";
 import type { Share } from "@/app/lib/db/shares";
+import { secondaryButtonClass } from "@/app/lib/styles";
 
 export function SharePanel({
   ticketId,
@@ -37,7 +38,7 @@ export function SharePanel({
   if (share) {
     const url = `${siteUrl}/s/${share.token}`;
     return (
-      <div className="flex flex-col gap-2 rounded-lg border border-black/[.08] p-4 dark:border-white/[.145]">
+      <div className="flex flex-col gap-2 rounded-xl border border-black/[.08] p-4 dark:border-white/[.145]">
         <p className="text-xs text-zinc-500 dark:text-zinc-500">
           Published as a public status page -- anyone with this link can view the subject,
           status, and AI summary. No comments, no ticket body, no other tickets.
@@ -49,7 +50,7 @@ export function SharePanel({
           <button
             type="button"
             onClick={() => copyLink(url)}
-            className="rounded-full border border-black/[.08] px-3 py-1 text-xs font-medium transition-colors hover:bg-black/[.05] dark:border-white/[.145] dark:hover:bg-white/[.06]"
+            className={`${secondaryButtonClass} !px-3 !py-1 !text-xs`}
           >
             {copyState === "copied"
               ? "Copied"
@@ -73,7 +74,7 @@ export function SharePanel({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-black/[.08] p-4 dark:border-white/[.145]">
+    <div className="flex flex-col gap-2 rounded-xl border border-black/[.08] p-4 dark:border-white/[.145]">
       <p className="text-xs text-zinc-500 dark:text-zinc-500">
         {canPublish
           ? "Publish a read-only public status page (subject, status, AI summary) to share outside the team."
@@ -87,7 +88,7 @@ export function SharePanel({
         <button
           type="submit"
           disabled={!canPublish || pending}
-          className="self-start rounded-full border border-black/[.08] px-3 py-1 text-xs font-medium transition-colors hover:bg-black/[.05] disabled:opacity-50 dark:border-white/[.145] dark:hover:bg-white/[.06]"
+          className={`self-start ${secondaryButtonClass} !px-3 !py-1 !text-xs`}
         >
           Publish public status page
         </button>
