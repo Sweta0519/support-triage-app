@@ -108,21 +108,39 @@ another staff member's ticket; customer bounced from staff routes.
 
 ## Optional tasks completed
 
-- **Deploy to a live Vercel URL** (medium) -- secrets live only in the Vercel dashboard.
-- **Playwright tests for the AI feature** (medium) -- real LLM call asserted end to end, plus the
-  signed-out lockout and cross-user checks.
-- **Model display** (easy) -- the triage panel shows the exact OpenRouter slug, prompt version
-  and latency.
-- **Usage/cost indicator** (easy) -- the real cost OpenRouter billed for each triage run
-  (embedding + completion, from `usage.cost` on the response, not an estimate), shown per ticket
-  and as a running total on the admin overview.
-- **Two-user cross-account test** and **security headers** from the mid-sprint list.
-- **Shareable AI outputs** (hard) -- staff can publish a read-only public status page (subject,
-  status, and the AI-generated summary) to an unguessable URL. An unauthenticated visitor can
-  view that one snapshot and nothing else: no comments, no ticket body, no other tickets, no
-  sign-in prompt. The table backing it is never exposed to `anon` through the Data API at all --
-  the public page reads it server-side with the service role, by exact token match only. Staff
-  can unpublish at any time, after which the link 404s.
+Seven optional tasks across both sprint projects' lists, spanning all three difficulty tiers.
+
+**Easy**
+
+- **Model display** -- the triage panel shows the exact OpenRouter slug, prompt version, and
+  latency for every run.
+- **Usage/cost indicator** -- the real cost OpenRouter billed for each triage run (embedding +
+  completion, from `usage.cost` on the response, not an estimate), shown per ticket and as a
+  running total on the admin overview.
+- **Security headers configured** (mid-sprint list) -- a same-origin CSP, HSTS with `preload`,
+  `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, Referrer-Policy, and
+  Permissions-Policy, applied to every route including the public share page.
+
+**Medium**
+
+- **Deploy to a live Vercel URL** -- secrets live only in the Vercel dashboard, never in the repo
+  or a `NEXT_PUBLIC_` variable.
+- **Playwright tests for the AI feature** -- a real LLM call asserted end to end (never mocked),
+  plus the signed-out lockout and cross-user checks running against the live database.
+- **Two-user cross-account test** (mid-sprint list) -- a second real customer account (created via
+  the Admin API) attempting to reach the first customer's ticket by direct URL, confirmed blocked
+  with a 404, not a login bounce.
+
+**Hard**
+
+- **Shareable AI outputs** -- staff can publish a read-only public status page (subject, status,
+  and the AI-generated summary) to an unguessable URL. An unauthenticated visitor can view that
+  one snapshot and nothing else: no comments, no ticket body, no other tickets, no sign-in prompt.
+  The table backing it is never exposed to `anon` through the Data API at all -- the public page
+  reads it server-side with the service role, by exact 128-bit token match only, with its own
+  IP-keyed rate limiter since it's the app's only unauthenticated route. Staff can unpublish at
+  any time (one-directional -- a raw API call can't silently un-revoke a link), after which the
+  link 404s, and shares expire automatically after 30 days.
 
 ## Docs
 
