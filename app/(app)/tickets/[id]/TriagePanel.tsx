@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { rerunTriageAction } from "../actions";
 import type { TriageResult } from "@/app/lib/db/triage";
+import { formatCostUsd } from "@/app/lib/format";
 
 const STATUS_COPY: Record<string, string> = {
   pending: "Queued -- the assessment usually lands within a few seconds. Refresh to check.",
@@ -120,6 +121,7 @@ export function TriagePanel({
           <p className="text-[10px] text-zinc-400 dark:text-zinc-600">
             {triage.model} · prompt {triage.prompt_version}
             {triage.latency_ms != null ? ` · ${triage.latency_ms} ms` : ""}
+            {triage.cost_usd != null ? ` · ${formatCostUsd(triage.cost_usd)}` : ""}
           </p>
         </>
       )}

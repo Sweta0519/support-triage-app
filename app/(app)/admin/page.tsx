@@ -1,5 +1,6 @@
 import { requireAdmin } from "@/app/lib/auth/session";
 import { getAdminStats, MAX_ROWS } from "@/app/lib/db/admin";
+import { formatCostUsd } from "@/app/lib/format";
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
@@ -39,7 +40,7 @@ export default async function AdminOverviewPage() {
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Overview</h1>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Stat label="Tickets" value={stats.total} />
         <Stat label="Open & unassigned" value={stats.unassignedOpen} />
         <Stat
@@ -52,6 +53,7 @@ export default async function AdminOverviewPage() {
           label="Avg triage latency"
           value={stats.triage.avgLatencyMs != null ? `${stats.triage.avgLatencyMs} ms` : "-"}
         />
+        <Stat label="AI spend (recent)" value={formatCostUsd(stats.triage.totalCostUsd, "coarse")} />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">

@@ -113,6 +113,9 @@ another staff member's ticket; customer bounced from staff routes.
   signed-out lockout and cross-user checks.
 - **Model display** (easy) -- the triage panel shows the exact OpenRouter slug, prompt version
   and latency.
+- **Usage/cost indicator** (easy) -- the real cost OpenRouter billed for each triage run
+  (embedding + completion, from `usage.cost` on the response, not an estimate), shown per ticket
+  and as a running total on the admin overview.
 - **Two-user cross-account test** and **security headers** from the mid-sprint list.
 
 ## Docs

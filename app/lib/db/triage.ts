@@ -25,11 +25,12 @@ export type TriageResult = {
   prompt_tokens: number | null;
   completion_tokens: number | null;
   latency_ms: number | null;
+  cost_usd: number | null;
   created_at: string;
 };
 
 const TRIAGE_RESULT_COLUMNS =
-  "id, ticket_id, model, prompt_version, summary, category, priority, priority_reason, team, frustration, is_escalation_risk, duplicate_of, related_ticket_ids, suggested_reply, missing_info, confidence, needs_human_review, prompt_tokens, completion_tokens, latency_ms, created_at";
+  "id, ticket_id, model, prompt_version, summary, category, priority, priority_reason, team, frustration, is_escalation_risk, duplicate_of, related_ticket_ids, suggested_reply, missing_info, confidence, needs_human_review, prompt_tokens, completion_tokens, latency_ms, cost_usd, created_at";
 
 // ---- Reads on behalf of the signed-in user (RLS: staff-only) ------------
 

@@ -87,9 +87,14 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 
 type EmbeddingsResponse = {
   data: { embedding: number[] }[];
+  usage?: { cost?: number };
 };
 
-export async function embed(text: string): Promise<number[]> {
+// OpenRouter always includes the real billed cost in `usage.cost` on every
+// response now (the old `usage: { include: true }` request flag is
+// deprecated and has no effect) -- no separate pricing table to keep in
+// sync, and this is the actual charge, not an estimate.
+export async function embed(text: string): Promise<{ vector: number[]; costUsd: number }> {
   const res = await post<EmbeddingsResponse>("/embeddings", {
     model: EMBEDDING_MODEL,
     input: text,
@@ -103,17 +108,17 @@ export async function embed(text: string): Promise<number[]> {
       `Unexpected embedding shape: got ${vector?.length ?? "none"} dimensions, expected ${EMBEDDING_DIMENSIONS}`
     );
   }
-  return vector;
+  return { vector, costUsd: res.usage?.cost ?? 0 };
 }
 
 export type JsonSchema = Record<string, unknown>;
 
-export type Usage = { prompt_tokens: number; completion_tokens: number };
+export type Usage = { prompt_tokens: number; completion_tokens: number; cost_usd: number };
 
 type ChatCompletionResponse = {
   model?: string;
   choices?: { message?: { content?: string | null } }[];
-  usage?: Partial<Usage>;
+  usage?: Partial<Usage> & { cost?: number };
 };
 
 // Structured output: `strict: true` makes the provider enforce the schema,
@@ -161,6 +166,7 @@ export async function completeJson<T>(opts: {
     usage: {
       prompt_tokens: res.usage?.prompt_tokens ?? 0,
       completion_tokens: res.usage?.completion_tokens ?? 0,
+      cost_usd: res.usage?.cost ?? 0,
     },
     model: res.model ?? TRIAGE_MODEL,
   };

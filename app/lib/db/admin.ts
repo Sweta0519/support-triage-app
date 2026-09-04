@@ -14,6 +14,7 @@ export type AdminStats = {
     failed: number;
     needsHumanReview: number;
     avgLatencyMs: number | null;
+    totalCostUsd: number;
   };
   avgFirstResponseMinutes: number | null;
   sampled: boolean;
@@ -35,7 +36,7 @@ type TicketRow = {
   triage_state: { triage_status: string; priority: string | null } | null;
 };
 
-type TriageRow = { needs_human_review: boolean; latency_ms: number | null };
+type TriageRow = { needs_human_review: boolean; latency_ms: number | null; cost_usd: number | null };
 
 function tally(values: (string | null | undefined)[]): Record<string, number> {
   const out: Record<string, number> = {};
@@ -59,7 +60,7 @@ export async function getAdminStats(): Promise<AdminStats> {
       .limit(MAX_ROWS),
     supabase
       .from("triage_results")
-      .select("needs_human_review, latency_ms")
+      .select("needs_human_review, latency_ms, cost_usd")
       .order("created_at", { ascending: false })
       .limit(MAX_ROWS),
   ]);
@@ -89,6 +90,8 @@ export async function getAdminStats(): Promise<AdminStats> {
       ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
       : null;
 
+  const totalCostUsd = triage.reduce((sum, r) => sum + (r.cost_usd ?? 0), 0);
+
   const responseMinutes = tickets
     .filter((t) => t.first_response_at)
     .map(
@@ -114,6 +117,7 @@ export async function getAdminStats(): Promise<AdminStats> {
       failed: triageCounts.failed ?? 0,
       needsHumanReview: triage.filter((r) => r.needs_human_review).length,
       avgLatencyMs,
+      totalCostUsd,
     },
     avgFirstResponseMinutes,
     sampled: tickets.length >= MAX_ROWS || triage.length >= MAX_ROWS,

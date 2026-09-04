@@ -336,7 +336,7 @@ export async function runTriage(ticketId: string): Promise<void> {
 
   const startedAt = Date.now();
   try {
-    const embedding = await embed(
+    const { vector: embedding, costUsd: embeddingCostUsd } = await embed(
       `${ticket.subject.slice(0, 200)}\n\n${ticket.body.slice(0, MAX_BODY_CHARS)}`
     );
     await upsertTicketEmbedding(ticket.id, embedding, EMBEDDING_MODEL);
@@ -379,6 +379,7 @@ export async function runTriage(ticketId: string): Promise<void> {
       prompt_tokens: usage.prompt_tokens,
       completion_tokens: usage.completion_tokens,
       latency_ms: Date.now() - startedAt,
+      cost_usd: embeddingCostUsd + usage.cost_usd,
     });
 
     await applyTriageToTicket(ticket.id, {

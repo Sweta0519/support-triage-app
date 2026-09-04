@@ -57,6 +57,9 @@ test("a new ticket is triaged by the AI, visible to staff and never to the custo
   await expect(panel.getByText("Category", { exact: true })).toBeVisible();
   await expect(panel.getByText("Priority", { exact: true })).toBeVisible();
   await expect(panel.getByText("Suggested reply", { exact: false })).toBeVisible();
+  // Usage/cost indicator: the footer line shows the real OpenRouter-billed
+  // cost for this run (embedding + completion), not an estimate.
+  await expect(panel.getByText(/\$0\.\d+/)).toBeVisible();
 
   // The seeded working fields show up in the queue badge too.
   await agentPage.goto("/queue");
