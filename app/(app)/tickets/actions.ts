@@ -4,18 +4,27 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
-import { requireAdmin, requireProfile, requireStaff } from "@/app/lib/auth/session";
+import {
+  requireAdmin,
+  requireProfile,
+  requireRole,
+  requireStaff,
+} from "@/app/lib/auth/session";
 import {
   assignTicket,
   createTicket,
   claimTicket,
   getTicketForStaff,
+  isUuid,
   updateTicketStatus,
+  ALLOWED_STATUS_TRANSITIONS,
+  BODY_MAX_LENGTH,
+  SUBJECT_MAX_LENGTH,
   type TicketStatus,
 } from "@/app/lib/db/tickets";
 import { listStaffProfiles } from "@/app/lib/db/profiles";
-import { addComment } from "@/app/lib/db/comments";
-import { RateLimitError } from "@/app/lib/db/rate-limit";
+import { addComment, COMMENT_MAX_LENGTH } from "@/app/lib/db/comments";
+import { checkRateLimit, RateLimitError } from "@/app/lib/db/rate-limit";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { rerunTriage, runTriage } from "@/app/lib/ai/triage";
 
@@ -28,12 +37,21 @@ export async function createTicketAction(
   _prevState: TicketFormState,
   formData: FormData
 ): Promise<TicketFormState> {
-  const profile = await requireProfile();
+  // Tickets are filed by customers; staff work them.
+  const profile = await requireRole("customer");
   const subject = String(formData.get("subject") ?? "").trim();
   const body = String(formData.get("body") ?? "").trim();
 
   if (!subject || !body) {
     return { error: "Subject and description are both required." };
+  }
+  // Mirrors the database check constraints so the user gets a friendly
+  // message instead of a constraint-violation error.
+  if (subject.length > SUBJECT_MAX_LENGTH) {
+    return { error: `Subject must be at most ${SUBJECT_MAX_LENGTH} characters.` };
+  }
+  if (body.length > BODY_MAX_LENGTH) {
+    return { error: `Description must be at most ${BODY_MAX_LENGTH.toLocaleString()} characters.` };
   }
 
   let ticketId: string;
@@ -60,6 +78,18 @@ export async function createTicketAction(
 export async function rerunTriageAction(formData: FormData) {
   await requireStaff();
   const ticketId = String(formData.get("ticketId") ?? "");
+  if (!isUuid(ticketId)) {
+    return;
+  }
+  // Each re-run is two paid model calls, so throttle it per staff member.
+  try {
+    await checkRateLimit("rerun_triage");
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return;
+    }
+    throw err;
+  }
   // The caller must be able to see this ticket through their own RLS before
   // we touch it with the service role.
   const ticket = await getTicketForStaff(ticketId);
@@ -74,6 +104,9 @@ export async function rerunTriageAction(formData: FormData) {
 export async function claimTicketAction(formData: FormData) {
   const profile = await requireStaff();
   const ticketId = String(formData.get("ticketId") ?? "");
+  if (!isUuid(ticketId)) {
+    return;
+  }
   const ticket = await claimTicket(profile.id, ticketId);
   if (!ticket) {
     // Someone else claimed it first, or it's no longer visible/valid --
@@ -94,6 +127,9 @@ export async function assignTicketAction(formData: FormData) {
   const ticketId = String(formData.get("ticketId") ?? "");
   const rawAssignee = String(formData.get("assigneeId") ?? "");
   const assigneeId = rawAssignee === "" ? null : rawAssignee;
+  if (!isUuid(ticketId) || (assigneeId && !isUuid(assigneeId))) {
+    return;
+  }
 
   if (assigneeId) {
     const staff = await listStaffProfiles();
@@ -110,8 +146,13 @@ export async function assignTicketAction(formData: FormData) {
 export async function updateStatusAction(formData: FormData) {
   await requireStaff();
   const ticketId = String(formData.get("ticketId") ?? "");
-  const status = String(formData.get("status") ?? "") as TicketStatus;
-  await updateTicketStatus(ticketId, status);
+  const status = String(formData.get("status") ?? "");
+  // The enum and trigger reject bad values anyway; validating here turns a
+  // generic 500 into a no-op for tampered forms.
+  if (!isUuid(ticketId) || !(status in ALLOWED_STATUS_TRANSITIONS)) {
+    return;
+  }
+  await updateTicketStatus(ticketId, status as TicketStatus);
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/queue");
 }
@@ -130,6 +171,12 @@ export async function addCommentAction(
 
   if (!body) {
     return { error: "Comment can't be empty." };
+  }
+  if (body.length > COMMENT_MAX_LENGTH) {
+    return { error: `Comment must be at most ${COMMENT_MAX_LENGTH.toLocaleString()} characters.` };
+  }
+  if (!isUuid(ticketId)) {
+    return { error: "That ticket doesn't exist." };
   }
 
   try {

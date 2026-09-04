@@ -43,7 +43,7 @@ export function StaffControls({
               : "Assigned"}
       </p>
 
-      {assigneeId === null ? (
+      {assigneeId === null && status !== "resolved" && status !== "closed" ? (
         <form action={claimTicketAction}>
           <input type="hidden" name="ticketId" value={ticketId} />
           <button

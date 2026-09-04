@@ -1,5 +1,5 @@
 import { requireAdmin } from "@/app/lib/auth/session";
-import { getAdminStats } from "@/app/lib/db/admin";
+import { getAdminStats, MAX_ROWS } from "@/app/lib/db/admin";
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
@@ -71,7 +71,7 @@ export default async function AdminOverviewPage() {
 
       {stats.sampled ? (
         <p className="text-xs text-zinc-500 dark:text-zinc-500">
-          Figures are computed over the most recent 5,000 rows.
+          Figures are computed over the most recent {MAX_ROWS.toLocaleString()} rows.
         </p>
       ) : null}
     </div>

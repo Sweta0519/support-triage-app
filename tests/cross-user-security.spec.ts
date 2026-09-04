@@ -1,16 +1,10 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+
+import { login } from "./helpers";
 
 // This test manages its own two identities, so it opts out of the
 // 'chromium' project's default storageState (customer A, already signed in).
 test.use({ storageState: { cookies: [], origins: [] } });
-
-async function login(page: Page, email: string, password: string) {
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
-}
 
 test("customer B cannot open customer A's ticket via direct URL", async ({
   browser,

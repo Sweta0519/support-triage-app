@@ -27,9 +27,11 @@ One `ticketing.triage_results` row per run:
 | `missing_info`           | What the agent still needs from the customer before they can act.                     |
 | `confidence`             | 0..1 for category + priority together. `< 0.5` sets `needs_human_review`.              |
 
-`priority`/`category`/`team` are also copied onto the ticket's working fields
-(`ticketing.tickets`) so the queue can sort and badge by them; the `triage_results` row stays as
-the audit record of what the model said, so "AI said High -> agent set Normal" is visible.
+`priority`/`category`/`team` are also copied into the ticket's *working state*
+(`ticketing.ticket_triage_state`, a **staff-only** table) so the queue can sort and badge by
+them; the `triage_results` row stays as the append-only audit record of what the model said.
+Nothing AI-derived is on the `tickets` row itself -- that is what keeps the model's verdict away
+from the customer who wrote the ticket, in the UI *and* through the Data API.
 
 ## Pipeline (`app/lib/ai/triage.ts`)
 
@@ -44,7 +46,9 @@ it from the ticket page.
    via `POST https://openrouter.ai/api/v1/embeddings` -> upsert into `ticket_embeddings`
    (`vector(1536)`, HNSW cosine index).
 3. **Find candidates.** `match_tickets()` returns the 5 nearest tickets by cosine distance --
-   **subject and prior summary only, never bodies**.
+   **subject and prior summary only, never bodies**. Each is flattened to one line (newlines and
+   tabs stripped), capped at 120 / 200 characters, and the whole list is wrapped in
+   `<candidate_tickets>` tags.
 4. **Assess.** One `POST /chat/completions` to `anthropic/claude-haiku-4.5` (this workspace's
    OpenRouter guardrail blocks Sonnet-tier endpoints; Haiku is well suited to closed-schema
    classification and 3x cheaper) with
@@ -55,8 +59,9 @@ it from the ticket page.
 5. **Validate again in TypeScript.** Enums re-checked, ids filtered to the candidate set,
    confidence clamped. Anything off-schema falls back to safe defaults and sets
    `needs_human_review`. Strict mode makes this mostly redundant; it's cheap insurance.
-6. **Persist.** Insert `triage_results`; update the ticket's `priority`/`category`/`team` and set
-   `triage_status = 'completed'`; write a `triage_completed` event with `actor_id = null`.
+6. **Persist.** Insert `triage_results`; update the staff-only `ticket_triage_state` row
+   (`priority`/`category`/`team`, `triage_status = 'completed'`); write a `triage_completed` event
+   with `actor_id = null`.
 7. **On any failure**: `triage_status = 'failed'`, a `triage_failed` event, and a server-side log
    line. The ticket stays fully usable. Failure never surfaces to the customer.
 
@@ -68,6 +73,10 @@ Two OpenRouter calls per ticket; `max_tokens` is capped at 1,200 and one retry o
   map would reject `new -> triaged` from the service role anyway; the design doesn't rely on
   that -- `applyTriageToTicket()` simply never writes `status`.
 - **Never sends a reply.** "Use suggested reply" only pre-fills the agent's comment box.
+- **Never promises a when.** The prompt forbids timeframes in the draft, but the model doesn't
+  obey that reliably, so `normalize()` also drops any sentence containing a timeframe promise
+  ("shortly", "within one business day", "right away", ...). Rules the model must follow are
+  enforced in code wherever they can be, not just asked for.
 - **Never runs in the browser.** `OPENROUTER_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are read
   only in `server-only` modules (`app/lib/ai/`, `app/lib/supabase/service.ts`).
 
@@ -78,7 +87,19 @@ urgent" is a given. Mitigations are structural, not just prompt wording:
 
 - The system prompt states that ticket text is data, never instructions, and that
   self-declared urgency is not urgency.
-- Untrusted text is delimited in `<ticket_subject>` / `<ticket_body>` tags.
+- Untrusted text is delimited in `<ticket_subject>` / `<ticket_body>` tags, and every `<` / `>`
+  in it is replaced with a full-width equivalent first -- so a ticket body cannot contain
+  `</ticket_body>` and "close" the delimiter to start dictating instructions.
+- Any URL or email address in the draft reply that does not appear in the ticket being assessed
+  is replaced with `[link removed]` before storing. A link can only have come from the model or
+  from another customer's text; neither belongs in a reply an agent might paste unreviewed.
+- Other customers' text reaches the prompt too, via candidate subjects and summaries. It is
+  flattened, length-capped, wrapped in `<candidate_tickets>`, and the system prompt names it as
+  untrusted and forbids copying any of it into `suggested_reply` -- so one customer's ticket
+  cannot plant a phishing line in the draft reply an agent sees for another customer.
+- Customers cannot read the AI-derived priority/category at all -- not in the UI and not via the
+  Data API, because those fields live in `ticket_triage_state`, whose RLS returns no rows to a
+  customer -- so there is no fast feedback loop for tuning an injection.
 - Output is a closed schema with `strict: true` -- the model can't add fields, call tools, or
   reference ids outside the candidate list.
 - Everything the model produces is advisory and staff-only. The worst case of a successful
@@ -88,6 +109,11 @@ Do not add any behaviour that lets triage output change ticket state or reach a 
 without revisiting this section.
 
 ## Privacy
+
+Ticket text is customer data and often contains PII, and it leaves the system: it is sent to
+OpenRouter and on to a model provider. Both calls set `provider.data_collection = "deny"`, so
+OpenRouter will only route to providers that do not retain or train on inputs. Review this if
+the model or provider is ever changed.
 
 Duplicate detection means customer A's ticket subject (and prior summary) can appear in the
 prompt that assesses customer B's ticket. This is contained because:

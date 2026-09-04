@@ -1,12 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 
-async function login(page: Page, email: string, password: string) {
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
-}
+import { login } from "./helpers";
 
 test("agent can claim a ticket, move its status, and post an internal note the customer never sees", async ({
   page,

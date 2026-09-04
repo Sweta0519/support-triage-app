@@ -53,14 +53,17 @@ One row per `auth.users.id`. Created automatically on signup, or lazily via
 | `updated_at` | `timestamptz`        | Default `now()`.                                         |
 
 `role` can **only** change via the `ticketing.admin_set_role()` RPC. Clients are granted
-`update` on `email`/`full_name`/`updated_at` only -- `role` is excluded at the column-privilege
-level, independent of RLS, so even an RLS policy bug could not let a client rewrite their own
-role.
+`update` on `full_name`/`updated_at` only -- `role` and `email` are excluded at the
+column-privilege level, independent of RLS, so even an RLS policy bug could not let a client
+rewrite their own role or impersonate another address in the admin UI. `email` is unique
+(`lower(email)`) and kept in sync from `auth.users` by trigger.
 
 ### `ticketing.tickets`
 
-The core entity. `priority`/`category`/`team` are the *mutable working state*: nullable until
-the AI triage agent (later milestone) seeds them, after which staff can override.
+The core entity. Everything a customer may see about their own ticket is here; the AI-derived
+working state (priority/category/team/triage status) is deliberately **not** -- it lives in the
+staff-only `ticket_triage_state` table below, so a customer cannot read the model's verdict on
+their own submission even through the Data API.
 
 | Column              | Type                        | Notes                                                                        |
 |---------------------|-----------------------------|------------------------------------------------------------------------------|
@@ -69,11 +72,7 @@ the AI triage agent (later milestone) seeds them, after which staff can override
 | `subject`           | `text`                      | **Immutable** after insert.                                                  |
 | `body`              | `text`                      | **Immutable** after insert.                                                  |
 | `status`            | `ticketing.ticket_status`   | Default `new`. Transitions guarded by trigger (see below).                   |
-| `priority`          | `ticketing.ticket_priority` | Nullable. Must be null on insert.                                            |
-| `category`          | `ticketing.ticket_category` | Nullable. Must be null on insert.                                            |
-| `team`              | `ticketing.ticket_team`     | Nullable. Must be null on insert.                                            |
 | `assignee_id`       | `uuid`                      | FK -> `auth.users.id`, `on delete set null`. Must be null on insert.         |
-| `triage_status`     | `ticketing.triage_status`   | Default `pending`. Must be `pending` on insert.                              |
 | `first_response_at` | `timestamptz`               | Stamped by trigger on the first public staff comment. Never client-set.      |
 | `resolved_at`       | `timestamptz`               | Stamped by trigger when status enters `resolved`; cleared if it leaves.      |
 | `closed_at`         | `timestamptz`               | Stamped by trigger when status enters `closed`; cleared if it leaves.        |
@@ -81,6 +80,23 @@ the AI triage agent (later milestone) seeds them, after which staff can override
 | `updated_at`        | `timestamptz`               | Maintained by the `set_updated_at` trigger.                                  |
 
 Indexes on `customer_id`, `assignee_id`, `status`.
+
+### `ticketing.ticket_triage_state`
+
+The AI-derived *working state* of a ticket, one row per ticket (created by trigger the moment
+the ticket exists). **Staff-only**: RLS is `is_staff() and can_view_ticket(ticket_id)`, so for a
+customer the row does not exist -- embedding it into a ticket read returns `null`. Written only
+by the service role from the triage pipeline; the `triage_results` table keeps the full
+append-only history of what the model said.
+
+| Column          | Type                        | Notes                                                              |
+|-----------------|-----------------------------|--------------------------------------------------------------------|
+| `ticket_id`     | `uuid`                      | Primary key. FK -> `tickets.id`, `on delete cascade`.              |
+| `triage_status` | `ticketing.triage_status`   | Default `pending`. The atomic `pending -> processing` claim lives here. |
+| `priority`      | `ticketing.ticket_priority` | Nullable until triage runs.                                        |
+| `category`      | `ticketing.ticket_category` | Nullable until triage runs.                                        |
+| `team`          | `ticketing.ticket_team`     | Nullable until triage runs.                                        |
+| `updated_at`    | `timestamptz`               | Maintained by trigger; used to detect a stale `processing` run.    |
 
 ### `ticketing.ticket_comments`
 
@@ -168,13 +184,14 @@ every table and bypasses RLS entirely (it is confined to server-only code).
 
 | Table             | select                                                                                        | insert                                                                              | update                                                             | delete |
 |-------------------|-----------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------|--------------------------------------------------------------------|--------|
-| `profiles`        | own row; or any row if `is_staff()`                                                           | none (trigger/RPC only)                                                             | own row, non-`role` columns only                                   | none   |
-| `tickets`         | `customer_id = auth.uid()`; or `is_admin()`; or agent and (`assignee_id = auth.uid()` or null) | customer only, row must be in pristine state (see `tickets_insert_customer`)        | `is_admin()`; or agent and (`assignee_id = auth.uid()` or null) on **both** old and new row | none   |
-| `ticket_comments` | `can_view_ticket(ticket_id)` and (`not is_internal` or `is_staff()`)                          | `author_id = auth.uid()` and `can_view_ticket(ticket_id)` and (`not is_internal` or `is_staff()`) | none                                                               | none   |
-| `ticket_events`   | `is_staff()`                                                                                  | none (trigger only)                                                                 | none                                                               | none   |
+| `profiles`        | own row; admins: every row; agents: staff rows only                                           | none (trigger/RPC only)                                                             | none -- nothing writes or renders `full_name`; `email` is synced from `auth.users`, `role` via RPC | none   |
+| `tickets`         | `customer_id = auth.uid()`; or `is_admin()`; or agent and (`assignee_id = auth.uid()` or null) | caller's role must be `customer` (checked in the policy, not just the app), `customer_id = auth.uid()`, row must be in pristine state incl. null timestamps (see `tickets_insert_customer`); INSERT privilege limited to `customer_id, subject, body`; per-user rate limit enforced by trigger | `is_admin()`; or agent and (`assignee_id = auth.uid()` or null) on **both** old and new row -- and only columns `status, assignee_id` | none   |
+| `ticket_comments` | `can_view_ticket(ticket_id)` and (`not is_internal` or `is_staff()`)                          | `author_id = auth.uid()` and `can_view_ticket(ticket_id)` and (`not is_internal` or `is_staff()`); INSERT privilege limited to `ticket_id, author_id, body, is_internal`; ticket must not be `closed`; per-user rate limit enforced by trigger | none                                                               | none   |
+| `ticket_events`   | `is_staff()` and `can_view_ticket(ticket_id)`                                                 | none (trigger only)                                                                 | none                                                               | none   |
 | `rate_limits`     | none                                                                                          | none                                                                                | none                                                               | none   |
 | `triage_results`  | `is_staff()` and `can_view_ticket(ticket_id)`                                                 | none (service role only)                                                            | none                                                               | none   |
 | `ticket_embeddings` | none                                                                                        | none                                                                                | none                                                               | none   |
+| `ticket_triage_state` | `is_staff()` and `can_view_ticket(ticket_id)`                                             | none (trigger creates the row; service role writes it)                              | none                                                               | none   |
 
 Two things RLS deliberately does *not* try to do, because it can't:
 
@@ -192,14 +209,23 @@ Two things RLS deliberately does *not* try to do, because it can't:
 |-------------------------------------------------------|-----------|---------------------------------------------------------------------------------------------------------------|
 | `app_role()`, `is_staff()`, `is_admin()`              | DEFINER   | Role lookups used inside policies. DEFINER so a `profiles` policy can check the caller's role without recursing into itself. |
 | `can_view_ticket(uuid)`                               | **INVOKER** | "Can the caller see this ticket?" for child tables. INVOKER on purpose: it inherits the caller's own `tickets` RLS. Making it DEFINER would bypass ticket RLS for every child table. |
-| `handle_new_user()` (trigger)                         | DEFINER   | On `auth.users` insert: creates a `profiles` row with `role` **hard-coded to `customer`**, ignoring signup metadata (blocks self-escalation). |
+| `handle_new_user()` (trigger)                         | DEFINER   | On `auth.users` insert: creates a `profiles` row with `role` **hard-coded to `customer`**, ignoring signup metadata (blocks self-escalation). Skipped for a user with no email, so this trigger can never break the other app's signups on the shared `auth.users`. |
 | `ensure_profile()`                                    | DEFINER   | Get-or-create the caller's profile (needed because `auth.users` is shared with notes-collections). Always creates as `customer`. |
-| `admin_set_role(uuid, app_role)`                      | DEFINER   | The only path to change a role. Re-checks `is_admin()`; refuses changing your own role and demoting the last admin; demoting staff to `customer` unassigns their tickets so they return to the shared queue. |
+| `admin_set_role(uuid, app_role)`                      | DEFINER   | The only path to change a role. Re-checks `is_admin()`; takes a transaction-scoped advisory lock so two concurrent demotions can't both pass the last-admin check; refuses changing your own role and demoting the last admin; demoting staff to `customer` unassigns their tickets so they return to the shared queue. |
 | `set_updated_at()` (trigger)                          | INVOKER   | Maintains `tickets.updated_at`.                                                                               |
 | `guard_ticket_update()` (trigger, `before update` on `tickets`) | DEFINER | Immutable `customer_id`/`subject`/`body`; `assignee_id` must be an agent or admin; legal status transitions (agents only -- admins bypass); stamps `resolved_at`/`closed_at`; writes `ticket_events`. DEFINER so it can insert into `ticket_events`. |
 | `stamp_first_response()` (trigger, `after insert` on `ticket_comments`) | DEFINER | Sets `tickets.first_response_at` on the first public staff comment.                                    |
-| `consume_rate_limit(text, int, int)`                  | DEFINER   | Fixed-window counter. Derives the key's identity half from `auth.uid()` *inside* the function -- a caller can't target another user's bucket. Returns `false` when over the limit. |
+| `consume_rate_limit(text)`                            | DEFINER   | Fixed-window counter. The caller names only the action (`create_ticket` / `add_comment` / `rerun_triage`); limit and window are hard-coded per action inside the function, and the key's identity half comes from `auth.uid()` -- so a client can neither loosen its own limit, target another user's bucket, nor mint rows with made-up windows. Returns `false` when over the limit; prunes windows older than a day on ~1% of calls. |
+| `create_triage_state()` (trigger, `after insert` on `tickets`) | DEFINER | Creates the ticket's `ticket_triage_state` row so the triage pipeline always has a row to claim. |
+| `rate_limit_ticket_insert()`, `rate_limit_comment_insert()` (triggers, `before insert`) | INVOKER | Call `consume_rate_limit()` for the inserting user and raise `rate_limited:<action>` when over -- so the limit applies to direct Data API calls too, not just the app. Skipped for `service_role` (`auth.uid()` is null). |
+| `sync_profile_email()` (trigger, `after update of email` on `auth.users`) | DEFINER | Keeps `profiles.email` equal to the auth email. Users cannot update `profiles.email` themselves. |
 | `match_tickets(vector(1536), int, uuid)`              | INVOKER   | Nearest tickets by cosine distance (`<=>`), returning subject + latest summary only. EXECUTE revoked from PUBLIC; granted to `service_role` only. |
+
+EXECUTE on every callable function above is revoked from `PUBLIC` and granted explicitly:
+`authenticated` for the helpers, `ensure_profile`, `admin_set_role`, `consume_rate_limit` (RLS
+policies and the rate-limit triggers run as the caller and need them), `service_role` where the
+triage code calls them, and `service_role` only for `match_tickets`. `alter default privileges`
+makes the same true for any function added later.
 
 ### Status transition map
 
@@ -217,13 +243,17 @@ Enforced for agents by `guard_ticket_update()`; mirrored in `ALLOWED_STATUS_TRAN
 
 ## Rate limits in use
 
-| Action          | Limit | Window     | Where enforced                       |
-|-----------------|-------|------------|--------------------------------------|
-| `create_ticket` | 10    | 60 minutes | `createTicket()` in `app/lib/db/tickets.ts`  |
-| `add_comment`   | 30    | 10 minutes | `addComment()` in `app/lib/db/comments.ts`   |
+| Action          | Limit | Window     | Where enforced                                                     |
+|-----------------|-------|------------|--------------------------------------------------------------------|
+| `create_ticket` | 10    | 60 minutes | `BEFORE INSERT` trigger on `tickets` (database)                    |
+| `add_comment`   | 30    | 10 minutes | `BEFORE INSERT` trigger on `ticket_comments` (database)            |
+| `rerun_triage`  | 5     | 10 minutes | `rerunTriageAction()` via `checkRateLimit()` (no row is inserted) |
 
-Both surface as a friendly form error (`RateLimitError` caught in the Server Action), never an
-unhandled exception. Supabase Auth's own built-in sign-up/sign-in rate limits are configured in
+The insert limits are enforced in the database so that a user calling the Data API directly with
+their session token is limited exactly like the app. The app maps the trigger's
+`rate_limited:*` exception to a friendly form error (`RateLimitError`), never an unhandled
+exception. Text lengths are also constrained in the database: `subject` 1-200, ticket `body`
+1-20000, comment `body` 1-10000, `full_name` <= 120. Supabase Auth's own built-in sign-up/sign-in rate limits are configured in
 the dashboard (Authentication -> Rate Limits) and are **not** captured by migrations.
 
 ## Admin surface

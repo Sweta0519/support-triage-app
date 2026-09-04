@@ -1,4 +1,6 @@
-import { createBrowserClient, createServerClient } from "@supabase/ssr";
+import "server-only";
+
+import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -10,15 +12,24 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 // itself. Auth methods (supabase.auth.*) are unaffected by this option.
 const DB_OPTIONS = { db: { schema: "ticketing" } } as const;
 
-export function createBrowserSupabaseClient() {
-  return createBrowserClient(supabaseUrl, supabaseAnonKey, DB_OPTIONS);
-}
+// No code in the browser ever talks to Supabase (every read and write goes
+// through Server Components and Server Actions), so the session cookies
+// can be httpOnly: a future XSS can't read the JWT and replay it against
+// the Data API from elsewhere. There is deliberately no browser client
+// export -- adding one would require script-readable cookies again.
+export const AUTH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  path: "/",
+} as const;
 
 export async function createServerSupabaseClient() {
   const cookieStore = await cookies();
 
   return createServerClient(supabaseUrl, supabaseAnonKey, {
     ...DB_OPTIONS,
+    cookieOptions: AUTH_COOKIE_OPTIONS,
     cookies: {
       getAll() {
         return cookieStore.getAll();
