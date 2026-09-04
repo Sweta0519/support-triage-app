@@ -3,7 +3,7 @@
 import { useActionState, useRef } from "react";
 
 import { addCommentAction } from "../actions";
-import { inputClass, primaryButtonClass } from "@/app/lib/styles";
+import { inputClass, primaryButtonClass, secondaryButtonClass } from "@/app/lib/styles";
 
 export function CommentForm({
   ticketId,
@@ -49,7 +49,7 @@ export function CommentForm({
           <button
             type="button"
             onClick={fillDraft}
-            className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+            className={`${secondaryButtonClass} !px-3 !py-1 !text-xs`}
           >
             Use suggested reply
           </button>

@@ -10,6 +10,7 @@ import {
   statusLabel,
 } from "@/app/lib/badges";
 import { formatRelativeTime } from "@/app/lib/format";
+import { primaryButtonClass } from "@/app/lib/styles";
 import { claimTicketAction } from "../tickets/actions";
 
 const FILTERS = [
@@ -149,10 +150,7 @@ export default async function QueuePage({
                     className="flex items-center border-l border-black/[.08] px-3 dark:border-white/[.145]"
                   >
                     <input type="hidden" name="ticketId" value={ticket.id} />
-                    <button
-                      type="submit"
-                      className="whitespace-nowrap text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
-                    >
+                    <button type="submit" className={`whitespace-nowrap ${primaryButtonClass} !px-3 !py-1 !text-xs`}>
                       Claim
                     </button>
                   </form>
