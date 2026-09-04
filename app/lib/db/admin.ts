@@ -25,7 +25,7 @@ export type AdminStats = {
 // 1,000 rows (the project's max_rows), so asking for more would silently
 // return 1,000 anyway; match it so `sampled` is truthful. If the table grows
 // past this, move the aggregation to a SQL function.
-const MAX_ROWS = 1_000;
+export const MAX_ROWS = 1_000;
 
 type TicketRow = {
   status: string;

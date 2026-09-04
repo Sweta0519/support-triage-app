@@ -120,6 +120,7 @@ another staff member's ticket; customer bounced from staff routes.
 - `docs/ai-triage.md` -- pipeline, schema, prompt-injection and privacy analysis (cites OpenRouter
   and Supabase sources).
 - `docs/supabase-schema.md` -- every table, policy, trigger and function.
-- `docs/security/` -- security audit reports (initial scan, fixes, fresh-context rescan).
+- `docs/security/` -- security audit reports: four fresh-context passes, each with its fixes
+  recorded, ending in a clean rescan (0 critical, 0 warning) before merge.
 - `docs/reviews/` -- `ai-code-reviewer` report recorded before merging the PR.
 - `CLAUDE.md` -- the AI rules and conventions the codebase is built to.
