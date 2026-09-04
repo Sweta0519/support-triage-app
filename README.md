@@ -117,6 +117,12 @@ another staff member's ticket; customer bounced from staff routes.
   (embedding + completion, from `usage.cost` on the response, not an estimate), shown per ticket
   and as a running total on the admin overview.
 - **Two-user cross-account test** and **security headers** from the mid-sprint list.
+- **Shareable AI outputs** (hard) -- staff can publish a read-only public status page (subject,
+  status, and the AI-generated summary) to an unguessable URL. An unauthenticated visitor can
+  view that one snapshot and nothing else: no comments, no ticket body, no other tickets, no
+  sign-in prompt. The table backing it is never exposed to `anon` through the Data API at all --
+  the public page reads it server-side with the service role, by exact token match only. Staff
+  can unpublish at any time, after which the link 404s.
 
 ## Docs
 

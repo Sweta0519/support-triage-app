@@ -257,6 +257,36 @@ exception. Text lengths are also constrained in the database: `subject` 1-200, t
 1-20000, comment `body` 1-10000, `full_name` <= 120. Supabase Auth's own built-in sign-up/sign-in rate limits are configured in
 the dashboard (Authentication -> Rate Limits) and are **not** captured by migrations.
 
+### `ticketing.shared_ticket_summaries`
+
+Backs the shareable public status page (`app/s/[token]/page.tsx`). One row per publish action;
+unpublishing sets `revoked = true` rather than deleting, keeping an audit trail.
+
+| Column         | Type                      | Notes                                                                |
+|----------------|---------------------------|-----------------------------------------------------------------------|
+| `id`           | `uuid`                    | Primary key.                                                          |
+| `ticket_id`    | `uuid`                    | FK -> `tickets.id`, `on delete cascade`.                              |
+| `token`        | `text`                    | Unique. `encode(gen_random_bytes(16), 'hex')` -- 128 bits of entropy. **This is the entire access control for the public read** -- the same trust model as a password-reset link. No `anon` grant exists on this table at all; the public page reads it with the service role by exact token match. |
+| `published_by` | `uuid`                    | FK -> `auth.users.id`, `on delete cascade`.                           |
+| `subject`, `status`, `summary` | various  | **Snapshot** at publish time, not a live join -- the public route never touches `tickets` or `triage_results`. |
+| `revoked`      | `boolean`                 | Default `false`. Staff can flip this; there is no delete grant.       |
+| `created_at`   | `timestamptz`             |                                                                        |
+
+RLS (staff-side management only -- see the table below for the public-read story):
+
+| Operation | Rule |
+|---|---|
+| select | `is_staff()` and `can_view_ticket(ticket_id)` |
+| insert | `published_by = auth.uid()` and `is_staff()` and `can_view_ticket(ticket_id)` |
+| update | `is_staff()` and `can_view_ticket(ticket_id)`, column-limited to `revoked` |
+| delete | none |
+
+`anon` has no grant on this table -- unlike every other table here, which grants to
+`authenticated`, this one grants nothing to either `anon` or `authenticated` for the public read
+path. `app/lib/db/shares.ts`'s `getPublicSharedSummary()` is the only code path that can read a
+row by token; it validates the token shape, matches it exactly, and selects only the four
+public-safe columns -- never a broad `select *`, never a `like`, never a join.
+
 ## Admin surface
 
 `/admin` (overview analytics) and `/admin/users` (role management) are gated by `requireAdmin()`

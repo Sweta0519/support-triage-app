@@ -27,6 +27,8 @@ import { addComment, COMMENT_MAX_LENGTH } from "@/app/lib/db/comments";
 import { checkRateLimit, RateLimitError } from "@/app/lib/db/rate-limit";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { rerunTriage, runTriage } from "@/app/lib/ai/triage";
+import { getLatestTriageResult } from "@/app/lib/db/triage";
+import { publishTicketSummary, revokeShare } from "@/app/lib/db/shares";
 
 const RATE_LIMITED_MESSAGE =
   "You're doing that too often. Please wait a few minutes and try again.";
@@ -155,6 +157,54 @@ export async function updateStatusAction(formData: FormData) {
   await updateTicketStatus(ticketId, status as TicketStatus);
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/queue");
+}
+
+// Publishes a snapshot of the ticket's subject/status/AI summary to a
+// public, unguessable URL. Proves visibility via getTicketForStaff() first
+// (same pattern as rerunTriageAction) before ever writing a public-facing
+// row -- publishTicketSummary()'s own RLS check is defense in depth on top
+// of this, not a substitute for it.
+export type PublishFormState = { error: string } | undefined;
+
+export async function publishSummaryAction(
+  _prevState: PublishFormState,
+  formData: FormData
+): Promise<PublishFormState> {
+  const profile = await requireStaff();
+  const ticketId = String(formData.get("ticketId") ?? "");
+  if (!isUuid(ticketId)) {
+    return { error: "That ticket doesn't exist." };
+  }
+
+  const ticket = await getTicketForStaff(ticketId);
+  if (!ticket) {
+    return { error: "That ticket doesn't exist." };
+  }
+
+  const triage = await getLatestTriageResult(ticketId);
+  if (!triage?.summary) {
+    return { error: "Nothing to publish yet -- wait for AI triage to complete." };
+  }
+
+  await publishTicketSummary(ticketId, profile.id, ticket.subject, ticket.status, triage.summary);
+  revalidatePath(`/tickets/${ticketId}`);
+  return undefined;
+}
+
+export async function revokeShareAction(formData: FormData) {
+  await requireStaff();
+  const ticketId = String(formData.get("ticketId") ?? "");
+  const shareId = String(formData.get("shareId") ?? "");
+  if (!isUuid(ticketId) || !isUuid(shareId)) {
+    return;
+  }
+  // Prove visibility before touching the share row, same reasoning as above.
+  const ticket = await getTicketForStaff(ticketId);
+  if (!ticket) {
+    return;
+  }
+  await revokeShare(ticketId, shareId);
+  revalidatePath(`/tickets/${ticketId}`);
 }
 
 export type CommentFormState = { error: string } | undefined;

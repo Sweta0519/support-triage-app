@@ -10,9 +10,13 @@ import {
 import { listComments } from "@/app/lib/db/comments";
 import { getLatestTriageResult } from "@/app/lib/db/triage";
 import { listStaffProfiles, type StaffProfile } from "@/app/lib/db/profiles";
+import { getActiveShareForTicket } from "@/app/lib/db/shares";
 import { CommentForm } from "./CommentForm";
 import { StaffControls } from "./StaffControls";
 import { TriagePanel } from "./TriagePanel";
+import { SharePanel } from "./SharePanel";
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
 export default async function TicketDetailPage({
   params,
@@ -44,11 +48,12 @@ export default async function TicketDetailPage({
   // Triage output is staff-only (RLS enforces it too); customers never even
   // issue the query.
   const isAdmin = profile.role === "admin";
-  const [comments, triage, staff] = await Promise.all([
+  const [comments, triage, staff, share] = await Promise.all([
     listComments(id, isStaff),
     isStaff ? getLatestTriageResult(id) : Promise.resolve(null),
     // Only admins reassign, so only admins get the staff list.
     isAdmin ? listStaffProfiles() : Promise.resolve([] as StaffProfile[]),
+    isStaff ? getActiveShareForTicket(id) : Promise.resolve(null),
   ]);
 
   return (
@@ -93,6 +98,12 @@ export default async function TicketDetailPage({
             ticketId={ticket.id}
             triageStatus={ticket.triage_state?.triage_status ?? "pending"}
             triage={triage}
+          />
+          <SharePanel
+            ticketId={ticket.id}
+            share={share}
+            siteUrl={SITE_URL}
+            canPublish={Boolean(triage?.summary)}
           />
         </>
       ) : null}
