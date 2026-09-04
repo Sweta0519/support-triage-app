@@ -37,6 +37,23 @@ export function priorityBadgeClasses(priority: string): string {
   }
 }
 
+// A left accent bar on queue rows so priority reads at a glance without
+// requiring the badge text.
+export function priorityBarClasses(priority: string | null): string {
+  switch (priority) {
+    case "urgent":
+      return "bg-red-500";
+    case "high":
+      return "bg-amber-500";
+    case "normal":
+      return "bg-sky-500";
+    case "low":
+      return "bg-zinc-300 dark:bg-zinc-700";
+    default:
+      return "bg-zinc-200 dark:bg-zinc-800";
+  }
+}
+
 export function roleBadgeClasses(role: string): string {
   switch (role) {
     case "admin":
