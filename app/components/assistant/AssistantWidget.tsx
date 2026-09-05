@@ -2,10 +2,46 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
+import Markdown from "react-markdown";
 
 import { loadAssistantAction, sendMessageAction, type AssistantMessageLite } from "./actions";
 import { ASSISTANT_NAME } from "./constants";
 import { inputClass, primaryButtonClass } from "@/app/lib/styles";
+
+// react-markdown's default element spacing is meant for full-width prose;
+// overridden here to stay compact inside a narrow chat bubble.
+const MARKDOWN_COMPONENTS = {
+  p: ({ children }: { children?: React.ReactNode }) => <p className="mb-1.5 last:mb-0">{children}</p>,
+  strong: ({ children }: { children?: React.ReactNode }) => (
+    <strong className="font-semibold">{children}</strong>
+  ),
+  ul: ({ children }: { children?: React.ReactNode }) => (
+    <ul className="mb-1.5 list-disc pl-4 last:mb-0">{children}</ul>
+  ),
+  ol: ({ children }: { children?: React.ReactNode }) => (
+    <ol className="mb-1.5 list-decimal pl-4 last:mb-0">{children}</ol>
+  ),
+  li: ({ children }: { children?: React.ReactNode }) => <li className="mb-0.5">{children}</li>,
+  h1: ({ children }: { children?: React.ReactNode }) => (
+    <h1 className="mb-1 mt-1.5 font-semibold first:mt-0">{children}</h1>
+  ),
+  h2: ({ children }: { children?: React.ReactNode }) => (
+    <h2 className="mb-1 mt-1.5 font-semibold first:mt-0">{children}</h2>
+  ),
+  h3: ({ children }: { children?: React.ReactNode }) => (
+    <h3 className="mb-1 mt-1.5 font-semibold first:mt-0">{children}</h3>
+  ),
+  code: ({ children }: { children?: React.ReactNode }) => (
+    <code className="rounded bg-black/[.06] px-1 py-0.5 font-mono text-[11px] dark:bg-white/[.1]">
+      {children}
+    </code>
+  ),
+  a: ({ children, href }: { children?: React.ReactNode; href?: string }) => (
+    <a href={href} target="_blank" rel="noreferrer" className="underline">
+      {children}
+    </a>
+  ),
+};
 
 export function AssistantWidget() {
   const [open, setOpen] = useState(false);
@@ -132,13 +168,17 @@ export function AssistantWidget() {
                     <div
                       data-testid="assistant-widget-message"
                       data-role={message.role}
-                      className={`max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-1.5 text-xs ${
+                      className={`max-w-[85%] rounded-lg px-3 py-1.5 text-xs ${
                         isUser
-                          ? "bg-indigo-600 text-white"
+                          ? "whitespace-pre-wrap bg-indigo-600 text-white"
                           : "border border-black/[.08] text-black dark:border-white/[.145] dark:text-zinc-50"
                       }`}
                     >
-                      {message.content}
+                      {isUser ? (
+                        message.content
+                      ) : (
+                        <Markdown components={MARKDOWN_COMPONENTS}>{message.content}</Markdown>
+                      )}
                     </div>
                   </div>
                 );
