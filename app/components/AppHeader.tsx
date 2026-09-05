@@ -35,6 +35,9 @@ export function AppHeader({ profile }: { profile: Profile }) {
                 <Link href="/queue" className={navButtonClasses}>
                   Queue
                 </Link>
+                <Link href="/assistant" className={navButtonClasses}>
+                  Assistant
+                </Link>
                 {profile.role === "admin" ? (
                   <Link href="/admin" className={navButtonClasses}>
                     Admin

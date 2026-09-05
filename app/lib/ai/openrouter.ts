@@ -11,6 +11,10 @@ const BASE_URL = "https://openrouter.ai/api/v1";
 // lists what the key may actually use), and closed-schema classification is
 // squarely Haiku's job. Switching models is a one-line change here.
 export const TRIAGE_MODEL = "anthropic/claude-haiku-4.5";
+// Separate constant from TRIAGE_MODEL, even though it starts out equal to
+// it: the staff assistant and triage are independent features, and this is
+// the one line that changes to switch the assistant's model.
+export const ASSISTANT_MODEL = "anthropic/claude-haiku-4.5";
 export const EMBEDDING_MODEL = "openai/text-embedding-3-small";
 // Must match ticketing.ticket_embeddings.embedding's vector(1536). Never
 // change one without the other -- and never change the embedding model at
@@ -169,5 +173,44 @@ export async function completeJson<T>(opts: {
       cost_usd: res.usage?.cost ?? 0,
     },
     model: res.model ?? TRIAGE_MODEL,
+  };
+}
+
+export type ChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
+
+// Free-form multi-turn completion for the staff assistant chat: unlike
+// completeJson, this takes a full message history (the caller is
+// responsible for memory) and returns plain text -- no response_format
+// lock, so any chat-capable model on OpenRouter works here.
+export async function completeChat(opts: {
+  messages: ChatMessage[];
+  model?: string;
+  maxTokens?: number;
+}): Promise<{ text: string; usage: Usage; model: string }> {
+  const res = await post<ChatCompletionResponse>("/chat/completions", {
+    model: opts.model ?? ASSISTANT_MODEL,
+    messages: opts.messages,
+    // Staff may paste ticket/customer text into the assistant, so the same
+    // no-retention stance as triage applies here.
+    provider: { data_collection: "deny" },
+    max_tokens: opts.maxTokens ?? 1024,
+  });
+
+  const content = res.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("OpenRouter returned an empty completion");
+  }
+
+  return {
+    text: content,
+    usage: {
+      prompt_tokens: res.usage?.prompt_tokens ?? 0,
+      completion_tokens: res.usage?.completion_tokens ?? 0,
+      cost_usd: res.usage?.cost ?? 0,
+    },
+    model: res.model ?? (opts.model ?? ASSISTANT_MODEL),
   };
 }
