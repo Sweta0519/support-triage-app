@@ -3,6 +3,9 @@ import Link from "next/link";
 import { rerunTriageAction } from "../actions";
 import type { TriageResult } from "@/app/lib/db/triage";
 import { formatCostUsd } from "@/app/lib/format";
+import { Badge } from "@/app/components/Badge";
+import { priorityBadgeClasses } from "@/app/lib/badges";
+import { secondaryButtonClass } from "@/app/lib/styles";
 
 const STATUS_COPY: Record<string, string> = {
   pending: "Queued -- the assessment usually lands within a few seconds. Refresh to check.",
@@ -22,20 +25,15 @@ export function TriagePanel({
   const canRerun = triageStatus === "completed" || triageStatus === "failed";
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-black/[.08] p-4 dark:border-white/[.145]">
+    <section className="flex flex-col gap-3 rounded-xl border border-black/[.08] p-4 dark:border-white/[.145]">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-black dark:text-zinc-50">AI triage</h2>
         <div className="flex items-center gap-2">
-          <span className="rounded-full border border-black/[.08] px-2 py-0.5 text-xs text-zinc-600 dark:border-white/[.145] dark:text-zinc-400">
-            {triageStatus}
-          </span>
+          <Badge label={triageStatus} colorClasses="bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400" />
           {canRerun ? (
             <form action={rerunTriageAction}>
               <input type="hidden" name="ticketId" value={ticketId} />
-              <button
-                type="submit"
-                className="rounded-full border border-black/[.08] px-3 py-0.5 text-xs font-medium transition-colors hover:bg-black/[.05] dark:border-white/[.145] dark:hover:bg-white/[.06]"
-              >
+              <button type="submit" className={`${secondaryButtonClass} !px-3 !py-0.5 !text-xs`}>
                 Re-run
               </button>
             </form>
@@ -66,7 +64,11 @@ export function TriagePanel({
             <dd>{triage.category ?? "-"}</dd>
             <dt>Priority</dt>
             <dd>
-              {triage.priority ?? "-"}
+              {triage.priority ? (
+                <Badge label={triage.priority} colorClasses={priorityBadgeClasses(triage.priority)} />
+              ) : (
+                "-"
+              )}
               {triage.priority_reason ? (
                 <span className="block text-zinc-500 dark:text-zinc-500">{triage.priority_reason}</span>
               ) : null}

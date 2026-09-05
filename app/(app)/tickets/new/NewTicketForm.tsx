@@ -3,34 +3,36 @@
 import { useActionState } from "react";
 
 import { createTicketAction } from "../actions";
+import { inputClass, primaryButtonClass } from "@/app/lib/styles";
 
 export function NewTicketForm() {
   const [state, action, pending] = useActionState(createTicketAction, undefined);
 
   return (
     <form action={action} className="flex w-full flex-col gap-4">
-      <input
-        name="subject"
-        type="text"
-        placeholder="Subject"
-        required
-        className="rounded-lg border border-black/[.08] bg-white px-4 py-2 text-black outline-none focus:border-black/30 dark:border-white/[.145] dark:bg-black dark:text-zinc-50 dark:focus:border-white/30"
-      />
-      <textarea
-        name="body"
-        placeholder="Describe what's going on..."
-        required
-        rows={6}
-        className="rounded-lg border border-black/[.08] bg-white px-4 py-2 text-black outline-none focus:border-black/30 dark:border-white/[.145] dark:bg-black dark:text-zinc-50 dark:focus:border-white/30"
-      />
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="subject" className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          Subject
+        </label>
+        <input id="subject" name="subject" type="text" placeholder="Subject" required className={inputClass} />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="body" className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          Description
+        </label>
+        <textarea
+          id="body"
+          name="body"
+          placeholder="Describe what's going on..."
+          required
+          rows={6}
+          className={inputClass}
+        />
+      </div>
       {state?.error ? (
         <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>
       ) : null}
-      <button
-        type="submit"
-        disabled={pending}
-        className="self-start rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] disabled:opacity-50 dark:hover:bg-[#ccc]"
-      >
+      <button type="submit" disabled={pending} className={`self-start ${primaryButtonClass}`}>
         Submit ticket
       </button>
     </form>

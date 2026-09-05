@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireProfile } from "@/app/lib/auth/session";
@@ -7,16 +8,29 @@ import {
   isUuid,
   ALLOWED_STATUS_TRANSITIONS,
 } from "@/app/lib/db/tickets";
-import { listComments } from "@/app/lib/db/comments";
+import { listComments, type Comment } from "@/app/lib/db/comments";
 import { getLatestTriageResult } from "@/app/lib/db/triage";
 import { listStaffProfiles, type StaffProfile } from "@/app/lib/db/profiles";
 import { getActiveShareForTicket } from "@/app/lib/db/shares";
+import { Badge } from "@/app/components/Badge";
+import { priorityBadgeClasses, statusBadgeClasses, statusLabel } from "@/app/lib/badges";
+import { formatRelativeTime } from "@/app/lib/format";
 import { CommentForm } from "./CommentForm";
 import { StaffControls } from "./StaffControls";
 import { TriagePanel } from "./TriagePanel";
 import { SharePanel } from "./SharePanel";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+
+// Comments carry no display name, only author_id -- but combined with the
+// ticket's own customer_id and the viewer's id, that's enough to label every
+// comment without an extra query (RLS guarantees the only possible authors
+// are the customer and staff).
+function commentAuthorLabel(authorId: string, viewerId: string, customerId: string): string {
+  if (authorId === viewerId) return "You";
+  if (authorId === customerId) return "Customer";
+  return "Support team";
+}
 
 export default async function TicketDetailPage({
   params,
@@ -56,95 +70,145 @@ export default async function TicketDetailPage({
     isStaff ? getActiveShareForTicket(id) : Promise.resolve(null),
   ]);
 
-  return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
-          {ticket.subject}
-        </h1>
-        <span className="rounded-full border border-black/[.08] px-3 py-1 text-xs text-zinc-600 dark:border-white/[.145] dark:text-zinc-400">
-          {ticket.status}
-        </span>
-      </div>
-      <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
+  const ticketBody = (
+    <div className="flex flex-col gap-2">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-600">
+        Original message
+      </h2>
+      <p className="whitespace-pre-wrap rounded-xl border border-black/[.08] p-4 text-sm text-zinc-700 dark:border-white/[.145] dark:text-zinc-300">
         {ticket.body}
       </p>
-      {/* Priority/category are seeded by the AI and live in the staff-only
-          ticket_triage_state table -- for a customer, triage_state is null
-          because RLS never returns the row, so there is no feedback loop
-          for probing the triage prompt ("did my injected text make it
-          urgent?") through the UI or the Data API. */}
-      {isStaff ? (
-        <dl className="grid grid-cols-2 gap-2 text-xs text-zinc-500 dark:text-zinc-500">
-          <dt>Priority</dt>
-          <dd>{ticket.triage_state?.priority ?? "Not triaged yet"}</dd>
-          <dt>Category</dt>
-          <dd>{ticket.triage_state?.category ?? "Not triaged yet"}</dd>
-        </dl>
-      ) : null}
+    </div>
+  );
 
-      {isStaff ? (
-        <>
-          <StaffControls
-            ticketId={ticket.id}
-            status={ticket.status}
-            assigneeId={ticket.assignee_id}
-            currentUserId={profile.id}
-            allowedNext={ALLOWED_STATUS_TRANSITIONS[ticket.status]}
-            isAdmin={isAdmin}
-            staff={staff}
-          />
-          <TriagePanel
-            ticketId={ticket.id}
-            triageStatus={ticket.triage_state?.triage_status ?? "pending"}
-            triage={triage}
-          />
-          <SharePanel
-            ticketId={ticket.id}
-            share={share}
-            siteUrl={SITE_URL}
-            canPublish={Boolean(triage?.summary)}
-          />
-        </>
-      ) : null}
-
-      <div className="flex flex-col gap-3 border-t border-black/[.08] pt-6 dark:border-white/[.145]">
-        <h2 className="text-sm font-semibold text-black dark:text-zinc-50">
-          Comments
-        </h2>
-        {comments.length === 0 ? (
-          <p className="text-sm text-zinc-500 dark:text-zinc-500">
-            No comments yet.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {comments.map((comment) => (
-              <li
-                key={comment.id}
-                className={`rounded-lg border px-4 py-3 text-sm ${
-                  comment.is_internal
-                    ? "border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30"
-                    : "border-black/[.08] dark:border-white/[.145]"
-                }`}
-              >
-                {comment.is_internal ? (
-                  <span className="mb-1 block text-xs font-medium text-amber-700 dark:text-amber-400">
-                    Internal note
-                  </span>
-                ) : null}
-                <p className="whitespace-pre-wrap text-zinc-700 dark:text-zinc-300">
-                  {comment.body}
-                </p>
+  const commentsSection = (
+    <div className="flex flex-col gap-4 border-t border-black/[.08] pt-6 dark:border-white/[.145]">
+      <h2 className="text-sm font-semibold text-black dark:text-zinc-50">
+        Comments{comments.length > 0 ? ` (${comments.length})` : ""}
+      </h2>
+      {comments.length === 0 ? (
+        <p className="text-sm text-zinc-500 dark:text-zinc-500">No comments yet.</p>
+      ) : (
+        <ul className="flex flex-col gap-4">
+          {comments.map((comment: Comment) => {
+            const label = commentAuthorLabel(comment.author_id, profile.id, ticket.customer_id);
+            return (
+              <li key={comment.id} className="flex gap-3">
+                <span
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                    comment.is_internal
+                      ? "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
+                      : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                  }`}
+                >
+                  {label[0]}
+                </span>
+                <div
+                  className={`flex flex-1 flex-col gap-1 rounded-lg border px-4 py-3 text-sm ${
+                    comment.is_internal
+                      ? "border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30"
+                      : "border-black/[.08] dark:border-white/[.145]"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      {label}
+                    </span>
+                    <span className="text-xs text-zinc-400 dark:text-zinc-600">
+                      {formatRelativeTime(comment.created_at)}
+                    </span>
+                    {comment.is_internal ? (
+                      <span className="rounded-full bg-amber-200/60 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                        Internal note
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="whitespace-pre-wrap text-zinc-700 dark:text-zinc-300">
+                    {comment.body}
+                  </p>
+                </div>
               </li>
-            ))}
-          </ul>
-        )}
+            );
+          })}
+        </ul>
+      )}
+      <div className="rounded-xl border border-black/[.08] p-4 dark:border-white/[.145]">
         <CommentForm
           ticketId={ticket.id}
           isStaff={isStaff}
           draft={isStaff ? (triage?.suggested_reply ?? null) : null}
         />
       </div>
+    </div>
+  );
+
+  return (
+    <div
+      className={`mx-auto flex w-full flex-1 flex-col gap-6 p-8 ${isStaff ? "max-w-5xl" : "max-w-2xl"}`}
+    >
+      <div>
+        <Link
+          href={isStaff ? "/queue" : "/tickets"}
+          className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+        >
+          &larr; {isStaff ? "Queue" : "My tickets"}
+        </Link>
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
+              {ticket.subject}
+            </h1>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
+              Opened {formatRelativeTime(ticket.created_at)}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {isStaff && ticket.triage_state?.priority ? (
+              <Badge
+                label={ticket.triage_state.priority}
+                colorClasses={priorityBadgeClasses(ticket.triage_state.priority)}
+              />
+            ) : null}
+            <Badge label={statusLabel(ticket.status)} colorClasses={statusBadgeClasses(ticket.status)} />
+          </div>
+        </div>
+      </div>
+
+      {isStaff ? (
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+          <div className="flex min-w-0 flex-col gap-6">
+            {ticketBody}
+            {commentsSection}
+          </div>
+          <div className="flex flex-col gap-6 lg:sticky lg:top-8">
+            <StaffControls
+              ticketId={ticket.id}
+              status={ticket.status}
+              assigneeId={ticket.assignee_id}
+              currentUserId={profile.id}
+              allowedNext={ALLOWED_STATUS_TRANSITIONS[ticket.status]}
+              isAdmin={isAdmin}
+              staff={staff}
+            />
+            <TriagePanel
+              ticketId={ticket.id}
+              triageStatus={ticket.triage_state?.triage_status ?? "pending"}
+              triage={triage}
+            />
+            <SharePanel
+              ticketId={ticket.id}
+              share={share}
+              siteUrl={SITE_URL}
+              canPublish={Boolean(triage?.summary)}
+            />
+          </div>
+        </div>
+      ) : (
+        <>
+          {ticketBody}
+          {commentsSection}
+        </>
+      )}
     </div>
   );
 }

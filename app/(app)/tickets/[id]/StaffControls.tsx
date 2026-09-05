@@ -1,6 +1,7 @@
 import { assignTicketAction, claimTicketAction, updateStatusAction } from "../actions";
 import type { TicketStatus } from "@/app/lib/db/tickets";
 import type { StaffProfile } from "@/app/lib/db/profiles";
+import { primaryButtonClass, secondaryButtonClass } from "@/app/lib/styles";
 
 const STATUS_LABELS: Record<TicketStatus, string> = {
   new: "New",
@@ -32,8 +33,12 @@ export function StaffControls({
   const assigneeEmail = staff.find((s) => s.id === assigneeId)?.email;
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-black/[.08] p-4 dark:border-white/[.145]">
-      <p className="text-xs text-zinc-500 dark:text-zinc-500">
+    <div className="flex flex-col gap-3 rounded-xl border border-black/[.08] p-4 dark:border-white/[.145]">
+      <p
+        className={`text-xs font-medium ${
+          assigneeId === null ? "text-amber-700 dark:text-amber-400" : "text-zinc-500 dark:text-zinc-500"
+        }`}
+      >
         {assigneeId === null
           ? "Unassigned"
           : assigneeId === currentUserId
@@ -46,10 +51,7 @@ export function StaffControls({
       {assigneeId === null && status !== "resolved" && status !== "closed" ? (
         <form action={claimTicketAction}>
           <input type="hidden" name="ticketId" value={ticketId} />
-          <button
-            type="submit"
-            className="rounded-full bg-foreground px-4 py-1.5 text-xs font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
-          >
+          <button type="submit" className={`${primaryButtonClass} !px-4 !py-1.5 !text-xs`}>
             Claim ticket
           </button>
         </form>
@@ -59,10 +61,7 @@ export function StaffControls({
             <form key={next} action={updateStatusAction}>
               <input type="hidden" name="ticketId" value={ticketId} />
               <input type="hidden" name="status" value={next} />
-              <button
-                type="submit"
-                className="rounded-full border border-black/[.08] px-4 py-1.5 text-xs font-medium transition-colors hover:bg-black/[.05] dark:border-white/[.145] dark:hover:bg-white/[.06]"
-              >
+              <button type="submit" className={`${secondaryButtonClass} !px-4 !py-1.5 !text-xs`}>
                 Move to {STATUS_LABELS[next]}
               </button>
             </form>
@@ -96,10 +95,7 @@ export function StaffControls({
               </option>
             ))}
           </select>
-          <button
-            type="submit"
-            className="rounded-full border border-black/[.08] px-3 py-1 text-xs font-medium transition-colors hover:bg-black/[.05] dark:border-white/[.145] dark:hover:bg-white/[.06]"
-          >
+          <button type="submit" className={`${secondaryButtonClass} !px-3 !py-1 !text-xs`}>
             Assign
           </button>
         </form>

@@ -49,7 +49,7 @@ test("staff can publish a public status page; an anonymous visitor sees only the
   const response = await publicPage.goto(shareUrl!);
   expect(response?.status()).toBe(200);
   await expect(publicPage.getByRole("heading", { name: subject })).toBeVisible();
-  await expect(publicPage.getByText("Support ticket status")).toBeVisible();
+  await expect(publicPage.getByText("Ticket status")).toBeVisible();
   await expect(publicPage.getByText("new", { exact: true })).toBeVisible();
   // The AI summary is shown (some non-empty paraphrase), but the raw ticket
   // body and everything else about the ticket is never rendered here.

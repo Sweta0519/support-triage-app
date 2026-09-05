@@ -1,6 +1,8 @@
 import { requireAdmin } from "@/app/lib/auth/session";
 import { APP_ROLES, listProfiles } from "@/app/lib/db/profiles";
 import { setRoleAction } from "../actions";
+import { Badge } from "@/app/components/Badge";
+import { roleBadgeClasses } from "@/app/lib/badges";
 
 const ERROR_MESSAGES: Record<string, string> = {
   self: "You can't change your own role.",
@@ -21,7 +23,7 @@ export default async function AdminUsersPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Users</h1>
+      <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-500">Users</h2>
 
       {params.error ? (
         <p className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
@@ -29,36 +31,35 @@ export default async function AdminUsersPage({
         </p>
       ) : null}
       {params.saved ? (
-        <p className="rounded-lg border border-green-300 bg-green-50 px-4 py-2 text-sm text-green-700 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300">
+        <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
           Role updated.
         </p>
       ) : null}
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto rounded-xl border border-black/[.08] dark:border-white/[.145]">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-black/[.08] text-left text-xs text-zinc-500 dark:border-white/[.145] dark:text-zinc-500">
-              <th className="py-2 pr-4 font-medium">Email</th>
-              <th className="py-2 pr-4 font-medium">Role</th>
-              <th className="py-2 font-medium">Change</th>
+            <tr className="border-b border-black/[.08] bg-black/[.02] text-left text-xs text-zinc-500 dark:border-white/[.145] dark:bg-white/[.03] dark:text-zinc-500">
+              <th className="px-4 py-3 font-medium">Email</th>
+              <th className="px-4 py-3 font-medium">Role</th>
+              <th className="px-4 py-3 font-medium">Change</th>
             </tr>
           </thead>
           <tbody>
             {profiles.map((p) => {
               const isSelf = p.id === admin.id;
               return (
-                <tr
-                  key={p.id}
-                  className="border-b border-black/[.06] dark:border-white/[.08]"
-                >
-                  <td className="py-2 pr-4 text-black dark:text-zinc-50">
+                <tr key={p.id} className="border-b border-black/[.06] last:border-0 dark:border-white/[.08]">
+                  <td className="px-4 py-3 text-black dark:text-zinc-50">
                     {p.email}
                     {isSelf ? (
                       <span className="ml-2 text-xs text-zinc-500 dark:text-zinc-500">(you)</span>
                     ) : null}
                   </td>
-                  <td className="py-2 pr-4 text-zinc-700 dark:text-zinc-300">{p.role}</td>
-                  <td className="py-2">
+                  <td className="px-4 py-3">
+                    <Badge label={p.role} colorClasses={roleBadgeClasses(p.role)} />
+                  </td>
+                  <td className="px-4 py-3">
                     <form action={setRoleAction} className="flex items-center gap-2">
                       <input type="hidden" name="userId" value={p.id} />
                       <select

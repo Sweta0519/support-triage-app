@@ -43,3 +43,49 @@ setup("reset test users' rate-limit counters", async () => {
     }
   }
 });
+
+// The AI assistant chat keeps one long-lived conversation per staff member,
+// so a prior run's messages would otherwise still be there on the next
+// run -- and a model asked the same "remember X, now recall X" probe
+// repeatedly starts recognizing the pattern and refusing on principle
+// (a real safety behaviour, not a bug, but it makes the memory test flaky
+// across repeated runs). Clearing it keeps that test deterministic; cascade
+// delete on assistant_messages.conversation_id takes the messages with it.
+setup("reset the AI assistant's test conversation", async () => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    console.warn("SUPABASE_SERVICE_ROLE_KEY not set -- skipping assistant chat reset");
+    return;
+  }
+
+  const agentEmail = process.env.TEST_AGENT_EMAIL;
+  if (!agentEmail) {
+    return;
+  }
+
+  const db = createClient(url, key, {
+    db: { schema: "ticketing" },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const { data: profile, error } = await db
+    .from("profiles")
+    .select("id")
+    .eq("email", agentEmail)
+    .maybeSingle();
+  if (error) {
+    throw new Error(error.message);
+  }
+  if (!profile) {
+    return;
+  }
+
+  const { error: deleteError } = await db
+    .from("assistant_conversations")
+    .delete()
+    .eq("owner_id", profile.id);
+  if (deleteError) {
+    throw new Error(deleteError.message);
+  }
+});
