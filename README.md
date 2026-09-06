@@ -32,6 +32,24 @@ category, team) and records its full assessment in an append-only audit table, b
 changes ticket status and never sends anything to a customer. Nothing it produces is readable by
 the customer who filed the ticket -- not in the UI and not through the database API.
 
+## Sage: the staff assistant that can read your notes
+
+Agents and admins also get **Sage**, a floating assistant on every staff page. It remembers the
+conversation (persisted per staff member), and it can **search that staff member's own private
+notes** -- runbooks, policies, customer context written under **Notes** -- to answer from them:
+
+- **Agentic RAG, not a fixed pipeline.** `search_notes` is a tool the model chooses to call. A
+  general-knowledge question is answered directly with no retrieval; a question about "our refund
+  policy" triggers a search, and a poor first result gets a rewritten query and a second search.
+- **Cited, or honest.** Answers drawn from notes name the note (*Based on your note "Q3 launch
+  logistics", ...*), and when nothing relevant exists Sage says so instead of guessing.
+- **Per-user by construction.** Notes are chunked and embedded (`openai/text-embedding-3-small`,
+  pgvector) with the owner's id on every chunk; the similarity-search function scopes to the
+  calling session's `auth.uid()` and runs under RLS, so there is no request that returns another
+  staff member's chunks -- verified by a two-account test that also calls the RPC directly.
+
+Design and calibration notes: `docs/notes-rag.md`.
+
 ## Stack
 
 Next.js 16 (App Router) · TypeScript · Tailwind · Supabase (Postgres + Auth + RLS + pgvector) ·
@@ -104,7 +122,10 @@ Admin API (`auth.admin.createUser` with `email_confirm: true`) and set roles via
 Coverage: customer flow; **cross-user isolation** (customer B gets a 404 for customer A's ticket);
 agent claim / status / internal notes hidden from the customer; **AI triage happy path** with the
 panel never rendered for customers; admin role gate, role changes, reassignment; agent 404 for
-another staff member's ticket; customer bounced from staff routes.
+another staff member's ticket; customer bounced from staff routes; **Sage** conversation memory
+and persistence across a refresh; **notes RAG** -- answer-and-cite from a saved note, "nothing
+relevant" honesty, no search for general knowledge, and **cross-staff isolation** of notes in both
+the chat and a direct call to the retrieval RPC.
 
 ## Optional tasks completed
 
@@ -146,6 +167,8 @@ Seven optional tasks across both sprint projects' lists, spanning all three diff
 
 - `docs/ai-triage.md` -- pipeline, schema, prompt-injection and privacy analysis (cites OpenRouter
   and Supabase sources).
+- `docs/notes-rag.md` -- Sage's notes retrieval: chunking, the tool loop, threshold calibration,
+  and why the match function takes no user id.
 - `docs/supabase-schema.md` -- every table, policy, trigger and function.
 - `docs/security/` -- security audit reports: four fresh-context passes, each with its fixes
   recorded, ending in a clean rescan (0 critical, 0 warning) before merge.

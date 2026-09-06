@@ -178,6 +178,66 @@ to end users; service role only.
 | `embedding_model` | `text`                     | Always `openai/text-embedding-3-small` today; recorded so a model change can find rows to re-embed. |
 | `created_at`, `updated_at` | `timestamptz`     |                                                                       |
 
+### `ticketing.assistant_conversations` / `ticketing.assistant_messages`
+
+Sage, the staff assistant widget. One conversation per staff member (`unique (owner_id)`), so
+`getOrCreateActiveConversation()` is insert-first / select-on-conflict rather than read-then-write.
+
+| Column (conversations) | Type | Notes |
+|---|---|---|
+| `id` | `uuid` | PK |
+| `owner_id` | `uuid` | FK -> `profiles.id`, cascade. Unique. |
+| `title` | `text` | Unused today. |
+| `created_at`, `updated_at` | `timestamptz` | `updated_at` is touched by `appendMessage()`. |
+
+| Column (messages) | Type | Notes |
+|---|---|---|
+| `id` | `uuid` | PK |
+| `conversation_id` | `uuid` | FK -> `assistant_conversations.id`, cascade. |
+| `role` | `text` | `user` / `assistant`. |
+| `content` | `text` | 1-8000 chars. |
+| `model` | `text` | OpenRouter slug that produced an assistant reply; null for user messages. |
+| `metadata` | `jsonb` | What Sage did behind a reply: `{"searches": [{"query", "matches"}]}` when it searched notes, `{}` otherwise. Display/provenance only. |
+| `created_at` | `timestamptz` | |
+
+### `ticketing.notes`
+
+A staff member's private knowledge notes (runbooks, policies, customer context) -- the corpus
+Sage's `search_notes` tool retrieves from. Owner-scoped: nobody else, including admins, can read
+them.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` | PK |
+| `owner_id` | `uuid` | FK -> `profiles.id`, cascade. |
+| `title` | `text` | 1-200 chars. |
+| `body` | `text` | 1-20000 chars. |
+| `created_at`, `updated_at` | `timestamptz` | `updated_at` by the shared `set_updated_at()` trigger. |
+
+INSERT privilege is limited to `owner_id, title, body` and UPDATE to `title, body`, so a client
+can never set ids/timestamps or move a note to another owner.
+
+### `ticketing.documents`
+
+The chunks + embeddings behind notes search, one row per ~500-character chunk. Named after the
+Supabase semantic-search guide it follows. Read and written with the **caller's own session**
+(no service role), so RLS is the isolation boundary.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` | PK |
+| `note_id` | `uuid` | FK -> `notes.id`, `on delete cascade` -- deleting a note removes its chunks. `unique (note_id, chunk_index)`. |
+| `user_id` | `uuid` | FK -> `profiles.id`, cascade. Denormalised from `notes.owner_id` so the search filters on a plain column. |
+| `chunk_index` | `int` | Position within the note. |
+| `content` | `text` | The chunk text (1-2000 chars). |
+| `embedding` | `extensions.vector(1536)` | **No vector index on purpose** -- an HNSW scan post-filters the per-user predicate and can drop the user's own rows (see `docs/notes-rag.md`); per-user row counts are small enough for an exact scan via `documents_user_id_idx`. **Dimension pinned** -- same rule as `ticket_embeddings`. |
+| `embedding_model` | `text` | `openai/text-embedding-3-small`; recorded per row so a model change can find rows to re-embed. |
+| `created_at` | `timestamptz` | |
+
+No UPDATE grant: chunks are immutable. Notes and their chunks are written only through
+`save_note()`, which replaces every chunk in the same transaction as the note row, so a stale
+vector from an earlier version can't linger and a note can't exist without its index.
+
 ## Row Level Security
 
 All grants to `authenticated` are the minimum each table needs; `service_role` has `all` on
@@ -193,6 +253,10 @@ every table and bypasses RLS entirely (it is confined to server-only code).
 | `triage_results`  | `is_staff()` and `can_view_ticket(ticket_id)`                                                 | none (service role only)                                                            | none                                                               | none   |
 | `ticket_embeddings` | none                                                                                        | none                                                                                | none                                                               | none   |
 | `ticket_triage_state` | `is_staff()` and `can_view_ticket(ticket_id)`                                             | none (trigger creates the row; service role writes it)                              | none                                                               | none   |
+| `assistant_conversations` | `owner_id = auth.uid()` and `is_staff()`                                              | same                                                                                | same (touches `updated_at`)                                        | none   |
+| `assistant_messages` | parent conversation's `owner_id = auth.uid()`                                              | same                                                                                | none                                                               | none   |
+| `notes`           | `owner_id = auth.uid()` and `is_staff()`                                                      | same; INSERT privilege limited to `owner_id, title, body`                           | same; UPDATE privilege limited to `title, body`                    | same   |
+| `documents`       | `user_id = auth.uid()` and `is_staff()`                                                       | same, **and** `note_id` must be a note the caller owns                              | none (immutable; replaced on edit)                                 | same   |
 
 Two things RLS deliberately does *not* try to do, because it can't:
 
@@ -216,16 +280,19 @@ Two things RLS deliberately does *not* try to do, because it can't:
 | `set_updated_at()` (trigger)                          | INVOKER   | Maintains `tickets.updated_at`.                                                                               |
 | `guard_ticket_update()` (trigger, `before update` on `tickets`) | DEFINER | Immutable `customer_id`/`subject`/`body`; `assignee_id` must be an agent or admin; legal status transitions (agents only -- admins bypass); stamps `resolved_at`/`closed_at`; writes `ticket_events`. DEFINER so it can insert into `ticket_events`. |
 | `stamp_first_response()` (trigger, `after insert` on `ticket_comments`) | DEFINER | Sets `tickets.first_response_at` on the first public staff comment.                                    |
-| `consume_rate_limit(text)`                            | DEFINER   | Fixed-window counter. The caller names only the action (`create_ticket` / `add_comment` / `rerun_triage`); limit and window are hard-coded per action inside the function, and the key's identity half comes from `auth.uid()` -- so a client can neither loosen its own limit, target another user's bucket, nor mint rows with made-up windows. Returns `false` when over the limit; prunes windows older than a day on ~1% of calls. |
+| `consume_rate_limit(text)`                            | DEFINER   | Fixed-window counter. The caller names only the action (`create_ticket` / `add_comment` / `rerun_triage` / `assistant_message` / `save_note`); limit and window are hard-coded per action inside the function, and the key's identity half comes from `auth.uid()` -- so a client can neither loosen its own limit, target another user's bucket, nor mint rows with made-up windows. Returns `false` when over the limit; prunes windows older than a day on ~1% of calls. |
 | `create_triage_state()` (trigger, `after insert` on `tickets`) | DEFINER | Creates the ticket's `ticket_triage_state` row so the triage pipeline always has a row to claim. |
 | `rate_limit_ticket_insert()`, `rate_limit_comment_insert()` (triggers, `before insert`) | INVOKER | Call `consume_rate_limit()` for the inserting user and raise `rate_limited:<action>` when over -- so the limit applies to direct Data API calls too, not just the app. Skipped for `service_role` (`auth.uid()` is null). |
 | `sync_profile_email()` (trigger, `after update of email` on `auth.users`) | DEFINER | Keeps `profiles.email` equal to the auth email. Users cannot update `profiles.email` themselves. |
 | `match_tickets(vector(1536), int, uuid)`              | INVOKER   | Nearest tickets by cosine distance (`<=>`), returning subject + latest summary only. EXECUTE revoked from PUBLIC; granted to `service_role` only. |
+| `save_note(uuid, text, text, jsonb, text)`           | INVOKER   | Insert (`p_id` null) or update the caller's own note **and** replace its chunks in one transaction. INVOKER so the caller's RLS and column grants on `notes`/`documents` apply inside; owner is `auth.uid()`, never an argument. Returns null when an update matched nothing visible. Granted to `authenticated`. |
+| `match_documents(vector(1536), float, int)`          | INVOKER   | Nearest note chunks by cosine distance above a similarity threshold, **for the calling user only**: filters `user_id = auth.uid()` itself and, being INVOKER, also runs under the `documents` RLS policy. Deliberately takes **no user-id parameter** -- a parameter the client supplies is one it can lie about. Granted to `authenticated`. |
 
 EXECUTE on every callable function above is revoked from `PUBLIC` and granted explicitly:
-`authenticated` for the helpers, `ensure_profile`, `admin_set_role`, `consume_rate_limit` (RLS
-policies and the rate-limit triggers run as the caller and need them), `service_role` where the
-triage code calls them, and `service_role` only for `match_tickets`. `alter default privileges`
+`authenticated` for the helpers, `ensure_profile`, `admin_set_role`, `consume_rate_limit`,
+`save_note`, `match_documents` (RLS policies, the rate-limit triggers and notes run as the caller
+and need them), `service_role` where the triage code calls them, and `service_role` only for
+`match_tickets`. `alter default privileges`
 makes the same true for any function added later.
 
 ### Status transition map
@@ -249,12 +316,15 @@ Enforced for agents by `guard_ticket_update()`; mirrored in `ALLOWED_STATUS_TRAN
 | `create_ticket` | 10    | 60 minutes | `BEFORE INSERT` trigger on `tickets` (database)                    |
 | `add_comment`   | 30    | 10 minutes | `BEFORE INSERT` trigger on `ticket_comments` (database)            |
 | `rerun_triage`  | 5     | 10 minutes | `rerunTriageAction()` via `checkRateLimit()` (no row is inserted) |
+| `assistant_message` | 20 | 10 minutes | `sendMessageAction()` via `checkRateLimit()` -- a paid completion (up to 3 with tool rounds) |
+| `save_note`     | 30    | 10 minutes | `createNoteAction()` / `updateNoteAction()` via `checkRateLimit()` -- a paid embedding call, before any row is written (not consumed for a no-op edit or a missing note) |
 
 The insert limits are enforced in the database so that a user calling the Data API directly with
 their session token is limited exactly like the app. The app maps the trigger's
 `rate_limited:*` exception to a friendly form error (`RateLimitError`), never an unhandled
 exception. Text lengths are also constrained in the database: `subject` 1-200, ticket `body`
-1-20000, comment `body` 1-10000, `full_name` <= 120. Supabase Auth's own built-in sign-up/sign-in rate limits are configured in
+1-20000, comment `body` 1-10000, note `title` 1-200, note `body` 1-20000, assistant message 1-8000,
+`full_name` <= 120. Supabase Auth's own built-in sign-up/sign-in rate limits are configured in
 the dashboard (Authentication -> Rate Limits) and are **not** captured by migrations.
 
 ### `ticketing.shared_ticket_summaries`

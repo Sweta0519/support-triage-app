@@ -9,7 +9,9 @@ agent: every incoming ticket is automatically analyzed for category, priority (w
 reason), team routing, duplicate/related tickets, an escalation-risk flag, a draft first reply,
 and follow-up questions when the ticket is missing information. The AI feature is the reason
 this app exists -- removing it would leave a plain unremarkable CRUD ticketing form. Triage is
-strictly advisory: it never changes ticket status and never sends a reply on its own.
+strictly advisory: it never changes ticket status and never sends a reply on its own. Staff also
+have Sage, a private assistant widget that remembers its conversation and can search the staff
+member's own knowledge notes (RAG) -- separate from triage and never customer-facing.
 
 Built as a mid-sprint/sprint-project-style practice project (Turing College conventions) --
 security is a baseline expectation (RLS everywhere, CSRF, rate limiting, secure sessions), not
@@ -53,11 +55,19 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
   `GET https://openrouter.ai/api/v1/models/user` with the key before changing the slug, and note
   OpenRouter slugs use **dotted** versions (`4.5`), not Anthropic's hyphenated ids.
 - Embeddings: `openai/text-embedding-3-small` via OpenRouter, used for duplicate/related-ticket
-  detection.
-- The `ticketing.ticket_embeddings` table's `embedding` column is `vector(1536)` -- do not
-  change this dimension.
+  detection and for the staff notes search behind Sage (`ticketing.documents`).
+- The `embedding` columns on `ticketing.ticket_embeddings` and `ticketing.documents` are
+  `vector(1536)` -- do not change this dimension.
 - Never change the embedding model after initial setup. Changing it breaks retrieval silently
-  (existing vectors were produced by a different model and are no longer comparable).
+  (existing vectors were produced by a different model and are no longer comparable). If it ever
+  must change, drop and re-embed every row in both tables in the same migration.
+- Sage (the floating staff assistant, `app/components/assistant/`) does agentic RAG over a staff
+  member's own notes: `search_notes` is a tool the model decides to call, not a step that always
+  runs (`app/lib/ai/notes-rag.ts`). Retrieval is scoped to the caller *inside*
+  `ticketing.match_documents()` (`auth.uid()`) and by RLS on `documents` -- never add a
+  client-supplied user-id parameter to that function or to the tool.
+- Notes are chunked (~500 chars, 100 overlap) and embedded *before* the row is saved, so a note
+  is never stored without its index; an edit deletes and re-embeds all of its chunks.
 - Triage output is strictly advisory: it must never auto-change `ticketing.tickets.status` and
   must never send a reply to the customer without an agent/admin action.
 - Ticket bodies are untrusted input to the model (prompt injection risk). The triage prompt must

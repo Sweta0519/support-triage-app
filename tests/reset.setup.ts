@@ -51,7 +51,7 @@ setup("reset test users' rate-limit counters", async () => {
 // (a real safety behaviour, not a bug, but it makes the memory test flaky
 // across repeated runs). Clearing it keeps that test deterministic; cascade
 // delete on assistant_messages.conversation_id takes the messages with it.
-setup("reset the AI assistant's test conversation", async () => {
+setup("reset the AI assistant's test conversations and notes", async () => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
@@ -59,8 +59,12 @@ setup("reset the AI assistant's test conversation", async () => {
     return;
   }
 
-  const agentEmail = process.env.TEST_AGENT_EMAIL;
-  if (!agentEmail) {
+  // Both staff test accounts talk to Sage: the agent in ai-chat.spec.ts and
+  // notes-rag.spec.ts, the admin in the cross-user notes test.
+  const staffEmails = [process.env.TEST_AGENT_EMAIL, process.env.TEST_ADMIN_EMAIL].filter(
+    (e): e is string => Boolean(e)
+  );
+  if (staffEmails.length === 0) {
     return;
   }
 
@@ -69,23 +73,30 @@ setup("reset the AI assistant's test conversation", async () => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data: profile, error } = await db
-    .from("profiles")
-    .select("id")
-    .eq("email", agentEmail)
-    .maybeSingle();
+  const { data: profiles, error } = await db.from("profiles").select("id").in("email", staffEmails);
   if (error) {
     throw new Error(error.message);
   }
-  if (!profile) {
+  const ids = (profiles ?? []).map((p) => p.id);
+  if (ids.length === 0) {
     return;
   }
 
   const { error: deleteError } = await db
     .from("assistant_conversations")
     .delete()
-    .eq("owner_id", profile.id);
+    .in("owner_id", ids);
   if (deleteError) {
     throw new Error(deleteError.message);
+  }
+
+  // notes-rag.spec.ts saves notes as both staff accounts; left in place they
+  // would pile up run over run (each save is a paid embedding call, and a
+  // stale "Q3 launch" note from a previous run could satisfy the happy-path
+  // search before the current run's note exists). Chunks cascade with the
+  // notes (documents.note_id on delete cascade).
+  const { error: notesError } = await db.from("notes").delete().in("owner_id", ids);
+  if (notesError) {
+    throw new Error(notesError.message);
   }
 });

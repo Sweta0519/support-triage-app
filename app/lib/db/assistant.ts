@@ -4,14 +4,24 @@ import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 
 export const ASSISTANT_MESSAGE_MAX_LENGTH = 8_000;
 
+// What Sage did behind a reply. Display-only: the widget shows "searched
+// your notes" from it, and a test can tell a retrieved answer from a
+// direct one. Empty object for user messages and pre-RAG rows.
+export type AssistantMessageMetadata = {
+  searches?: { query: string; matches: number }[];
+};
+
 export type AssistantMessage = {
   id: string;
   conversation_id: string;
   role: "user" | "assistant";
   content: string;
   model: string | null;
+  metadata: AssistantMessageMetadata;
   created_at: string;
 };
+
+const MESSAGE_COLUMNS = "id, conversation_id, role, content, model, metadata, created_at";
 
 // One conversation per staff member (a personal scratchpad, not a list of
 // threads), enforced by a unique constraint on owner_id -- so this is
@@ -51,7 +61,7 @@ export async function listMessages(conversationId: string): Promise<AssistantMes
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("assistant_messages")
-    .select("id, conversation_id, role, content, model, created_at")
+    .select(MESSAGE_COLUMNS)
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
 
@@ -74,7 +84,7 @@ export async function listRecentMessages(
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("assistant_messages")
-    .select("id, conversation_id, role, content, model, created_at")
+    .select(MESSAGE_COLUMNS)
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -93,13 +103,14 @@ export async function appendMessage(
   conversationId: string,
   role: "user" | "assistant",
   content: string,
-  model?: string
+  model?: string,
+  metadata: AssistantMessageMetadata = {}
 ): Promise<AssistantMessage> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("assistant_messages")
-    .insert({ conversation_id: conversationId, role, content, model: model ?? null })
-    .select("id, conversation_id, role, content, model, created_at")
+    .insert({ conversation_id: conversationId, role, content, model: model ?? null, metadata })
+    .select(MESSAGE_COLUMNS)
     .single();
 
   if (error) {
