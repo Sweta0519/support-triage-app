@@ -48,6 +48,8 @@ notes** -- runbooks, policies, customer context written under **Notes** -- to an
   calling session's `auth.uid()` and runs under RLS, so there is no request that returns another
   staff member's chunks -- verified by a two-account test that also calls the RPC directly.
 
+![Sage answering from a staff member's note and citing it](docs/screenshots/sage-notes.png)
+
 Design and calibration notes: `docs/notes-rag.md`.
 
 ## Stack
@@ -129,7 +131,7 @@ the chat and a direct call to the retrieval RPC.
 
 ## Optional tasks completed
 
-Seven optional tasks across both sprint projects' lists, spanning all three difficulty tiers.
+Eight optional tasks across both sprint projects' lists, spanning all three difficulty tiers.
 
 **Easy**
 
@@ -154,6 +156,13 @@ Seven optional tasks across both sprint projects' lists, spanning all three diff
 
 **Hard**
 
+- **Agentic RAG** -- Sage's `search_notes` is a tool the model chooses to call, not a fixed
+  retrieval step: it skips the search for general-knowledge questions, rewrites the query and
+  searches again when the first results are poor, cites the note it used by title, and says so
+  when nothing relevant exists. Chunks are embedded with `openai/text-embedding-3-small` into a
+  pgvector `documents` table; the match function scopes to the caller's `auth.uid()` and runs
+  under RLS, so there is no user-id argument to spoof. Verified with a two-account test in the
+  chat and against the RPC directly (`docs/notes-rag.md`).
 - **Shareable AI outputs** -- staff can publish a read-only public status page (subject, status,
   and the AI-generated summary) to an unguessable URL. An unauthenticated visitor can view that
   one snapshot and nothing else: no comments, no ticket body, no other tickets, no sign-in prompt.

@@ -1,5 +1,18 @@
 # Sage: chat with your own notes (RAG)
 
+Sources:
+- [Semantic search — Supabase Docs](https://supabase.com/docs/guides/ai/semantic-search) -- the
+  `documents` table / `match_documents` RPC shape, cosine distance (`<=>`), and the similarity
+  threshold this follows.
+- [Vector columns — Supabase Docs](https://supabase.com/docs/guides/ai/vector-columns) -- the
+  `vector(1536)` column and pgvector index trade-offs.
+- [Embeddings — OpenRouter API Reference](https://openrouter.ai/docs/api-reference/embeddings) --
+  the batch `input` array used to embed a whole note in one request.
+- [Tool calling — OpenRouter Docs](https://openrouter.ai/docs/features/tool-calling) -- the
+  OpenAI-compatible `tools` / `tool_calls` / `tool` message loop behind `search_notes`.
+- [pgvector: Filtering](https://github.com/pgvector/pgvector#filtering) -- why an HNSW scan
+  post-filters a `WHERE` clause and can return fewer rows than expected.
+
 Sage is the floating staff assistant (agents and admins only). Since the Part 6 lab it has
 remembered its conversation and persisted it per staff member. This adds retrieval: a staff member
 writes private **Notes** (runbooks, policy snippets, customer context), and Sage can search them
