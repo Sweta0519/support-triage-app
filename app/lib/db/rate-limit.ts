@@ -6,7 +6,8 @@ export type RateLimitedAction =
   | "create_ticket"
   | "add_comment"
   | "rerun_triage"
-  | "assistant_message";
+  | "assistant_message"
+  | "save_note";
 
 export class RateLimitError extends Error {
   constructor(action: RateLimitedAction) {
@@ -19,10 +20,11 @@ export class RateLimitError extends Error {
 // window for each action live inside ticketing.consume_rate_limit() -- the
 // caller only names the action, so nothing a client sends can change how
 // much it is allowed or target another user's bucket. create_ticket and
-// add_comment are enforced by BEFORE INSERT triggers; rerun_triage and
-// assistant_message have no insert to hang a trigger off (rerun_triage
-// writes nothing new to check against, assistant_message's own insert is
-// the thing being throttled), so callers check this explicitly first.
+// add_comment are enforced by BEFORE INSERT triggers; rerun_triage,
+// assistant_message and save_note have no insert to hang a trigger off
+// (rerun_triage writes nothing new to check against; assistant_message's
+// own insert is the thing being throttled; save_note's paid embedding call
+// happens before any row exists), so callers check this explicitly first.
 export async function checkRateLimit(action: RateLimitedAction): Promise<void> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.rpc("consume_rate_limit", { p_action: action });

@@ -74,22 +74,24 @@ test.describe("Sage, the AI assistant widget", () => {
     await page.goto("/queue");
     await openSage(page);
 
+    // exact: true -- the model sometimes quotes the probe back in its reply,
+    // and a bare text match would then resolve to two elements.
     const first = `Persistence probe one ${Date.now()}`;
     await page.getByPlaceholder("Message Sage...").fill(first);
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByPlaceholder("Message Sage...")).toBeEnabled({ timeout: 60_000 });
-    await expect(page.getByText(first)).toBeVisible();
+    await expect(page.getByText(first, { exact: true })).toBeVisible();
 
     const second = `Persistence probe two ${Date.now()}`;
     await page.getByPlaceholder("Message Sage...").fill(second);
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByPlaceholder("Message Sage...")).toBeEnabled({ timeout: 60_000 });
-    await expect(page.getByText(second)).toBeVisible();
+    await expect(page.getByText(second, { exact: true })).toBeVisible();
 
     await page.reload();
     await openSage(page);
-    await expect(page.getByText(first)).toBeVisible();
-    await expect(page.getByText(second)).toBeVisible();
+    await expect(page.getByText(first, { exact: true })).toBeVisible();
+    await expect(page.getByText(second, { exact: true })).toBeVisible();
 
     await context.close();
   });

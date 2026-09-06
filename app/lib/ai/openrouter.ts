@@ -16,9 +16,10 @@ export const TRIAGE_MODEL = "anthropic/claude-haiku-4.5";
 // the one line that changes to switch the assistant's model.
 export const ASSISTANT_MODEL = "anthropic/claude-haiku-4.5";
 export const EMBEDDING_MODEL = "openai/text-embedding-3-small";
-// Must match ticketing.ticket_embeddings.embedding's vector(1536). Never
-// change one without the other -- and never change the embedding model at
-// all after setup without re-embedding every row.
+// Must match the vector(1536) columns on ticketing.ticket_embeddings and
+// ticketing.documents. Never change one without the others -- and never
+// change the embedding model at all after setup without re-embedding every
+// row.
 export const EMBEDDING_DIMENSIONS = 1536;
 
 const REQUEST_TIMEOUT_MS = 45_000;
@@ -90,29 +91,51 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 type EmbeddingsResponse = {
-  data: { embedding: number[] }[];
+  data: { embedding: number[]; index?: number }[];
   usage?: { cost?: number };
 };
+
+function assertEmbeddingShape(vector: number[] | undefined): number[] {
+  if (!Array.isArray(vector) || vector.length !== EMBEDDING_DIMENSIONS) {
+    throw new Error(
+      `Unexpected embedding shape: got ${vector?.length ?? "none"} dimensions, expected ${EMBEDDING_DIMENSIONS}`
+    );
+  }
+  return vector;
+}
 
 // OpenRouter always includes the real billed cost in `usage.cost` on every
 // response now (the old `usage: { include: true }` request flag is
 // deprecated and has no effect) -- no separate pricing table to keep in
 // sync, and this is the actual charge, not an estimate.
 export async function embed(text: string): Promise<{ vector: number[]; costUsd: number }> {
+  const { vectors, costUsd } = await embedMany([text]);
+  return { vector: vectors[0], costUsd };
+}
+
+// One request for a whole note's chunks (the embeddings endpoint takes an
+// array input) rather than one round-trip per chunk. Results come back in
+// input order; `index` is honoured anyway in case a provider reorders.
+export async function embedMany(texts: string[]): Promise<{ vectors: number[][]; costUsd: number }> {
+  if (texts.length === 0) {
+    return { vectors: [], costUsd: 0 };
+  }
   const res = await post<EmbeddingsResponse>("/embeddings", {
     model: EMBEDDING_MODEL,
-    input: text,
-    // Ticket text is customer data, often PII: never route to a provider
-    // that may retain or train on inputs.
+    input: texts,
+    // Ticket text and staff notes are customer data, often PII: never route
+    // to a provider that may retain or train on inputs.
     provider: { data_collection: "deny" },
   });
-  const vector = res.data?.[0]?.embedding;
-  if (!Array.isArray(vector) || vector.length !== EMBEDDING_DIMENSIONS) {
-    throw new Error(
-      `Unexpected embedding shape: got ${vector?.length ?? "none"} dimensions, expected ${EMBEDDING_DIMENSIONS}`
-    );
+  const data = res.data ?? [];
+  if (data.length !== texts.length) {
+    throw new Error(`Expected ${texts.length} embeddings, got ${data.length}`);
   }
-  return { vector, costUsd: res.usage?.cost ?? 0 };
+  const vectors: number[][] = new Array(texts.length);
+  data.forEach((item, position) => {
+    vectors[item.index ?? position] = assertEmbeddingShape(item.embedding);
+  });
+  return { vectors, costUsd: res.usage?.cost ?? 0 };
 }
 
 export type JsonSchema = Record<string, unknown>;
@@ -176,36 +199,69 @@ export async function completeJson<T>(opts: {
   };
 }
 
-export type ChatMessage = {
-  role: "system" | "user" | "assistant";
-  content: string;
+// OpenAI-compatible tool calling, which is what OpenRouter speaks for every
+// provider. The model returns `tool_calls`; the caller runs them and feeds
+// each result back as a `tool` message, then asks for the next turn.
+export type ToolDefinition = {
+  type: "function";
+  function: { name: string; description: string; parameters: JsonSchema };
+};
+
+export type ToolCall = {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+};
+
+export type ChatMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
+  | { role: "tool"; tool_call_id: string; content: string };
+
+type ChatCompletionWithToolsResponse = {
+  model?: string;
+  choices?: { message?: { content?: string | null; tool_calls?: ToolCall[] } }[];
+  usage?: Partial<Usage> & { cost?: number };
 };
 
 // Free-form multi-turn completion for the staff assistant chat: unlike
 // completeJson, this takes a full message history (the caller is
 // responsible for memory) and returns plain text -- no response_format
-// lock, so any chat-capable model on OpenRouter works here.
+// lock, so any chat-capable model on OpenRouter works here. When `tools`
+// are supplied the model may answer with tool calls instead of (or as well
+// as) text; the caller decides what to do with them.
 export async function completeChat(opts: {
   messages: ChatMessage[];
   model?: string;
   maxTokens?: number;
-}): Promise<{ text: string; usage: Usage; model: string }> {
-  const res = await post<ChatCompletionResponse>("/chat/completions", {
+  tools?: ToolDefinition[];
+  toolChoice?: "auto" | "none";
+}): Promise<{ text: string; toolCalls: ToolCall[]; usage: Usage; model: string }> {
+  const withTools = Boolean(opts.tools && opts.tools.length > 0);
+  const res = await post<ChatCompletionWithToolsResponse>("/chat/completions", {
     model: opts.model ?? ASSISTANT_MODEL,
     messages: opts.messages,
+    ...(withTools ? { tools: opts.tools, tool_choice: opts.toolChoice ?? "auto" } : {}),
     // Staff may paste ticket/customer text into the assistant, so the same
-    // no-retention stance as triage applies here.
-    provider: { data_collection: "deny" },
+    // no-retention stance as triage applies here. require_parameters (only
+    // when tools are in play): never route to a provider that would
+    // silently drop the tool definitions and answer without them.
+    provider: { data_collection: "deny", ...(withTools ? { require_parameters: true } : {}) },
     max_tokens: opts.maxTokens ?? 1024,
   });
 
-  const content = res.choices?.[0]?.message?.content;
-  if (!content) {
+  const message = res.choices?.[0]?.message;
+  const text = message?.content ?? "";
+  const toolCalls = (message?.tool_calls ?? []).filter(
+    (call) => call?.type === "function" && typeof call.function?.name === "string"
+  );
+  if (!text && toolCalls.length === 0) {
     throw new Error("OpenRouter returned an empty completion");
   }
 
   return {
-    text: content,
+    text,
+    toolCalls,
     usage: {
       prompt_tokens: res.usage?.prompt_tokens ?? 0,
       completion_tokens: res.usage?.completion_tokens ?? 0,

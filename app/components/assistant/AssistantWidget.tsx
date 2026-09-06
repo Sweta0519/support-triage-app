@@ -157,14 +157,19 @@ export function AssistantWidget() {
               )
             ) : messages.length === 0 ? (
               <p className="m-auto max-w-[85%] text-center text-xs text-zinc-400 dark:text-zinc-600">
-                Ask {ASSISTANT_NAME} anything -- it&apos;ll remember this conversation. Nothing here
-                is ever shown to a customer.
+                Ask {ASSISTANT_NAME} anything -- it&apos;ll remember this conversation and can
+                search your notes. Nothing here is ever shown to a customer.
               </p>
             ) : (
               messages.map((message) => {
                 const isUser = message.role === "user";
+                const searches = message.metadata?.searches ?? [];
+                const matchCount = searches.reduce((sum, s) => sum + s.matches, 0);
                 return (
-                  <div key={message.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                  <div
+                    key={message.id}
+                    className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}
+                  >
                     <div
                       data-testid="assistant-widget-message"
                       data-role={message.role}
@@ -180,6 +185,17 @@ export function AssistantWidget() {
                         <Markdown components={MARKDOWN_COMPONENTS}>{message.content}</Markdown>
                       )}
                     </div>
+                    {/* Retrieval provenance: which searches ran behind this
+                        reply. Absent when the model answered directly. */}
+                    {searches.length > 0 ? (
+                      <p
+                        data-testid="assistant-widget-search"
+                        title={searches.map((s) => `"${s.query}" (${s.matches})`).join("\n")}
+                        className="mt-0.5 px-1 text-[10px] text-zinc-400 dark:text-zinc-600"
+                      >
+                        Searched your notes &middot; {matchCount} {matchCount === 1 ? "match" : "matches"}
+                      </p>
+                    ) : null}
                   </div>
                 );
               })
