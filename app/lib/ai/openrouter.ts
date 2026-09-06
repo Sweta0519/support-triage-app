@@ -131,11 +131,18 @@ export async function embedMany(texts: string[]): Promise<{ vectors: number[][];
   if (data.length !== texts.length) {
     throw new Error(`Expected ${texts.length} embeddings, got ${data.length}`);
   }
-  const vectors: number[][] = new Array(texts.length);
+  const vectors: (number[] | undefined)[] = new Array(texts.length).fill(undefined);
   data.forEach((item, position) => {
-    vectors[item.index ?? position] = assertEmbeddingShape(item.embedding);
+    const slot = item.index ?? position;
+    if (!Number.isInteger(slot) || slot < 0 || slot >= texts.length || vectors[slot]) {
+      throw new Error(`Embedding response has an out-of-range or duplicate index (${slot})`);
+    }
+    vectors[slot] = assertEmbeddingShape(item.embedding);
   });
-  return { vectors, costUsd: res.usage?.cost ?? 0 };
+  if (vectors.some((vector) => vector === undefined)) {
+    throw new Error("Embedding response left an input without a vector");
+  }
+  return { vectors: vectors as number[][], costUsd: res.usage?.cost ?? 0 };
 }
 
 export type JsonSchema = Record<string, unknown>;
@@ -252,8 +259,15 @@ export async function completeChat(opts: {
 
   const message = res.choices?.[0]?.message;
   const text = message?.content ?? "";
+  // Every field the tool loop later relies on is checked here, so a
+  // malformed call from a provider can't turn into a `tool` message with
+  // an undefined id (which the next request would reject with a 400).
   const toolCalls = (message?.tool_calls ?? []).filter(
-    (call) => call?.type === "function" && typeof call.function?.name === "string"
+    (call): call is ToolCall =>
+      typeof call?.id === "string" &&
+      call.type === "function" &&
+      typeof call.function?.name === "string" &&
+      typeof call.function.arguments === "string"
   );
   if (!text && toolCalls.length === 0) {
     throw new Error("OpenRouter returned an empty completion");

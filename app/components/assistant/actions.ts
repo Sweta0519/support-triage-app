@@ -10,13 +10,10 @@ import {
   type AssistantMessage,
   type AssistantMessageMetadata,
 } from "@/app/lib/db/assistant";
-import { checkRateLimit, RateLimitError } from "@/app/lib/db/rate-limit";
+import { checkRateLimit, RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/db/rate-limit";
 import { completeChat, type ChatMessage, type ToolCall } from "@/app/lib/ai/openrouter";
 import { SEARCH_NOTES_TOOL, searchNotes } from "@/app/lib/ai/notes-rag";
 import { ASSISTANT_NAME } from "./constants";
-
-const RATE_LIMITED_MESSAGE =
-  "You're doing that too often. Please wait a few minutes and try again.";
 
 // A conversation is kept forever, so without a cap its full history would
 // ride along on every send -- growing latency and cost turn over turn. The
@@ -29,6 +26,16 @@ const HISTORY_MESSAGES_SENT_TO_MODEL = 20;
 // paid completion plus an embedding call, so it is capped; after the last
 // round the model is forced to answer with whatever it found.
 const MAX_TOOL_ROUNDS = 3;
+// ...and within a round, at most this many searches. The model sometimes
+// fans a compound question out into several parallel calls; each one is a
+// paid embedding, so per message the ceiling is MAX_TOOL_ROUNDS + 1
+// completions and MAX_TOOL_ROUNDS * MAX_TOOL_CALLS_PER_ROUND embeddings.
+const MAX_TOOL_CALLS_PER_ROUND = 2;
+
+// Shown when the model, forced to stop searching, still produced no text.
+const NO_ANSWER_REPLY =
+  "I searched your notes but couldn't put together an answer from what I found. " +
+  "Try rephrasing the question, or open the note directly.";
 
 // Not customer-facing: nothing this assistant says is ever sent to a
 // customer automatically. It's a staff scratchpad, kept deliberately
@@ -42,8 +49,8 @@ const SYSTEM_PROMPT =
   "private knowledge notes. Decide per question whether to use it:\n" +
   "- Use it when the answer plausibly lives in something they wrote down: " +
   "their team's policies, procedures, customers, events, budgets, contacts, " +
-  "or anything phrased as \"my notes\", \"our\", \"the team's\", or a specific " +
-  "you could not know.\n" +
+  "anything phrased as \"my notes\", \"our\", or \"the team's\", or any specific " +
+  "detail you could not otherwise know.\n" +
   "- Do not use it for general knowledge (facts about the world, how to " +
   "write something, definitions) or for things already said in this " +
   "conversation -- answer those directly.\n" +
@@ -77,8 +84,10 @@ export type SendMessageResult =
 
 // Runs one search_notes call for the model. Everything the model sent is
 // untrusted: the tool name is checked against the one tool we offer, and
-// the arguments are parsed defensively -- a malformed call gets an error
-// string back for the model to recover from, never an exception.
+// the arguments are parsed defensively. Any problem -- a malformed call, or
+// the search itself failing (embedding outage) -- goes back to the model
+// as an error string it can recover from, so one bad search never sinks
+// the whole reply.
 async function runToolCall(
   call: ToolCall,
   searches: NonNullable<AssistantMessageMetadata["searches"]>
@@ -100,7 +109,15 @@ async function runToolCall(
     return JSON.stringify({ error: "`query` must be a non-empty string." });
   }
 
-  const result = await searchNotes(query);
+  let result;
+  try {
+    result = await searchNotes(query);
+  } catch (err) {
+    console.error("Notes search failed", err);
+    return JSON.stringify({
+      error: "Notes search is unavailable right now. Answer without it and say the notes couldn't be checked.",
+    });
+  }
   searches.push({ query: result.query, matches: result.matches.length });
 
   return JSON.stringify({
@@ -127,27 +144,33 @@ async function runAssistantTurn(
       return { text: completion.text, model: completion.model, metadata: metadataFor(searches) };
     }
 
+    // Only the calls we actually run go into the transcript: every tool
+    // call the assistant message carries must get a result back.
+    const calls = completion.toolCalls.slice(0, MAX_TOOL_CALLS_PER_ROUND);
     transcript.push({
       role: "assistant",
       content: completion.text || null,
-      tool_calls: completion.toolCalls,
+      tool_calls: calls,
     });
-    for (const call of completion.toolCalls) {
-      transcript.push({
-        role: "tool",
-        tool_call_id: call.id,
-        content: await runToolCall(call, searches),
-      });
-    }
+    const results = await Promise.all(calls.map((call) => runToolCall(call, searches)));
+    calls.forEach((call, index) => {
+      transcript.push({ role: "tool", tool_call_id: call.id, content: results[index] });
+    });
   }
 
-  // Out of rounds: no more searching, answer with what was found.
+  // Out of rounds: no more searching, answer with what was found. A model
+  // that still tries to call tools here comes back with empty text (the
+  // calls are dropped), which must not reach the DB's non-empty check.
   const final = await completeChat({
     messages: transcript,
     tools: [SEARCH_NOTES_TOOL],
     toolChoice: "none",
   });
-  return { text: final.text, model: final.model, metadata: metadataFor(searches) };
+  return {
+    text: final.text.trim() || NO_ANSWER_REPLY,
+    model: final.model,
+    metadata: metadataFor(searches),
+  };
 }
 
 function metadataFor(

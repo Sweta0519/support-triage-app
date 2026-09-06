@@ -230,12 +230,13 @@ Supabase semantic-search guide it follows. Read and written with the **caller's 
 | `user_id` | `uuid` | FK -> `profiles.id`, cascade. Denormalised from `notes.owner_id` so the search filters on a plain column. |
 | `chunk_index` | `int` | Position within the note. |
 | `content` | `text` | The chunk text (1-2000 chars). |
-| `embedding` | `extensions.vector(1536)` | HNSW index, `vector_cosine_ops`. **Dimension pinned** -- same rule as `ticket_embeddings`. |
+| `embedding` | `extensions.vector(1536)` | **No vector index on purpose** -- an HNSW scan post-filters the per-user predicate and can drop the user's own rows (see `docs/notes-rag.md`); per-user row counts are small enough for an exact scan via `documents_user_id_idx`. **Dimension pinned** -- same rule as `ticket_embeddings`. |
 | `embedding_model` | `text` | `openai/text-embedding-3-small`; recorded per row so a model change can find rows to re-embed. |
 | `created_at` | `timestamptz` | |
 
-No UPDATE grant: chunks are immutable. Editing a note deletes its chunks and inserts freshly
-embedded ones (`replaceNoteChunks()`), so a stale vector from an earlier version can't linger.
+No UPDATE grant: chunks are immutable. Notes and their chunks are written only through
+`save_note()`, which replaces every chunk in the same transaction as the note row, so a stale
+vector from an earlier version can't linger and a note can't exist without its index.
 
 ## Row Level Security
 
@@ -284,12 +285,13 @@ Two things RLS deliberately does *not* try to do, because it can't:
 | `rate_limit_ticket_insert()`, `rate_limit_comment_insert()` (triggers, `before insert`) | INVOKER | Call `consume_rate_limit()` for the inserting user and raise `rate_limited:<action>` when over -- so the limit applies to direct Data API calls too, not just the app. Skipped for `service_role` (`auth.uid()` is null). |
 | `sync_profile_email()` (trigger, `after update of email` on `auth.users`) | DEFINER | Keeps `profiles.email` equal to the auth email. Users cannot update `profiles.email` themselves. |
 | `match_tickets(vector(1536), int, uuid)`              | INVOKER   | Nearest tickets by cosine distance (`<=>`), returning subject + latest summary only. EXECUTE revoked from PUBLIC; granted to `service_role` only. |
+| `save_note(uuid, text, text, jsonb, text)`           | INVOKER   | Insert (`p_id` null) or update the caller's own note **and** replace its chunks in one transaction. INVOKER so the caller's RLS and column grants on `notes`/`documents` apply inside; owner is `auth.uid()`, never an argument. Returns null when an update matched nothing visible. Granted to `authenticated`. |
 | `match_documents(vector(1536), float, int)`          | INVOKER   | Nearest note chunks by cosine distance above a similarity threshold, **for the calling user only**: filters `user_id = auth.uid()` itself and, being INVOKER, also runs under the `documents` RLS policy. Deliberately takes **no user-id parameter** -- a parameter the client supplies is one it can lie about. Granted to `authenticated`. |
 
 EXECUTE on every callable function above is revoked from `PUBLIC` and granted explicitly:
 `authenticated` for the helpers, `ensure_profile`, `admin_set_role`, `consume_rate_limit`,
-`match_documents` (RLS policies, the rate-limit triggers and notes search run as the caller and
-need them), `service_role` where the triage code calls them, and `service_role` only for
+`save_note`, `match_documents` (RLS policies, the rate-limit triggers and notes run as the caller
+and need them), `service_role` where the triage code calls them, and `service_role` only for
 `match_tickets`. `alter default privileges`
 makes the same true for any function added later.
 
@@ -315,7 +317,7 @@ Enforced for agents by `guard_ticket_update()`; mirrored in `ALLOWED_STATUS_TRAN
 | `add_comment`   | 30    | 10 minutes | `BEFORE INSERT` trigger on `ticket_comments` (database)            |
 | `rerun_triage`  | 5     | 10 minutes | `rerunTriageAction()` via `checkRateLimit()` (no row is inserted) |
 | `assistant_message` | 20 | 10 minutes | `sendMessageAction()` via `checkRateLimit()` -- a paid completion (up to 3 with tool rounds) |
-| `save_note`     | 30    | 10 minutes | `createNoteAction()` / `updateNoteAction()` via `checkRateLimit()` -- a paid embedding call, before any row is written |
+| `save_note`     | 30    | 10 minutes | `createNoteAction()` / `updateNoteAction()` via `checkRateLimit()` -- a paid embedding call, before any row is written (not consumed for a no-op edit or a missing note) |
 
 The insert limits are enforced in the database so that a user calling the Data API directly with
 their session token is limited exactly like the app. The app maps the trigger's

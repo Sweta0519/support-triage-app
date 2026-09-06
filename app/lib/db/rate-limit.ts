@@ -9,6 +9,10 @@ export type RateLimitedAction =
   | "assistant_message"
   | "save_note";
 
+// The one user-facing wording for a tripped limit, shared by every action.
+export const RATE_LIMITED_MESSAGE =
+  "You're doing that too often. Please wait a few minutes and try again.";
+
 export class RateLimitError extends Error {
   constructor(action: RateLimitedAction) {
     super(`Rate limit exceeded for ${action}`);

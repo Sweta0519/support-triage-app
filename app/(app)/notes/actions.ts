@@ -7,20 +7,20 @@ import { requireStaff } from "@/app/lib/auth/session";
 import {
   NOTE_BODY_MAX_LENGTH,
   NOTE_TITLE_MAX_LENGTH,
-  createNote,
   deleteNote,
-  replaceNoteChunks,
-  updateNote,
+  getNote,
+  saveNote,
   type NoteChunk,
 } from "@/app/lib/db/notes";
 import { isUuid } from "@/app/lib/db/tickets";
-import { checkRateLimit, RateLimitError } from "@/app/lib/db/rate-limit";
+import { checkRateLimit, RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/db/rate-limit";
+import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { NOTES_EMBEDDING_MODEL, prepareNoteChunks } from "@/app/lib/ai/notes-rag";
 import { ASSISTANT_NAME } from "@/app/components/assistant/constants";
 
-const RATE_LIMITED_MESSAGE =
-  "You're doing that too often. Please wait a few minutes and try again.";
+const AI_UNAVAILABLE_MESSAGE = `Notes can't be saved right now: the AI service ${ASSISTANT_NAME} uses to index them isn't configured.`;
 const INDEXING_FAILED_MESSAGE = `Couldn't index this note for ${ASSISTANT_NAME} just now. Nothing was saved -- please try again.`;
+const NOTE_GONE_MESSAGE = "This note no longer exists.";
 
 export type NoteFormState = { error?: string; saved?: boolean } | undefined;
 
@@ -44,12 +44,16 @@ function validate(formData: FormData): { error: string } | ValidatedNote {
   return { title, body };
 }
 
-// Embedding happens BEFORE any row is written, so a note is never saved
-// without its chunks: if OpenRouter is down the user gets an error and
-// nothing changes, rather than a note Sage silently can't see.
+// Embedding happens BEFORE anything is written, and the write itself is one
+// transaction (save_note), so a note is never persisted without its chunks:
+// if OpenRouter is down or unconfigured the user gets an error and nothing
+// changes, rather than a note Sage silently can't see.
 async function embedOrExplain(
   note: ValidatedNote
 ): Promise<{ error: string } | { chunks: NoteChunk[] }> {
+  if (!isAiConfigured()) {
+    return { error: AI_UNAVAILABLE_MESSAGE };
+  }
   try {
     await checkRateLimit("save_note");
   } catch (err) {
@@ -60,7 +64,8 @@ async function embedOrExplain(
   }
   try {
     return { chunks: await prepareNoteChunks(note.title, note.body) };
-  } catch {
+  } catch (err) {
+    console.error("Note embedding failed", err);
     return { error: INDEXING_FAILED_MESSAGE };
   }
 }
@@ -69,7 +74,7 @@ export async function createNoteAction(
   _prevState: NoteFormState,
   formData: FormData
 ): Promise<NoteFormState> {
-  const profile = await requireStaff();
+  await requireStaff();
 
   const validated = validate(formData);
   if ("error" in validated) {
@@ -80,8 +85,7 @@ export async function createNoteAction(
     return { error: prepared.error };
   }
 
-  const note = await createNote(profile.id, validated.title, validated.body);
-  await replaceNoteChunks(note.id, profile.id, prepared.chunks, NOTES_EMBEDDING_MODEL);
+  await saveNote(null, validated.title, validated.body, prepared.chunks, NOTES_EMBEDDING_MODEL);
 
   revalidatePath("/notes");
   redirect("/notes");
@@ -91,30 +95,46 @@ export async function updateNoteAction(
   _prevState: NoteFormState,
   formData: FormData
 ): Promise<NoteFormState> {
-  const profile = await requireStaff();
+  await requireStaff();
   const noteId = String(formData.get("noteId") ?? "");
   if (!isUuid(noteId)) {
-    return { error: "This note no longer exists." };
+    return { error: NOTE_GONE_MESSAGE };
   }
 
   const validated = validate(formData);
   if ("error" in validated) {
     return { error: validated.error };
   }
+
+  // One RLS-scoped read before paying for an embedding: a stale tab for a
+  // deleted note (or a URL with someone else's id) gets its answer for
+  // free, and a save that changes nothing skips the re-embed entirely.
+  const existing = await getNote(noteId);
+  if (!existing) {
+    return { error: NOTE_GONE_MESSAGE };
+  }
+  if (existing.title === validated.title && existing.body === validated.body) {
+    return { saved: true };
+  }
+
   const prepared = await embedOrExplain(validated);
   if ("error" in prepared) {
     return { error: prepared.error };
   }
 
-  // RLS scopes the update to the caller's own notes; a null here means
-  // nothing visible matched, never that someone else's note was touched.
-  const note = await updateNote(noteId, validated.title, validated.body);
+  // Old chunks out, freshly embedded ones in, in the same transaction as
+  // the note update -- never stale vectors from the previous version, and
+  // never a note left un-indexed by a failure half-way.
+  const note = await saveNote(
+    noteId,
+    validated.title,
+    validated.body,
+    prepared.chunks,
+    NOTES_EMBEDDING_MODEL
+  );
   if (!note) {
-    return { error: "This note no longer exists." };
+    return { error: NOTE_GONE_MESSAGE };
   }
-  // Old chunks out, freshly embedded ones in -- never stale vectors from
-  // the previous version of the note.
-  await replaceNoteChunks(note.id, profile.id, prepared.chunks, NOTES_EMBEDDING_MODEL);
 
   revalidatePath("/notes");
   revalidatePath(`/notes/${note.id}`);

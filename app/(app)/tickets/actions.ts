@@ -24,14 +24,11 @@ import {
 } from "@/app/lib/db/tickets";
 import { listStaffProfiles } from "@/app/lib/db/profiles";
 import { addComment, COMMENT_MAX_LENGTH } from "@/app/lib/db/comments";
-import { checkRateLimit, RateLimitError } from "@/app/lib/db/rate-limit";
+import { checkRateLimit, RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/db/rate-limit";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { rerunTriage, runTriage } from "@/app/lib/ai/triage";
 import { getLatestTriageResult } from "@/app/lib/db/triage";
 import { publishTicketSummary, revokeShare } from "@/app/lib/db/shares";
-
-const RATE_LIMITED_MESSAGE =
-  "You're doing that too often. Please wait a few minutes and try again.";
 
 export type TicketFormState = { error: string } | undefined;
 

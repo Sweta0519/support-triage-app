@@ -25,6 +25,9 @@ export const NOTES_MATCH_THRESHOLD = 0.3;
 export const NOTES_MATCH_COUNT = 5;
 export const NOTES_QUERY_MAX_LENGTH = 500;
 
+const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
+const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;
+
 export function chunkText(
   text: string,
   size: number = CHUNK_SIZE,
@@ -40,17 +43,25 @@ export function chunkText(
   while (start < normalized.length) {
     let end = Math.min(start + size, normalized.length);
     if (end < normalized.length) {
-      // Prefer to break at a paragraph, sentence or word boundary inside the
-      // last `overlap` characters, so chunks don't cut words in half.
+      // Prefer a paragraph break, then a sentence end, then a line, then a
+      // word boundary -- the first of those (in that order) that falls
+      // inside the overlap window, so chunks stay close to `size` and
+      // never cut a word in half.
       const window = normalized.slice(start, end);
-      const breakAt = Math.max(
+      const minBreak = size - overlap;
+      const breakAt = [
         window.lastIndexOf("\n\n"),
         window.lastIndexOf(". "),
         window.lastIndexOf("\n"),
-        window.lastIndexOf(" ")
-      );
-      if (breakAt > size - overlap) {
+        window.lastIndexOf(" "),
+      ].find((index) => index > minBreak);
+      if (breakAt !== undefined) {
         end = start + breakAt + 1;
+      }
+      // Never split a surrogate pair: an emoji straddling the boundary
+      // would leave a lone surrogate that Postgres rejects as invalid text.
+      if (isHighSurrogate(normalized.charCodeAt(end - 1))) {
+        end += 1;
       }
     }
     const chunk = normalized.slice(start, end).trim();
@@ -63,18 +74,28 @@ export function chunkText(
     // Always move forward, even for a pathological chunk shorter than the
     // overlap, so this can't loop forever.
     start = Math.max(end - overlap, start + 1);
+    // Snap the overlap to the next word boundary so a chunk never opens
+    // mid-word; fall back to the raw offset for a long spaceless run.
+    const nextSpace = normalized.indexOf(" ", start);
+    if (nextSpace !== -1 && nextSpace < end) {
+      start = nextSpace + 1;
+    } else if (isLowSurrogate(normalized.charCodeAt(start))) {
+      start += 1;
+    }
   }
   return chunks;
 }
 
 // The external, failure-prone step of saving a note, done BEFORE the note
-// row is written so a note is never persisted without its index. The title
-// is prepended to the text that gets embedded (not to the stored chunk):
-// a chunk from the middle of a long note otherwise carries no hint of what
-// it is about.
+// row is written so a note is never persisted without its index. Throws
+// (rather than returning no chunks) when the AI isn't configured: a note
+// with no chunks would be one Sage can never find, with nothing to
+// re-index it later. The title is prepended to the text that gets embedded
+// (not to the stored chunk): a chunk from the middle of a long note
+// otherwise carries no hint of what it is about.
 export async function prepareNoteChunks(title: string, body: string): Promise<NoteChunk[]> {
   if (!isAiConfigured()) {
-    return [];
+    throw new Error("OPENROUTER_API_KEY is not configured");
   }
   const pieces = chunkText(body);
   const { vectors } = await embedMany(pieces.map((piece) => `${title}\n\n${piece}`));

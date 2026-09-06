@@ -24,17 +24,23 @@ accounts.
 
 1. Validate title/body (mirrors the DB check constraints) and consume the `save_note` rate limit
    -- a save is a paid embedding call.
-2. **Chunk** the body: ~500 characters with 100 of overlap, preferring to break at a paragraph,
-   sentence, or word boundary inside the overlap window so words are never split. A max-length
-   note (20,000 chars) is ~50 chunks.
+2. **Chunk** the body: ~500 characters with 100 of overlap, breaking at a paragraph, sentence,
+   line or word boundary (in that order of preference) inside the overlap window, snapping the
+   overlap start to a word boundary, and never splitting a surrogate pair (an emoji straddling
+   the cut would otherwise become a lone surrogate Postgres rejects). A max-length note
+   (20,000 chars) is ~50 chunks.
 3. **Embed** every chunk in one request (`embedMany`, `openai/text-embedding-3-small`, 1536
    dims). The embedded text is `title + "\n\n" + chunk` -- a chunk from the middle of a long note
    otherwise carries no hint of what it is about -- but the stored `content` is the bare chunk.
-4. Only now write the `notes` row, then the `documents` rows. Embedding first means a note is
-   never saved without its index: if OpenRouter is down the user gets an error and nothing
-   changes.
-5. **Edit** = same steps, then `replaceNoteChunks()` deletes the note's old chunks and inserts the
-   new ones -- no stale vectors from the previous version. **Delete** cascades through
+4. Only now write, and in **one transaction**: `ticketing.save_note()` (a `SECURITY INVOKER`
+   RPC, so the caller's RLS and column grants apply inside it) inserts or updates the `notes` row,
+   deletes the note's old chunks, and inserts the new ones. Embedding first plus a single
+   transaction means a note can never exist without its index: if OpenRouter is down or
+   unconfigured the user gets an error and nothing changes, and a failure half-way rolls back the
+   note row too.
+5. **Edit** = same steps; the chunk replacement is inside the same transaction, so there are never
+   stale vectors from the previous version and a failed re-embed can't strip a note of the index
+   it had. A save that changes nothing skips the embedding call. **Delete** cascades through
    `documents.note_id`.
 
 ### Asking Sage (`app/components/assistant/actions.ts`)
@@ -45,10 +51,15 @@ Agentic RAG: retrieval is a **tool the model decides to call**, not a step that 
 system prompt + last 20 turns (text only) + new message
   -> completion (tools: search_notes)
      -> no tool call: done, that's the reply
-     -> tool call(s): embed(query) -> match_documents(threshold 0.3, top 5)
-        -> append tool result -> completion again ... (max 3 rounds)
+     -> tool call(s), at most 2 per round: embed(query) -> match_documents(threshold 0.3, top 5)
+        -> append tool results -> completion again ... (max 3 rounds)
   -> if still calling tools after 3 rounds: one final completion with tool_choice "none"
+     (an empty answer there is replaced by a fixed "couldn't put together an answer" reply)
 ```
+
+Per message that bounds the spend at 4 completions and 6 embedding calls. A failing search
+(embedding outage) is returned to the model as an error string rather than thrown, so it can still
+answer and say the notes couldn't be checked.
 
 The lesson's five agentic patterns, as implemented:
 
@@ -89,6 +100,21 @@ realistic notes (Q3 launch logistics, a refund policy, a VPN runbook):
 Relevant pairs land in 0.49-0.76; unrelated pairs stay at or below 0.17. `NOTES_MATCH_THRESHOLD`
 is **0.3** -- well clear of the noise floor with headroom for looser phrasings than these. At 0.75
 two of the three genuinely relevant policy/runbook queries would return nothing.
+
+## Why there is no vector index
+
+The first migration created a global HNSW index on `documents.embedding`; the pre-merge review
+caught why that is wrong for a per-user search and the follow-up migration dropped it. pgvector's
+index scan collects the `ef_search` (default 40) globally nearest rows and only *then* applies the
+`WHERE user_id = auth.uid()` filter -- RLS predicates are post-filtered the same way. Once
+colleagues keep similar notes, the 40 nearest chunks to "refund policy" can all be theirs, and the
+user's own 0.55-similarity chunk is silently dropped: Sage says "nothing in your notes" while the
+note is right there. A two-account test suite never sees this.
+
+Without the index Postgres does an exact scan over the user's rows via `documents_user_id_idx`.
+A staff member has at most a few hundred chunks, so that is both correct and fast. If the corpus
+ever grows to where it isn't, the fix is pgvector >= 0.8's iterative index scans
+(`hnsw.iterative_scan = relaxed_order`), not putting the plain index back.
 
 ## Privacy: why `match_documents` takes no user id
 
@@ -140,8 +166,12 @@ Other notes:
   `ticket_embeddings` and `documents` in one migration -- `embedding_model` is stored per row so
   such a migration can find what to redo.
 - Costs: embedding a max-length note is ~50 chunks × ~150 tokens at ~$0.02/M tokens -- a fraction
-  of a cent. A Sage turn that searches is 2-4 Haiku completions plus 1-3 embedding calls; the
-  `assistant_message` (20/10 min) and `save_note` (30/10 min) rate limits bound it per user.
+  of a cent. A Sage turn that searches is 2-4 Haiku completions plus up to 6 embedding calls; the
+  `assistant_message` (20/10 min) and `save_note` (30/10 min) rate limits bound it per user. On
+  edit, the note is read first (one RLS-scoped select) so a deleted note or an unchanged save
+  never pays for an embedding.
+- The pre-merge review that shaped the follow-up migration and the hardening above is recorded
+  in `docs/reviews/pr-5-code-review.md`.
 - Test hygiene: `tests/reset.setup.ts` deletes both staff test accounts' notes and Sage
   conversations before each run, so a previous run's "Q3 launch" note can't satisfy the current
   run's search and repeated probes don't accumulate.

@@ -16,6 +16,8 @@ export type Note = {
 
 export type NoteSummary = Pick<Note, "id" | "title" | "updated_at"> & { preview: string };
 
+const NOTE_COLUMNS = "id, owner_id, title, body, created_at, updated_at";
+
 // Every function here runs with the caller's own session, so RLS (owner +
 // staff) decides what comes back -- there is no service-role path to notes
 // or their chunks anywhere in the app.
@@ -42,7 +44,7 @@ export async function getNote(id: string): Promise<Note | null> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("notes")
-    .select("id, owner_id, title, body, created_at, updated_at")
+    .select(NOTE_COLUMNS)
     .eq("id", id)
     .maybeSingle();
 
@@ -52,35 +54,39 @@ export async function getNote(id: string): Promise<Note | null> {
   return data;
 }
 
-export async function createNote(ownerId: string, title: string, body: string): Promise<Note> {
+export type NoteChunk = {
+  chunk_index: number;
+  content: string;
+  embedding: number[];
+};
+
+// One transaction for the note row and its chunks (ticketing.save_note):
+// a failure anywhere rolls back everything, so a note can never exist
+// without its index or lose its old chunks to a failed re-embed. `noteId`
+// null creates; otherwise updates the caller's own note, or returns null
+// when nothing visible matched (someone else's note, or a deleted one).
+// The caller has already produced the embeddings -- the failure-prone
+// external step -- before this runs.
+export async function saveNote(
+  noteId: string | null,
+  title: string,
+  body: string,
+  chunks: NoteChunk[],
+  embeddingModel: string
+): Promise<Note | null> {
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("notes")
-    .insert({ owner_id: ownerId, title, body })
-    .select("id, owner_id, title, body, created_at, updated_at")
-    .single();
+  const { data, error } = await supabase.rpc("save_note", {
+    p_id: noteId,
+    p_title: title,
+    p_body: body,
+    p_chunks: chunks,
+    p_embedding_model: embeddingModel,
+  });
 
   if (error) {
     throw new Error(error.message);
   }
-  return data;
-}
-
-// Returns null when no visible row matched (someone else's note, or a
-// deleted one) rather than reporting success for a no-op update.
-export async function updateNote(id: string, title: string, body: string): Promise<Note | null> {
-  const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("notes")
-    .update({ title, body })
-    .eq("id", id)
-    .select("id, owner_id, title, body, created_at, updated_at")
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-  return data;
+  return (data as Note | null) ?? null;
 }
 
 // Chunks go with it via `on delete cascade` on documents.note_id.
@@ -90,47 +96,6 @@ export async function deleteNote(id: string): Promise<void> {
 
   if (error) {
     throw new Error(error.message);
-  }
-}
-
-export type NoteChunk = {
-  chunk_index: number;
-  content: string;
-  embedding: number[];
-};
-
-// Replace, never merge: an edited note's old chunks are deleted first so a
-// shorter new version can't leave stale trailing chunks behind. The caller
-// has already produced the embeddings (the failure-prone external step)
-// before this runs, so the window with no chunks is two quick DB calls.
-export async function replaceNoteChunks(
-  noteId: string,
-  ownerId: string,
-  chunks: NoteChunk[],
-  embeddingModel: string
-): Promise<void> {
-  const supabase = await createServerSupabaseClient();
-
-  const { error: deleteError } = await supabase.from("documents").delete().eq("note_id", noteId);
-  if (deleteError) {
-    throw new Error(deleteError.message);
-  }
-  if (chunks.length === 0) {
-    return;
-  }
-
-  const { error: insertError } = await supabase.from("documents").insert(
-    chunks.map((chunk) => ({
-      note_id: noteId,
-      user_id: ownerId,
-      chunk_index: chunk.chunk_index,
-      content: chunk.content,
-      embedding: chunk.embedding,
-      embedding_model: embeddingModel,
-    }))
-  );
-  if (insertError) {
-    throw new Error(insertError.message);
   }
 }
 
