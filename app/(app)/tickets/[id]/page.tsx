@@ -19,6 +19,7 @@ import { CommentForm } from "./CommentForm";
 import { StaffControls } from "./StaffControls";
 import { TriagePanel } from "./TriagePanel";
 import { SharePanel } from "./SharePanel";
+import { parseQueueFilter, queueFilterLabel, queueHref } from "../../queue/filters";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -34,10 +35,16 @@ function commentAuthorLabel(authorId: string, viewerId: string, customerId: stri
 
 export default async function TicketDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  // `from` is the queue tab the agent arrived from (set by the queue's
+  // ticket links), so the back link can return to that same view.
+  searchParams: Promise<{ from?: string }>;
 }) {
   const { id } = await params;
+  const { from } = await searchParams;
+  const fromFilter = parseQueueFilter(from);
   if (!isUuid(id)) {
     notFound();
   }
@@ -148,10 +155,15 @@ export default async function TicketDetailPage({
     >
       <div>
         <Link
-          href={isStaff ? "/queue" : "/tickets"}
+          href={isStaff ? queueHref(fromFilter) : "/tickets"}
           className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
         >
-          &larr; {isStaff ? "Queue" : "My tickets"}
+          &larr;{" "}
+          {!isStaff
+            ? "My tickets"
+            : fromFilter === "all"
+              ? "Queue"
+              : `Queue: ${queueFilterLabel(fromFilter)}`}
         </Link>
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
           <div>

@@ -48,6 +48,20 @@ test("agent can claim a ticket, move its status, and post an internal note the c
   await expect(agentPage.getByText(noteText)).toBeVisible();
   await expect(agentPage.getByText("Internal note", { exact: true })).toBeVisible();
 
+  // Opening the ticket from the "Mine" tab must lead back to "Mine", not to
+  // the full queue -- the tab travels with the link as ?from=mine.
+  await agentPage.goto("/queue?filter=mine");
+  await agentPage.getByRole("link", { name: new RegExp(subject) }).click();
+  await expect(agentPage).toHaveURL(/\/tickets\/[0-9a-f-]+\?from=mine$/);
+  const backLink = agentPage.getByRole("link", { name: /Queue: Mine/ });
+  await expect(backLink).toHaveAttribute("href", "/queue?filter=mine");
+  await backLink.click();
+  await expect(agentPage).toHaveURL(/\/queue\?filter=mine$/);
+  // Arriving with no tab (a direct link, or from "All") keeps the plain label.
+  await agentPage.goto("/queue");
+  await agentPage.getByRole("link", { name: new RegExp(subject) }).click();
+  await expect(agentPage.getByRole("link", { name: /^← Queue$/ })).toHaveAttribute("href", "/queue");
+
   await agentContext.close();
 
   await page.goto(ticketUrl);
