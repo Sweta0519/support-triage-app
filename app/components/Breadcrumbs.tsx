@@ -1,22 +1,26 @@
 import Link from "next/link";
 
 import { linkClass } from "@/app/lib/styles";
+import { HOME_CRUMB, type CrumbLink } from "@/app/lib/crumbs";
 
-export type CrumbLink = { label: string; href: string };
-
-// Every trail starts at the dashboard, so top-level pages (Queue, Notes) get
-// a one-link trail and deeper pages inherit the same root automatically.
-const HOME: CrumbLink = { label: "Home", href: "/" };
+export type { CrumbLink };
 
 // Generic breadcrumb trail: Home, then every parent as a link, then the
 // current page as plain text (`aria-current="page"`) that fills whatever
-// width is left and truncates with a tooltip. Callers decide the trail
-// below Home; this only renders it.
-export function Breadcrumbs({ parents, current }: { parents: CrumbLink[]; current: string }) {
+// width is left and truncates with a tooltip. Every trail starts at the
+// dashboard, so a top-level page passes just `current`; callers decide the
+// trail below Home, this only renders it.
+export function Breadcrumbs({
+  parents = [],
+  current,
+}: {
+  parents?: CrumbLink[];
+  current: string;
+}) {
   return (
     <nav aria-label="Breadcrumb">
       <ol className="flex flex-nowrap items-center gap-1.5 text-xs">
-        {[HOME, ...parents].map((crumb) => (
+        {[HOME_CRUMB, ...parents].map((crumb) => (
           <li key={crumb.href} className="flex shrink-0 items-center gap-1.5">
             <Link href={crumb.href} className={linkClass}>
               {crumb.label}

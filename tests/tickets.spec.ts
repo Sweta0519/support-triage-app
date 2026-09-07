@@ -13,6 +13,10 @@ test("customer can create a ticket and see it in their list and detail view", as
 
   // Redirects to the new ticket's detail page.
   await expect(page.getByRole("heading", { name: subject })).toBeVisible();
+  // Customer trail: Home / My tickets / <subject>.
+  const crumbs = page.getByRole("navigation", { name: "Breadcrumb" });
+  await expect(crumbs.getByRole("link")).toHaveText(["Home", "My tickets"]);
+  await expect(crumbs.locator('[aria-current="page"]')).toHaveText(subject);
   await expect(page.getByText(body)).toBeVisible();
 
   await page.goto("/tickets");

@@ -1,5 +1,8 @@
 import Link from "next/link";
 
+import { Breadcrumbs } from "@/app/components/Breadcrumbs";
+import { MY_TICKETS_CRUMB } from "@/app/lib/crumbs";
+
 import { requireRole } from "@/app/lib/auth/session";
 import { listMyTickets } from "@/app/lib/db/tickets";
 import { Badge } from "@/app/components/Badge";
@@ -13,7 +16,10 @@ export default async function TicketsPage() {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">My tickets</h1>
+        <div>
+          <Breadcrumbs current={MY_TICKETS_CRUMB.label} />
+          <h1 className="mt-2 text-2xl font-semibold text-black dark:text-zinc-50">My tickets</h1>
+        </div>
         <Link href="/tickets/new" className={primaryButtonClass}>
           New ticket
         </Link>

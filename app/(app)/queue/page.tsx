@@ -15,7 +15,6 @@ import { claimTicketAction } from "../tickets/actions";
 import {
   QUEUE_FILTERS,
   parseQueueFilter,
-  queueBreadcrumb,
   queueHref,
   ticketHref,
   type QueueFilterKey,
@@ -45,15 +44,10 @@ export default async function QueuePage({
     return true;
   });
 
-  // "Home / Queue" on the All tab; "Home / Queue / Mine" when a tab is
-  // active, so the tab is named and the full queue is one click away.
-  const trail = queueBreadcrumb(filter);
-  const current = trail[trail.length - 1].label;
-
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-8">
       <div>
-        <Breadcrumbs parents={trail.slice(0, -1)} current={current} />
+        <Breadcrumbs current="Queue" />
         <h1 className="mt-2 text-2xl font-semibold text-black dark:text-zinc-50">Queue</h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-500">
           Tickets assigned to you or waiting to be claimed.
