@@ -36,7 +36,7 @@ test("agent can claim a ticket, move its status, and post an internal note the c
   await expect(agentPage.getByRole("heading", { name: subject })).toBeVisible();
   // Arriving from "All" (no ?from): the breadcrumb is just Queue / <ticket>.
   const crumbs = agentPage.getByRole("navigation", { name: "Breadcrumb" });
-  await expect(crumbs.getByRole("link")).toHaveText(["Queue"]);
+  await expect(crumbs.getByRole("link")).toHaveText(["Home", "Queue"]);
   await expect(crumbs.getByRole("link", { name: "Queue", exact: true })).toHaveAttribute("href", "/queue");
   await expect(crumbs.getByText(subject)).toBeVisible();
   await agentPage.getByRole("button", { name: "Claim ticket" }).click();
@@ -56,9 +56,12 @@ test("agent can claim a ticket, move its status, and post an internal note the c
   // Opening the ticket from the "Mine" tab adds that tab to the breadcrumb --
   // it travels with the link as ?from=mine -- so one click returns there.
   await agentPage.goto("/queue?filter=mine");
+  // The list page names the active tab too: Home / Queue / Mine.
+  await expect(crumbs.getByRole("link")).toHaveText(["Home", "Queue"]);
+  await expect(crumbs.getByText("Mine")).toBeVisible();
   await agentPage.getByRole("link", { name: new RegExp(subject) }).click();
   await expect(agentPage).toHaveURL(/\/tickets\/[0-9a-f-]+\?from=mine$/);
-  await expect(crumbs.getByRole("link")).toHaveText(["Queue", "Mine"]);
+  await expect(crumbs.getByRole("link")).toHaveText(["Home", "Queue", "Mine"]);
   await expect(crumbs.getByRole("link", { name: "Mine", exact: true })).toHaveAttribute(
     "href",
     "/queue?filter=mine"

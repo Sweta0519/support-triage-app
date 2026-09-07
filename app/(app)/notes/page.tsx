@@ -5,6 +5,7 @@ import { listNotes } from "@/app/lib/db/notes";
 import { formatRelativeTime } from "@/app/lib/format";
 import { primaryButtonClass } from "@/app/lib/styles";
 import { ASSISTANT_NAME } from "@/app/components/assistant/constants";
+import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 
 export default async function NotesPage() {
   await requireStaff();
@@ -14,7 +15,8 @@ export default async function NotesPage() {
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-8">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Notes</h1>
+          <Breadcrumbs parents={[]} current="Notes" />
+          <h1 className="mt-2 text-2xl font-semibold text-black dark:text-zinc-50">Notes</h1>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-500">
             Your private knowledge notes -- runbooks, policies, customer context. {ASSISTANT_NAME}{" "}
             searches these when you ask it something they might answer. Nobody else can see them.
