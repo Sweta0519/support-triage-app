@@ -12,12 +12,18 @@ import {
 import { formatRelativeTime } from "@/app/lib/format";
 import { primaryButtonClass } from "@/app/lib/styles";
 import { claimTicketAction } from "../tickets/actions";
-import { QUEUE_FILTERS, parseQueueFilter, queueHref, type QueueFilterKey } from "./filters";
+import {
+  QUEUE_FILTERS,
+  parseQueueFilter,
+  queueHref,
+  ticketHref,
+  type QueueFilterKey,
+} from "@/app/lib/queue-filters";
 
 export default async function QueuePage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string }>;
+  searchParams: Promise<{ filter?: string | string[] }>;
 }) {
   const profile = await requireStaff();
   const tickets = await listQueueTickets(profile.id, profile.role);
@@ -104,7 +110,7 @@ export default async function QueuePage({
                 <Link
                   // Carries the active tab along so the ticket page's back
                   // link returns here, not to the full queue.
-                  href={filter === "all" ? `/tickets/${ticket.id}` : `/tickets/${ticket.id}?from=${filter}`}
+                  href={ticketHref(ticket.id, filter)}
                   className="flex flex-1 flex-col gap-2 px-4 py-3 transition-colors hover:bg-indigo-50/40 sm:flex-row sm:items-center sm:justify-between sm:gap-4 dark:hover:bg-indigo-950/20"
                 >
                   <div className="flex min-w-0 flex-col gap-0.5">

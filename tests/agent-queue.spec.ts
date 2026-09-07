@@ -34,6 +34,8 @@ test("agent can claim a ticket, move its status, and post an internal note the c
 
   await queueRow.click();
   await expect(agentPage.getByRole("heading", { name: subject })).toBeVisible();
+  // Arriving from "All" (no ?from) keeps the plain back link.
+  await expect(agentPage.getByRole("link", { name: /^← Queue$/ })).toHaveAttribute("href", "/queue");
   await agentPage.getByRole("button", { name: "Claim ticket" }).click();
   await expect(agentPage.getByText("Assigned to you")).toBeVisible();
 
@@ -53,14 +55,10 @@ test("agent can claim a ticket, move its status, and post an internal note the c
   await agentPage.goto("/queue?filter=mine");
   await agentPage.getByRole("link", { name: new RegExp(subject) }).click();
   await expect(agentPage).toHaveURL(/\/tickets\/[0-9a-f-]+\?from=mine$/);
-  const backLink = agentPage.getByRole("link", { name: /Queue: Mine/ });
-  await expect(backLink).toHaveAttribute("href", "/queue?filter=mine");
-  await backLink.click();
-  await expect(agentPage).toHaveURL(/\/queue\?filter=mine$/);
-  // Arriving with no tab (a direct link, or from "All") keeps the plain label.
-  await agentPage.goto("/queue");
-  await agentPage.getByRole("link", { name: new RegExp(subject) }).click();
-  await expect(agentPage.getByRole("link", { name: /^← Queue$/ })).toHaveAttribute("href", "/queue");
+  await expect(agentPage.getByRole("link", { name: /Queue: Mine/ })).toHaveAttribute(
+    "href",
+    "/queue?filter=mine"
+  );
 
   await agentContext.close();
 
