@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import Link from "next/link";
 
 import { signUpAction } from "@/app/lib/auth/actions";
-import { inputClass, primaryButtonClass } from "@/app/lib/styles";
+import { inputClass, linkClass, primaryButtonClass } from "@/app/lib/styles";
 
 export function SignupForm() {
   const [state, action, pending] = useActionState(signUpAction, undefined);
@@ -31,7 +31,7 @@ export function SignupForm() {
       </button>
       <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
         Already have an account?{" "}
-        <Link href="/login" className="font-medium text-indigo-600 hover:underline dark:text-indigo-400">
+        <Link href="/login" className={linkClass}>
           Sign in
         </Link>
       </p>

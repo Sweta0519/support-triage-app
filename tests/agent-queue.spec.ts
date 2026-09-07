@@ -36,8 +36,8 @@ test("agent can claim a ticket, move its status, and post an internal note the c
   await expect(agentPage.getByRole("heading", { name: subject })).toBeVisible();
   // Arriving from "All" (no ?from): the breadcrumb is just Queue / <ticket>.
   const crumbs = agentPage.getByRole("navigation", { name: "Breadcrumb" });
-  await expect(crumbs.getByRole("link", { name: "Queue" })).toHaveAttribute("href", "/queue");
-  await expect(crumbs.getByRole("link", { name: "Mine" })).toHaveCount(0);
+  await expect(crumbs.getByRole("link")).toHaveText(["Queue"]);
+  await expect(crumbs.getByRole("link", { name: "Queue", exact: true })).toHaveAttribute("href", "/queue");
   await expect(crumbs.getByText(subject)).toBeVisible();
   await agentPage.getByRole("button", { name: "Claim ticket" }).click();
   await expect(agentPage.getByText("Assigned to you")).toBeVisible();
@@ -58,8 +58,11 @@ test("agent can claim a ticket, move its status, and post an internal note the c
   await agentPage.goto("/queue?filter=mine");
   await agentPage.getByRole("link", { name: new RegExp(subject) }).click();
   await expect(agentPage).toHaveURL(/\/tickets\/[0-9a-f-]+\?from=mine$/);
-  await expect(crumbs.getByRole("link", { name: "Queue" })).toHaveAttribute("href", "/queue");
-  await expect(crumbs.getByRole("link", { name: "Mine" })).toHaveAttribute("href", "/queue?filter=mine");
+  await expect(crumbs.getByRole("link")).toHaveText(["Queue", "Mine"]);
+  await expect(crumbs.getByRole("link", { name: "Mine", exact: true })).toHaveAttribute(
+    "href",
+    "/queue?filter=mine"
+  );
 
   await agentContext.close();
 

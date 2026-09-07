@@ -39,7 +39,7 @@ export default async function TicketDetailPage({
 }: {
   params: Promise<{ id: string }>;
   // `from` is the queue tab the agent arrived from (set by the queue's
-  // ticket links), so the back link can return to that same view.
+  // ticket links), so the breadcrumb can lead back to that same view.
   searchParams: Promise<{ from?: string | string[] }>;
 }) {
   const { id } = await params;
@@ -151,17 +151,14 @@ export default async function TicketDetailPage({
 
   // Staff trace back through the queue tab they came from; customers
   // through their own list. The ticket itself is the current page.
-  const crumbs = [
-    ...(isStaff ? queueBreadcrumb(fromFilter) : [{ label: "My tickets", href: "/tickets" }]),
-    { label: ticket.subject },
-  ];
+  const parents = isStaff ? queueBreadcrumb(fromFilter) : [{ label: "My tickets", href: "/tickets" }];
 
   return (
     <div
       className={`mx-auto flex w-full flex-1 flex-col gap-6 p-8 ${isStaff ? "max-w-5xl" : "max-w-2xl"}`}
     >
       <div>
-        <Breadcrumbs items={crumbs} />
+        <Breadcrumbs parents={parents} current={ticket.subject} />
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">

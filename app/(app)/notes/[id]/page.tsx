@@ -27,7 +27,7 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-8">
       <div className="flex items-end justify-between gap-4">
         <div>
-          <Breadcrumbs items={[{ label: "Notes", href: "/notes" }, { label: note.title }]} />
+          <Breadcrumbs parents={[{ label: "Notes", href: "/notes" }]} current={note.title} />
           <h1 className="mt-2 text-2xl font-semibold text-black dark:text-zinc-50">Edit note</h1>
           <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-600">
             Last saved {formatRelativeTime(note.updated_at)}
