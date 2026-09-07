@@ -10,3 +10,7 @@ export const primaryButtonClass =
 
 export const secondaryButtonClass =
   "rounded-full border border-black/[.08] px-5 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-black/[.05] disabled:opacity-50 dark:border-white/[.145] dark:text-zinc-300 dark:hover:bg-white/[.06]";
+
+// Inline text links (breadcrumbs, "already have an account?", etc.).
+export const linkClass =
+  "font-medium text-indigo-600 hover:underline dark:text-indigo-400";

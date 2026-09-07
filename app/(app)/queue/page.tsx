@@ -108,8 +108,8 @@ export default async function QueuePage({
                   className={`w-1 shrink-0 ${priorityBarClasses(ticket.triage_state?.priority ?? null)}`}
                 />
                 <Link
-                  // Carries the active tab along so the ticket page's back
-                  // link returns here, not to the full queue.
+                  // Carries the active tab along so the ticket page's
+                  // breadcrumb leads back here, not just to the full queue.
                   href={ticketHref(ticket.id, filter)}
                   className="flex flex-1 flex-col gap-2 px-4 py-3 transition-colors hover:bg-indigo-50/40 sm:flex-row sm:items-center sm:justify-between sm:gap-4 dark:hover:bg-indigo-950/20"
                 >
