@@ -9,7 +9,7 @@ might start replying.
 **Live:** https://support-triage-app-one.vercel.app (requires sign-in; open it in an incognito
 window and you land on the login page, never on data).
 
-![Agent view of a ticket with the AI triage panel](docs/screenshots/ticket-triage.png)
+![Agent view of a ticket opened from the Unassigned queue tab, with the breadcrumb trail and the AI triage panel](docs/screenshots/ticket-triage.png)
 
 ## Why the AI feature is the core, not a bolt-on
 
@@ -48,7 +48,7 @@ notes** -- runbooks, policies, customer context written under **Notes** -- to an
   calling session's `auth.uid()` and runs under RLS, so there is no request that returns another
   staff member's chunks -- verified by a two-account test that also calls the RPC directly.
 
-![Sage answering from a staff member's note and citing it](docs/screenshots/sage-notes.png)
+![The Notes page with Sage answering from a staff member's note and citing it](docs/screenshots/sage-notes.png)
 
 Design and calibration notes: `docs/notes-rag.md`.
 
