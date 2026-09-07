@@ -12,29 +12,26 @@ import {
 import { formatRelativeTime } from "@/app/lib/format";
 import { primaryButtonClass } from "@/app/lib/styles";
 import { claimTicketAction } from "../tickets/actions";
-
-const FILTERS = [
-  { key: "all", label: "All" },
-  { key: "unassigned", label: "Unassigned" },
-  { key: "mine", label: "Mine" },
-] as const;
-
-type FilterKey = (typeof FILTERS)[number]["key"];
+import {
+  QUEUE_FILTERS,
+  parseQueueFilter,
+  queueHref,
+  ticketHref,
+  type QueueFilterKey,
+} from "@/app/lib/queue-filters";
 
 export default async function QueuePage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string }>;
+  searchParams: Promise<{ filter?: string | string[] }>;
 }) {
   const profile = await requireStaff();
   const tickets = await listQueueTickets(profile.id, profile.role);
 
   const { filter: rawFilter } = await searchParams;
-  const filter: FilterKey = FILTERS.some((f) => f.key === rawFilter)
-    ? (rawFilter as FilterKey)
-    : "all";
+  const filter = parseQueueFilter(rawFilter);
 
-  const counts: Record<FilterKey, number> = {
+  const counts: Record<QueueFilterKey, number> = {
     all: tickets.length,
     unassigned: tickets.filter((t) => t.assignee_id === null).length,
     mine: tickets.filter((t) => t.assignee_id === profile.id).length,
@@ -56,12 +53,12 @@ export default async function QueuePage({
       </div>
 
       <div className="flex gap-1 border-b border-black/[.08] dark:border-white/[.145]">
-        {FILTERS.map(({ key, label }) => {
+        {QUEUE_FILTERS.map(({ key, label }) => {
           const active = key === filter;
           return (
             <Link
               key={key}
-              href={key === "all" ? "/queue" : `/queue?filter=${key}`}
+              href={queueHref(key)}
               className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
                 active
                   ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400"
@@ -111,7 +108,9 @@ export default async function QueuePage({
                   className={`w-1 shrink-0 ${priorityBarClasses(ticket.triage_state?.priority ?? null)}`}
                 />
                 <Link
-                  href={`/tickets/${ticket.id}`}
+                  // Carries the active tab along so the ticket page's back
+                  // link returns here, not to the full queue.
+                  href={ticketHref(ticket.id, filter)}
                   className="flex flex-1 flex-col gap-2 px-4 py-3 transition-colors hover:bg-indigo-50/40 sm:flex-row sm:items-center sm:justify-between sm:gap-4 dark:hover:bg-indigo-950/20"
                 >
                   <div className="flex min-w-0 flex-col gap-0.5">

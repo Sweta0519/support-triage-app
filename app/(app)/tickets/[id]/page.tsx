@@ -19,6 +19,7 @@ import { CommentForm } from "./CommentForm";
 import { StaffControls } from "./StaffControls";
 import { TriagePanel } from "./TriagePanel";
 import { SharePanel } from "./SharePanel";
+import { parseQueueFilter, queueBackLink } from "@/app/lib/queue-filters";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -34,10 +35,16 @@ function commentAuthorLabel(authorId: string, viewerId: string, customerId: stri
 
 export default async function TicketDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  // `from` is the queue tab the agent arrived from (set by the queue's
+  // ticket links), so the back link can return to that same view.
+  searchParams: Promise<{ from?: string | string[] }>;
 }) {
   const { id } = await params;
+  const { from } = await searchParams;
+  const fromFilter = parseQueueFilter(from);
   if (!isUuid(id)) {
     notFound();
   }
@@ -142,16 +149,19 @@ export default async function TicketDetailPage({
     </div>
   );
 
+  // Staff go back to the queue tab they came from; customers to their list.
+  const back = isStaff ? queueBackLink(fromFilter) : { href: "/tickets", label: "My tickets" };
+
   return (
     <div
       className={`mx-auto flex w-full flex-1 flex-col gap-6 p-8 ${isStaff ? "max-w-5xl" : "max-w-2xl"}`}
     >
       <div>
         <Link
-          href={isStaff ? "/queue" : "/tickets"}
+          href={back.href}
           className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
         >
-          &larr; {isStaff ? "Queue" : "My tickets"}
+          &larr; {back.label}
         </Link>
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -194,6 +204,7 @@ export default async function TicketDetailPage({
               ticketId={ticket.id}
               triageStatus={ticket.triage_state?.triage_status ?? "pending"}
               triage={triage}
+              fromFilter={fromFilter}
             />
             <SharePanel
               ticketId={ticket.id}

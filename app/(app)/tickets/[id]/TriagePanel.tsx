@@ -6,6 +6,7 @@ import { formatCostUsd } from "@/app/lib/format";
 import { Badge } from "@/app/components/Badge";
 import { priorityBadgeClasses } from "@/app/lib/badges";
 import { secondaryButtonClass } from "@/app/lib/styles";
+import { ticketHref, type QueueFilterKey } from "@/app/lib/queue-filters";
 
 const STATUS_COPY: Record<string, string> = {
   pending: "Queued -- the assessment usually lands within a few seconds. Refresh to check.",
@@ -17,10 +18,14 @@ export function TriagePanel({
   ticketId,
   triageStatus,
   triage,
+  fromFilter,
 }: {
   ticketId: string;
   triageStatus: string;
   triage: TriageResult | null;
+  // The queue tab the agent arrived from, carried onto the duplicate/related
+  // links so hopping between tickets doesn't lose the way back.
+  fromFilter: QueueFilterKey;
 }) {
   const canRerun = triageStatus === "completed" || triageStatus === "failed";
 
@@ -84,7 +89,7 @@ export function TriagePanel({
           {triage.duplicate_of ? (
             <p className="text-xs text-zinc-600 dark:text-zinc-400">
               Likely duplicate of{" "}
-              <Link href={`/tickets/${triage.duplicate_of}`} className="underline">
+              <Link href={ticketHref(triage.duplicate_of, fromFilter)} className="underline">
                 {triage.duplicate_of.slice(0, 8)}
               </Link>
             </p>
@@ -93,7 +98,7 @@ export function TriagePanel({
             <p className="text-xs text-zinc-600 dark:text-zinc-400">
               Related:{" "}
               {triage.related_ticket_ids.map((id) => (
-                <Link key={id} href={`/tickets/${id}`} className="mr-2 underline">
+                <Link key={id} href={ticketHref(id, fromFilter)} className="mr-2 underline">
                   {id.slice(0, 8)}
                 </Link>
               ))}
