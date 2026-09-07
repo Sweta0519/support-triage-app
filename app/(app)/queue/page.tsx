@@ -19,6 +19,7 @@ import {
   ticketHref,
   type QueueFilterKey,
 } from "@/app/lib/queue-filters";
+import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 
 export default async function QueuePage({
   searchParams,
@@ -46,7 +47,8 @@ export default async function QueuePage({
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-8">
       <div>
-        <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Queue</h1>
+        <Breadcrumbs current="Queue" />
+        <h1 className="mt-2 text-2xl font-semibold text-black dark:text-zinc-50">Queue</h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-500">
           Tickets assigned to you or waiting to be claimed.
         </p>

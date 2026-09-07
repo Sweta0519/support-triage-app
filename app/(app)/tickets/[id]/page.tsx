@@ -20,6 +20,7 @@ import { TriagePanel } from "./TriagePanel";
 import { SharePanel } from "./SharePanel";
 import { parseQueueFilter, queueBreadcrumb } from "@/app/lib/queue-filters";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
+import { MY_TICKETS_CRUMB } from "@/app/lib/crumbs";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -151,7 +152,7 @@ export default async function TicketDetailPage({
 
   // Staff trace back through the queue tab they came from; customers
   // through their own list. The ticket itself is the current page.
-  const parents = isStaff ? queueBreadcrumb(fromFilter) : [{ label: "My tickets", href: "/tickets" }];
+  const parents = isStaff ? queueBreadcrumb(fromFilter) : [MY_TICKETS_CRUMB];
 
   return (
     <div

@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 import { requireAdmin } from "@/app/lib/auth/session";
+import { Breadcrumbs } from "@/app/components/Breadcrumbs";
+import { ADMIN_CRUMB } from "@/app/lib/crumbs";
 
 const navLinkClasses =
   "rounded-full px-3 py-1.5 text-sm font-medium text-zinc-600 transition-colors hover:bg-black/[.05] hover:text-black dark:text-zinc-400 dark:hover:bg-white/[.06] dark:hover:text-zinc-50";
@@ -19,7 +21,8 @@ export default async function AdminLayout({
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-8">
       <div>
-        <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Admin</h1>
+        <Breadcrumbs current={ADMIN_CRUMB.label} />
+        <h1 className="mt-2 text-2xl font-semibold text-black dark:text-zinc-50">Admin</h1>
         <nav className="mt-3 flex items-center gap-1">
           <Link href="/admin" className={navLinkClasses}>
             Overview
