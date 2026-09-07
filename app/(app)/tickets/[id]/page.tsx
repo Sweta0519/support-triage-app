@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireProfile } from "@/app/lib/auth/session";
@@ -19,7 +18,8 @@ import { CommentForm } from "./CommentForm";
 import { StaffControls } from "./StaffControls";
 import { TriagePanel } from "./TriagePanel";
 import { SharePanel } from "./SharePanel";
-import { parseQueueFilter, queueBackLink } from "@/app/lib/queue-filters";
+import { parseQueueFilter, queueBreadcrumb } from "@/app/lib/queue-filters";
+import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -149,20 +149,19 @@ export default async function TicketDetailPage({
     </div>
   );
 
-  // Staff go back to the queue tab they came from; customers to their list.
-  const back = isStaff ? queueBackLink(fromFilter) : { href: "/tickets", label: "My tickets" };
+  // Staff trace back through the queue tab they came from; customers
+  // through their own list. The ticket itself is the current page.
+  const crumbs = [
+    ...(isStaff ? queueBreadcrumb(fromFilter) : [{ label: "My tickets", href: "/tickets" }]),
+    { label: ticket.subject },
+  ];
 
   return (
     <div
       className={`mx-auto flex w-full flex-1 flex-col gap-6 p-8 ${isStaff ? "max-w-5xl" : "max-w-2xl"}`}
     >
       <div>
-        <Link
-          href={back.href}
-          className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
-        >
-          &larr; {back.label}
-        </Link>
+        <Breadcrumbs items={crumbs} />
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">

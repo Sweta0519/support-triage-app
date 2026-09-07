@@ -11,12 +11,6 @@ export const QUEUE_FILTERS = [
 
 export type QueueFilterKey = (typeof QUEUE_FILTERS)[number]["key"];
 
-const BACK_LABELS: Record<QueueFilterKey, string> = {
-  all: "Queue",
-  unassigned: "Queue: Unassigned",
-  mine: "Queue: Mine",
-};
-
 // Next hands a repeated query param over as an array; anything unrecognised
 // (a hand-edited URL, a stale link) falls back to the full queue rather
 // than erroring.
@@ -35,7 +29,15 @@ export function ticketHref(ticketId: string, filter: QueueFilterKey): string {
   return filter === "all" ? `/tickets/${ticketId}` : `/tickets/${ticketId}?from=${filter}`;
 }
 
-// The ticket page's back link, for staff.
-export function queueBackLink(filter: QueueFilterKey): { href: string; label: string } {
-  return { href: queueHref(filter), label: BACK_LABELS[filter] };
+// The queue half of a ticket page's breadcrumb: "Queue" always, then the
+// tab the agent came from when it wasn't the default "All".
+export function queueBreadcrumb(filter: QueueFilterKey): { label: string; href: string }[] {
+  const crumbs = [{ label: "Queue", href: queueHref("all") }];
+  if (filter !== "all") {
+    const tab = QUEUE_FILTERS.find((f) => f.key === filter);
+    if (tab) {
+      crumbs.push({ label: tab.label, href: queueHref(filter) });
+    }
+  }
+  return crumbs;
 }
