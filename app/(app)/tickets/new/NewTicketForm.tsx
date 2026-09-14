@@ -1,9 +1,10 @@
 "use client";
 
 import { useActionState } from "react";
+import Link from "next/link";
 
 import { createTicketAction } from "../actions";
-import { inputClass, primaryButtonClass } from "@/app/lib/styles";
+import { inputClass, linkClass, primaryButtonClass } from "@/app/lib/styles";
 
 export function NewTicketForm() {
   const [state, action, pending] = useActionState(createTicketAction, undefined);
@@ -28,6 +29,14 @@ export function NewTicketForm() {
           rows={6}
           className={inputClass}
         />
+        <p className="text-xs text-zinc-500 dark:text-zinc-500">
+          An AI model reads your ticket to suggest a category and priority to our team. Include
+          only the personal details the issue needs. See the{" "}
+          <Link href="/privacy" className={linkClass}>
+            privacy policy
+          </Link>
+          .
+        </p>
       </div>
       {state?.error ? (
         <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>
