@@ -1,3 +1,7 @@
+import Link from "next/link";
+
+import { linkClass } from "@/app/lib/styles";
+
 export default function AuthLayout({
   children,
 }: {
@@ -15,6 +19,9 @@ export default function AuthLayout({
         <div className="w-full rounded-2xl border border-black/[.08] bg-white p-8 shadow-sm dark:border-white/[.08] dark:bg-zinc-950">
           {children}
         </div>
+        <Link href="/privacy" className={`text-xs ${linkClass}`}>
+          Privacy policy
+        </Link>
       </div>
     </div>
   );
