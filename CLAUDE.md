@@ -115,6 +115,10 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
 - Commit messages are descriptive (what changed and why) -- never "updates" or "stuff".
 - Run a third-party review command (`/full-review` or `/refactor-clean`) and the
   `ai-code-reviewer` subagent on a PR's diff before merging it.
+- Review findings always go on the PR as inline review comments (one comment per finding, on
+  the relevant file and line), not only in the terminal. When a finding is fixed, reply on its
+  comment thread saying what changed and in which commit, then mark the thread resolved. A
+  finding that is deliberately not fixed gets a reply explaining why.
 
 ## Do not
 
