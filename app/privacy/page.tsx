@@ -134,9 +134,9 @@ export default function PrivacyPolicyPage() {
                 <tr>
                   <td className={cell}>Session cookie</td>
                   <td className={cell}>
-                    A single strictly-necessary cookie keeps you signed in. It is HTTP-only, secure,
-                    and is not used for tracking. Because it is essential, no cookie banner is
-                    needed and there are no optional cookies to accept or reject.
+                    One or more strictly-necessary session cookies keep you signed in. They are
+                    HTTP-only, secure, and not used for tracking. Because they are essential, no
+                    cookie banner is needed and there are no optional cookies to accept or reject.
                   </td>
                   <td className={cell}>Contract.</td>
                 </tr>
@@ -183,8 +183,8 @@ export default function PrivacyPolicyPage() {
           <p className={body}>
             When a new ticket is triaged, the subjects and AI summaries of up to five similar
             existing tickets are also included in the model request so it can spot duplicates.
-            Those come from other customers&apos; tickets; ticket descriptions are never included,
-            and the result is visible only to staff.
+            Those may be other customers&apos; tickets or your own; ticket descriptions are never
+            included, and the result is visible only to staff.
           </p>
           <p className={body}>
             Support staff can create a public status link for a ticket. That link shows the
@@ -203,8 +203,9 @@ export default function PrivacyPolicyPage() {
             </li>
             <li>Public share links expire 30 days after they are created.</li>
             <li>
-              IP addresses used for rate limiting are cleared roughly one day after the last
-              request.
+              IP addresses used for rate limiting are deleted about a day after they are
+              recorded. The clean-up runs opportunistically, so the exact moment varies by a few
+              requests.
             </li>
             <li>Staff notes and assistant chats are kept until the staff member deletes them.</li>
           </ul>
