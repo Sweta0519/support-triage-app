@@ -28,7 +28,12 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 // ticket's own customer_id and the viewer's id, that's enough to label every
 // comment without an extra query (RLS guarantees the only possible authors
 // are the customer and staff).
-function commentAuthorLabel(authorId: string, viewerId: string, customerId: string): string {
+function commentAuthorLabel(
+  authorId: string | null,
+  viewerId: string,
+  customerId: string
+): string {
+  if (authorId === null) return "Deleted account";
   if (authorId === viewerId) return "You";
   if (authorId === customerId) return "Customer";
   return "Support team";

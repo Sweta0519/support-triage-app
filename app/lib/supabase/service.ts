@@ -6,7 +6,8 @@ import { createClient } from "@supabase/supabase-js";
 // separate from the user-scoped clients in app/lib/auth/clients.ts, so the
 // only way to reach the service-role key is to import this module on
 // purpose. Only app/lib/ai/, the service-role functions in
-// app/lib/db/triage.ts, and the public-token lookup in app/lib/db/shares.ts
+// app/lib/db/triage.ts, the public-token lookup in app/lib/db/shares.ts, and
+// the self-deletion in app/lib/db/account.ts (auth.admin.deleteUser needs it)
 // may import it. Never pass a client-supplied ticket id into a service-role
 // read without the caller having already proven it may see that ticket --
 // the one exception is shares.ts's token-based public read, where an

@@ -41,7 +41,7 @@ export default function PrivacyPolicyPage() {
           <p className={body}>
             This page explains what personal data Support Triage collects, why it is allowed to
             hold it, who else receives it, how long it is kept, and what you can ask us to do with
-            it. It describes this app as it is actually built. Last updated 14 September 2026.
+            it. It describes this app as it is actually built. Last updated 15 September 2026.
           </p>
         </header>
 
@@ -198,8 +198,8 @@ export default function PrivacyPolicyPage() {
           <ul className={list}>
             <li>
               Your account, tickets, comments, ticket history, and AI triage output are kept for as
-              long as your account exists. The app does not yet delete them automatically after a
-              fixed period.
+              long as your account exists, and are removed when you delete it. The app does not
+              delete them automatically after a fixed period.
             </li>
             <li>Public share links expire 30 days after they are created.</li>
             <li>
@@ -219,11 +219,22 @@ export default function PrivacyPolicyPage() {
             or object to how it is used, and complain to your data protection authority.
           </p>
           <p className={body}>
-            The app does not yet have self-service buttons for exporting or deleting your account.
-            Until it does, send a request to the contact above from the email address on your
-            account. We will send you a copy of your data or delete your account and everything
-            tied to it within one month. Note that your sign-in identity may be shared with another
-            app run by the same team; a deletion request removes it from both.
+            Both are self-service on your{" "}
+            <Link href="/account" className={linkClass}>
+              account page
+            </Link>
+            . &quot;Download my data&quot; gives you a JSON file of everything you can see in the
+            app: your profile, your tickets with their comments and history, and, for staff, your
+            notes, assistant chats and ticket actions. AI triage suggestions about your tickets are
+            internal staff notes and are not in the file; ask the contact above if you want them.
+          </p>
+          <p className={body}>
+            &quot;Delete my account&quot; permanently removes your sign-in, your profile, your
+            tickets and their comments, and your notes and chats. Replies you wrote on other
+            people&apos;s tickets are kept without your name so the other party&apos;s record stays
+            intact. Your sign-in identity is shared with another app run by the same team, so
+            deleting it here deletes it there too. Anything else, including correction or
+            objection, goes to the contact above and is answered within one month.
           </p>
         </section>
 

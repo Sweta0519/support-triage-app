@@ -106,7 +106,7 @@ Thread on a ticket. **Immutable** -- there is no update or delete policy.
 |---------------|---------------|-------------------------------------------------------------------|
 | `id`          | `uuid`        | Primary key.                                                      |
 | `ticket_id`   | `uuid`        | FK -> `tickets.id`, `on delete cascade`.                          |
-| `author_id`   | `uuid`        | FK -> `auth.users.id`, `on delete cascade`. Must equal `auth.uid()` on insert. |
+| `author_id`   | `uuid`, nullable | FK -> `auth.users.id`, `on delete set null` (was `cascade`): a staff member deleting their account leaves their replies on customers' tickets, unattributed. Must equal `auth.uid()` on insert. |
 | `body`        | `text`        |                                                                   |
 | `is_internal` | `boolean`     | Default `false`. Staff-only notes the customer never sees.        |
 | `created_at`  | `timestamptz` | Default `now()`.                                                  |
@@ -280,6 +280,8 @@ Two things RLS deliberately does *not* try to do, because it can't:
 | `set_updated_at()` (trigger)                          | INVOKER   | Maintains `tickets.updated_at`.                                                                               |
 | `guard_ticket_update()` (trigger, `before update` on `tickets`) | DEFINER | Immutable `customer_id`/`subject`/`body`; `assignee_id` must be an agent or admin; legal status transitions (agents only -- admins bypass); stamps `resolved_at`/`closed_at`; writes `ticket_events`. DEFINER so it can insert into `ticket_events`. |
 | `stamp_first_response()` (trigger, `after insert` on `ticket_comments`) | DEFINER | Sets `tickets.first_response_at` on the first public staff comment.                                    |
+| `guard_last_admin_delete()` (trigger, `before delete` on `profiles`) | DEFINER | Refuses to delete the only admin's profile. Because account deletion is a cascade from `auth.users`, the raise aborts the whole deletion. Mirrors `admin_set_role()`'s last-admin rule. |
+| `export_own_data()`                                   | **INVOKER** | GDPR Art. 15/20 export: one `jsonb` with the caller's profile, own tickets (with comments and history), comments and actions on other tickets, assigned tickets, published share links, notes and assistant chats. INVOKER so RLS still applies (a customer gets no internal comments or triage output) and every branch is also pinned to `auth.uid()`. Granted to `authenticated`. |
 | `consume_rate_limit(text)`                            | DEFINER   | Fixed-window counter. The caller names only the action (`create_ticket` / `add_comment` / `rerun_triage` / `assistant_message` / `save_note`); limit and window are hard-coded per action inside the function, and the key's identity half comes from `auth.uid()` -- so a client can neither loosen its own limit, target another user's bucket, nor mint rows with made-up windows. Returns `false` when over the limit; prunes windows older than a day on ~1% of calls. |
 | `create_triage_state()` (trigger, `after insert` on `tickets`) | DEFINER | Creates the ticket's `ticket_triage_state` row so the triage pipeline always has a row to claim. |
 | `rate_limit_ticket_insert()`, `rate_limit_comment_insert()` (triggers, `before insert`) | INVOKER | Call `consume_rate_limit()` for the inserting user and raise `rate_limited:<action>` when over -- so the limit applies to direct Data API calls too, not just the app. Skipped for `service_role` (`auth.uid()` is null). |
@@ -290,7 +292,7 @@ Two things RLS deliberately does *not* try to do, because it can't:
 
 EXECUTE on every callable function above is revoked from `PUBLIC` and granted explicitly:
 `authenticated` for the helpers, `ensure_profile`, `admin_set_role`, `consume_rate_limit`,
-`save_note`, `match_documents` (RLS policies, the rate-limit triggers and notes run as the caller
+`save_note`, `match_documents`, `export_own_data` (RLS policies, the rate-limit triggers and notes run as the caller
 and need them), `service_role` where the triage code calls them, and `service_role` only for
 `match_tickets`. `alter default privileges`
 makes the same true for any function added later.

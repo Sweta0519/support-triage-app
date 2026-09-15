@@ -64,6 +64,9 @@ export function AppHeader({ profile }: { profile: Profile }) {
               </span>
             </div>
           </div>
+          <Link href="/account" className={navButtonClasses}>
+            Account
+          </Link>
           <form action={signOutAction}>
             <button type="submit" className={navButtonClasses}>
               Sign out
