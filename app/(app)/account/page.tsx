@@ -26,9 +26,9 @@ export default async function AccountPage() {
       <section className={card}>
         <h2 className="text-base font-semibold text-black dark:text-zinc-50">Download your data</h2>
         <p className={body}>
-          A JSON file with everything this app holds that you can see: your profile, your tickets
-          with their comments and history, and, for staff, your notes, assistant chats and the
-          actions you took on tickets. AI triage suggestions are internal staff notes and are not
+          A JSON file with everything this app holds that you can see: your profile and your
+          tickets with their comments, plus, for staff, ticket history, your notes, assistant chats
+          and the actions you took on tickets. AI triage suggestions are internal staff notes and are not
           included; ask via the address in the{" "}
           <Link href="/privacy" className={linkClass}>
             privacy policy

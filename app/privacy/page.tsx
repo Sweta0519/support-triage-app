@@ -224,8 +224,8 @@ export default function PrivacyPolicyPage() {
               account page
             </Link>
             . &quot;Download my data&quot; gives you a JSON file of everything you can see in the
-            app: your profile, your tickets with their comments and history, and, for staff, your
-            notes, assistant chats and ticket actions. AI triage suggestions about your tickets are
+            app: your profile and your tickets with their comments, plus, for staff, ticket history,
+            your notes, assistant chats and ticket actions. AI triage suggestions about your tickets are
             internal staff notes and are not in the file; ask the contact above if you want them.
           </p>
           <p className={body}>
