@@ -9,8 +9,9 @@ import { requireEnv } from "./helpers";
 test("account page shows the signed-in email and both data-rights actions", async ({ page }) => {
   await page.goto("/account");
   await expect(page.getByRole("heading", { name: "Your account", exact: true })).toBeVisible();
-  // The header shows the email too; scope to the page body.
-  await expect(page.getByRole("main").getByText(requireEnv("TEST_USER_EMAIL"))).toBeVisible();
+  // The email also appears in the header and in the delete confirmation
+  // label, so assert on the intro sentence rather than the bare address.
+  await expect(page.getByText(`Signed in as ${requireEnv("TEST_USER_EMAIL")}`)).toBeVisible();
   await expect(page.getByRole("link", { name: "Download my data (JSON)" })).toHaveAttribute(
     "href",
     "/account/export"
