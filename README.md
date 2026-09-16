@@ -66,7 +66,12 @@ embeddings) · Vercel.
   last admin. Signup **hard-codes** `customer` and ignores client metadata.
 - A `BEFORE UPDATE` trigger enforces what RLS can't: immutable ticket text, legal status
   transitions, staff-only assignees, race-free claiming.
-- CSRF via Server Actions' built-in Origin/Host check; **no mutating Route Handlers exist**.
+- CSRF via Server Actions' built-in Origin/Host check; **no mutating Route Handlers exist** (the
+  two Route Handlers, `/auth/confirm` and `/account/export`, are GET-only).
+- GDPR data rights are self-service on `/account`: a JSON **export** of everything the caller can
+  see (an RLS-scoped `SECURITY INVOKER` function) and **real account deletion** -- the `auth.users`
+  row goes and every table cascades; a trigger refuses to delete the last admin, and a departed
+  staff member's replies stay on customers' tickets unattributed rather than vanishing.
 - Per-user **rate limiting** in Postgres + a Vercel WAF rule; security headers incl. a CSP.
 - `OPENROUTER_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are read only in `server-only` modules.
   Ticket text is treated as untrusted model input (closed strict schema, delimited, candidate-

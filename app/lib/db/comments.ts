@@ -8,7 +8,8 @@ export const COMMENT_MAX_LENGTH = 10_000;
 export type Comment = {
   id: string;
   ticket_id: string;
-  author_id: string;
+  // Null once the author has deleted their account (FK is on delete set null).
+  author_id: string | null;
   body: string;
   is_internal: boolean;
   created_at: string;
