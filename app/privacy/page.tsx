@@ -41,7 +41,7 @@ export default function PrivacyPolicyPage() {
           <p className={body}>
             This page explains what personal data Support Triage collects, why it is allowed to
             hold it, who else receives it, how long it is kept, and what you can ask us to do with
-            it. It describes this app as it is actually built. Last updated 15 September 2026.
+            it. It describes this app as it is actually built. Last updated 16 September 2026.
           </p>
         </header>
 
@@ -144,7 +144,7 @@ export default function PrivacyPolicyPage() {
             </table>
           </div>
           <p className={body}>
-            Staff members additionally have private working notes and a private assistant chat.
+            Staff members additionally have private working notes and a private AI assistant chat.
             Those are the staff member&apos;s own data, visible only to them, and may contain
             customer context they paste in while working a ticket.
           </p>
