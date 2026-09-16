@@ -58,12 +58,19 @@ export default async function SharedStatusPage({
             <h1 className="text-xl font-semibold text-black dark:text-zinc-50">{share.subject}</h1>
             <Badge label={statusLabel(share.status)} colorClasses={statusBadgeClasses(share.status)} />
           </div>
-          <p className="mt-4 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
+          {/* EU AI Act Art. 50: this is the one place AI-written text reaches
+              the public, so it is labelled as such here, next to the text,
+              and the footer no longer attributes it to the team. */}
+          <p className="mt-4 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
+            AI-generated summary
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
             {share.summary}
           </p>
           <p className="mt-6 border-t border-black/[.08] pt-4 text-xs text-zinc-400 dark:border-white/[.08] dark:text-zinc-600">
-            Shared by the support team as of {new Date(share.created_at).toLocaleString()}. This
-            is a snapshot and does not update automatically.
+            This summary was written by an AI model and published by the support team as of{" "}
+            {new Date(share.created_at).toLocaleString()}. It is a snapshot and does not update
+            automatically.
           </p>
         </div>
       </div>

@@ -135,7 +135,12 @@ export function AssistantWidget() {
           <div className="flex items-center justify-between border-b border-black/[.08] px-4 py-3 dark:border-white/[.145]">
             <div>
               <p className="text-sm font-semibold text-black dark:text-zinc-50">{ASSISTANT_NAME}</p>
-              <p className="text-xs text-zinc-500 dark:text-zinc-500">Private staff assistant</p>
+              {/* EU AI Act Art. 50(1): the user must be told they are talking to
+                  an AI at or before the first interaction, in the widget itself.
+                  A human-sounding name does not count as obvious from context. */}
+              <p className="text-xs text-zinc-500 dark:text-zinc-500">
+                AI assistant, private to you
+              </p>
             </div>
           </div>
 
@@ -157,8 +162,9 @@ export function AssistantWidget() {
               )
             ) : messages.length === 0 ? (
               <p className="m-auto max-w-[85%] text-center text-xs text-zinc-400 dark:text-zinc-600">
-                Ask {ASSISTANT_NAME} anything -- it&apos;ll remember this conversation and can
-                search your notes. Nothing here is ever shown to a customer.
+                {ASSISTANT_NAME} is an AI assistant. Ask it anything -- it&apos;ll remember this
+                conversation and can search your notes. Its answers can be wrong, and nothing here
+                is ever shown to a customer.
               </p>
             ) : (
               messages.map((message) => {
