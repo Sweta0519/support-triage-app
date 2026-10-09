@@ -160,9 +160,7 @@ export default async function TicketDetailPage({
   // through their own list. The ticket itself is the current page.
   const parents = isStaff ? queueBreadcrumb(fromFilter) : [MY_TICKETS_CRUMB];
   // Staff only: the response target is an internal commitment.
-  const sla = isStaff
-    ? computeSla({ ...ticket, priority: ticket.triage_state?.priority ?? null })
-    : null;
+  const sla = isStaff ? computeSla(ticket) : null;
 
   return (
     <div

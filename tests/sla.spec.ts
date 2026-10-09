@@ -17,7 +17,7 @@ test.describe("computeSla", () => {
   test("each priority gets its own target, and an unprioritised ticket counts as normal", () => {
     const due = (priority: string | null) =>
       computeSla(
-        { created_at: hoursAgo(0), first_response_at: null, status: "new", priority },
+        { created_at: hoursAgo(0), first_response_at: null, status: "new", triage_state: { priority } },
         NOW
       )?.dueAt.toISOString();
     expect(due("urgent")).toBe("2026-10-09T13:00:00.000Z");
@@ -30,7 +30,7 @@ test.describe("computeSla", () => {
   test("a waiting ticket is on track, then at risk in the last quarter, then breached", () => {
     const state = (createdHoursAgo: number) =>
       computeSla(
-        { created_at: hoursAgo(createdHoursAgo), first_response_at: null, status: "assigned", priority: "high" },
+        { created_at: hoursAgo(createdHoursAgo), first_response_at: null, status: "assigned", triage_state: { priority: "high" } },
         NOW
       )?.state;
     expect(state(1)).toBe("on_track"); // 3h of 4h left
@@ -45,7 +45,7 @@ test.describe("computeSla", () => {
           created_at: hoursAgo(10),
           first_response_at: hoursAgo(10 - repliedAfterHours),
           status: "resolved",
-          priority: "urgent",
+          triage_state: { priority: "urgent" },
         },
         NOW
       );
@@ -56,7 +56,7 @@ test.describe("computeSla", () => {
   test("a resolved or closed ticket that never got a reply has no SLA", () => {
     for (const status of ["resolved", "closed"] as const) {
       expect(
-        computeSla({ created_at: hoursAgo(30), first_response_at: null, status, priority: "low" }, NOW)
+        computeSla({ created_at: hoursAgo(30), first_response_at: null, status, triage_state: { priority: "low" } }, NOW)
       ).toBeNull();
     }
   });
@@ -94,17 +94,32 @@ test("an overdue ticket shows as overdue in the queue and on the ticket page", a
     .select("id")
     .single();
   if (error) throw new Error(error.message);
-  const { error: stateError } = await db
-    .from("ticket_triage_state")
-    .update({ priority: "high", triage_status: "completed" })
-    .eq("ticket_id", ticket.id);
-  if (stateError) throw new Error(stateError.message);
 
-  await login(page, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
-  await page.goto("/queue?filter=unassigned");
-  const row = page.getByRole("link", { name: new RegExp(subject) });
-  await expect(row.getByText("Overdue 1h", { exact: true })).toBeVisible();
+  // Removed afterwards so repeated runs don't pile probes into the shared
+  // project's unassigned queue (comments, events, triage state cascade).
+  try {
+    // .single() fails loudly if the triage-state row isn't there yet,
+    // instead of the queue assertion failing for an unclear reason.
+    const { error: stateError } = await db
+      .from("ticket_triage_state")
+      .update({ priority: "high", triage_status: "completed" })
+      .eq("ticket_id", ticket.id)
+      .select("ticket_id")
+      .single();
+    if (stateError) throw new Error(stateError.message);
 
-  await row.click();
-  await expect(page.getByText("First reply overdue by 1h (4h target for high priority).")).toBeVisible();
+    await login(page, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
+    await page.goto("/queue?filter=unassigned");
+    const row = page.getByRole("link", { name: new RegExp(subject) });
+    // Minutes tick on between the insert and the render (a cold dev server
+    // can take well over 30s to compile /queue), so allow "1h 1m" etc.
+    await expect(row.getByText(/^Overdue 1h( \d+m)?$/)).toBeVisible();
+
+    await row.click();
+    await expect(
+      page.getByText(/First reply overdue by 1h( \d+m)? \(4h target for high priority\)\./)
+    ).toBeVisible();
+  } finally {
+    await db.from("tickets").delete().eq("id", ticket.id);
+  }
 });

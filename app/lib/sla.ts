@@ -25,16 +25,13 @@ const AT_RISK_FRACTION = 0.25;
 
 export type SlaState = "on_track" | "at_risk" | "breached" | "met" | "missed";
 
-export type Sla = {
-  state: SlaState;
-  priority: SlaPriority;
-  targetMs: number;
-  dueAt: Date;
-  // Waiting: time left until dueAt (negative once breached).
-  // Answered: how long the first response took.
-  remainingMs: number | null;
-  responseMs: number | null;
-};
+type SlaTarget = { priority: SlaPriority; targetMs: number; dueAt: Date };
+
+export type Sla =
+  // Waiting for a first reply: time left until dueAt (negative once breached).
+  | (SlaTarget & { state: "on_track" | "at_risk" | "breached"; remainingMs: number })
+  // Answered: how long the first reply took.
+  | (SlaTarget & { state: "met" | "missed"; responseMs: number });
 
 function slaPriority(priority: string | null): SlaPriority {
   return priority !== null && priority in SLA_TARGET_MS ? (priority as SlaPriority) : DEFAULT_PRIORITY;
@@ -49,11 +46,11 @@ export function computeSla(
     created_at: string;
     first_response_at: string | null;
     status: TicketStatus;
-    priority: string | null;
+    triage_state: { priority: string | null } | null;
   },
   now: Date = new Date()
 ): Sla | null {
-  const priority = slaPriority(ticket.priority);
+  const priority = slaPriority(ticket.triage_state?.priority ?? null);
   const targetMs = SLA_TARGET_MS[priority];
   const createdMs = new Date(ticket.created_at).getTime();
   const dueAt = new Date(createdMs + targetMs);
@@ -65,7 +62,6 @@ export function computeSla(
       priority,
       targetMs,
       dueAt,
-      remainingMs: null,
       responseMs,
     };
   }
@@ -75,9 +71,9 @@ export function computeSla(
   }
 
   const remainingMs = dueAt.getTime() - now.getTime();
-  const state: SlaState =
+  const state =
     remainingMs < 0 ? "breached" : remainingMs <= targetMs * AT_RISK_FRACTION ? "at_risk" : "on_track";
-  return { state, priority, targetMs, dueAt, remainingMs, responseMs: null };
+  return { state, priority, targetMs, dueAt, remainingMs };
 }
 
 // "45m", "3h 20m", "2d 4h" -- compact enough for a queue badge.
@@ -96,9 +92,9 @@ export function slaBadgeLabel(sla: Sla): string {
   switch (sla.state) {
     case "on_track":
     case "at_risk":
-      return `Reply in ${formatDuration(sla.remainingMs ?? 0)}`;
+      return `Reply in ${formatDuration(sla.remainingMs)}`;
     case "breached":
-      return `Overdue ${formatDuration(sla.remainingMs ?? 0)}`;
+      return `Overdue ${formatDuration(sla.remainingMs)}`;
     case "met":
       return "Replied in time";
     case "missed":
@@ -112,13 +108,13 @@ export function slaDescription(sla: Sla): string {
   switch (sla.state) {
     case "on_track":
     case "at_risk":
-      return `First reply due in ${formatDuration(sla.remainingMs ?? 0)} (${target}).`;
+      return `First reply due in ${formatDuration(sla.remainingMs)} (${target}).`;
     case "breached":
-      return `First reply overdue by ${formatDuration(sla.remainingMs ?? 0)} (${target}).`;
+      return `First reply overdue by ${formatDuration(sla.remainingMs)} (${target}).`;
     case "met":
-      return `First reply sent after ${formatDuration(sla.responseMs ?? 0)}, within the ${target}.`;
+      return `First reply sent after ${formatDuration(sla.responseMs)}, within the ${target}.`;
     case "missed":
-      return `First reply sent after ${formatDuration(sla.responseMs ?? 0)}, past the ${target}.`;
+      return `First reply sent after ${formatDuration(sla.responseMs)}, past the ${target}.`;
   }
 }
 

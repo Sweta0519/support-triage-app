@@ -102,10 +102,7 @@ export default async function QueuePage({
             const meta = [ticket.triage_state?.category, ticket.triage_state?.team]
               .filter(Boolean)
               .join(" · ");
-            const sla = computeSla(
-              { ...ticket, priority: ticket.triage_state?.priority ?? null },
-              now
-            );
+            const sla = computeSla(ticket, now);
 
             return (
               <li
