@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 
 import { reviewTriageAction } from "../actions";
 import {
@@ -38,6 +38,22 @@ export function TriageReviewForm({
   const [state, action, pending] = useActionState(reviewTriageAction, undefined);
   const [values, setValues] = useState<Fields>(current);
 
+  // A new AI run (a Re-run, or the one a stale save was refused for) arrives
+  // as a new resultId without remounting the form: restart from the values
+  // now stored, so the old run's selection can't be saved back over it. A
+  // message from before that run no longer applies and is hidden; one that
+  // arrives with it (the stale refusal) is kept.
+  const [seen, setSeen] = useState({ resultId, state });
+  const [hiddenState, setHiddenState] = useState<typeof state>(undefined);
+  if (resultId !== seen.resultId || state !== seen.state) {
+    if (resultId !== seen.resultId) {
+      setValues(current);
+      if (state === seen.state) setHiddenState(state);
+    }
+    setSeen({ resultId, state });
+  }
+  const message = state === hiddenState ? undefined : state;
+
   const matchesAi =
     ai !== null &&
     values.priority === ai.priority &&
@@ -46,7 +62,19 @@ export function TriageReviewForm({
   const complete = values.priority !== "" && values.category !== "" && values.team !== "";
 
   return (
-    <form action={action} className="flex flex-col gap-2">
+    // Submitted through onSubmit rather than <form action>: React resets a
+    // form after an action prop completes, which puts each select back to
+    // its server-rendered option while `values` keeps the newer selection,
+    // so the dropdowns would show (and the next submit would send) a value
+    // other than the one on the button.
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+        startTransition(() => action(formData));
+      }}
+      className="flex flex-col gap-2"
+    >
       <input type="hidden" name="ticketId" value={ticketId} />
       <input type="hidden" name="resultId" value={resultId ?? ""} />
 
@@ -97,13 +125,13 @@ export function TriageReviewForm({
                 ? "Save triage"
                 : "Save correction"}
         </button>
-        {state && "error" in state ? (
+        {message && "error" in message ? (
           <p role="alert" className="text-xs text-red-700 dark:text-red-400">
-            {state.error}
+            {message.error}
           </p>
-        ) : state && "ok" in state ? (
+        ) : message && "ok" in message ? (
           <p role="status" className="text-xs text-emerald-700 dark:text-emerald-400">
-            {state.ok}
+            {message.ok}
           </p>
         ) : null}
       </div>

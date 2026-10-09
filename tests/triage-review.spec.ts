@@ -87,6 +87,8 @@ test("staff confirm the AI's triage, then correct it, and both are recorded", as
   await expect(panel.getByText("AI: high")).toBeVisible();
   await panel.getByRole("button", { name: "Save correction" }).click();
   await expect(panel.getByRole("status")).toHaveText("Saved your triage.");
+  // The dropdown keeps the saved value after the action (no form reset).
+  await expect(panel.getByLabel("Priority")).toHaveValue("low");
 
   const { data: state } = await db
     .from("ticket_triage_state")
@@ -126,11 +128,21 @@ test("a review against a superseded AI run is rejected, and a re-run never overw
   const panel = page.locator("section").filter({ hasText: "AI triage" });
   await expect(panel.getByRole("button", { name: "Confirm AI triage" })).toBeVisible();
 
-  // A new AI run lands while the agent has the page open.
+  // A new AI run lands while the agent has the page open, and the pipeline
+  // applies it to the (still unreviewed) working state.
   await insertAiRun(db, ticketId, { priority: "urgent", category: "billing", team: "billing" });
+  const { error: applyError } = await db
+    .from("ticket_triage_state")
+    .update({ priority: "urgent" })
+    .eq("ticket_id", ticketId);
+  if (applyError) throw new Error(applyError.message);
 
   await panel.getByRole("button", { name: "Confirm AI triage" }).click();
   await expect(panel.getByRole("alert")).toContainText("The AI assessment changed");
+  // The form now shows the new run's values, not the old selection that was
+  // refused, so confirming again can't write the superseded priority back.
+  await expect(panel.getByLabel("Priority")).toHaveValue("urgent");
+  await expect(panel.getByRole("button", { name: "Confirm AI triage" })).toBeVisible();
 
   // Reviewing the current run works.
   await page.reload();
