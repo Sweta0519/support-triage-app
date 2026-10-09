@@ -39,9 +39,14 @@ export function AppHeader({ profile }: { profile: Profile }) {
                   Notes
                 </Link>
                 {profile.role === "admin" ? (
-                  <Link href="/admin" className={navButtonClasses}>
-                    Admin
-                  </Link>
+                  <>
+                    <Link href="/analytics" className={navButtonClasses}>
+                      Analytics
+                    </Link>
+                    <Link href="/admin" className={navButtonClasses}>
+                      Admin
+                    </Link>
+                  </>
                 ) : null}
               </>
             )}
