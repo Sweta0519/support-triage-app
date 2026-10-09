@@ -10,6 +10,7 @@ import {
   statusLabel,
 } from "@/app/lib/badges";
 import { formatRelativeTime } from "@/app/lib/format";
+import { computeSla, slaBadgeClasses, slaBadgeLabel } from "@/app/lib/sla";
 import { primaryButtonClass } from "@/app/lib/styles";
 import { claimTicketAction } from "../tickets/actions";
 import {
@@ -38,6 +39,7 @@ export default async function QueuePage({
     mine: tickets.filter((t) => t.assignee_id === profile.id).length,
   };
 
+  const now = new Date();
   const visible = tickets.filter((ticket) => {
     if (filter === "unassigned") return ticket.assignee_id === null;
     if (filter === "mine") return ticket.assignee_id === profile.id;
@@ -100,6 +102,7 @@ export default async function QueuePage({
             const meta = [ticket.triage_state?.category, ticket.triage_state?.team]
               .filter(Boolean)
               .join(" · ");
+            const sla = computeSla(ticket, now);
 
             return (
               <li
@@ -124,6 +127,9 @@ export default async function QueuePage({
                     </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+                    {sla ? (
+                      <Badge label={slaBadgeLabel(sla)} colorClasses={slaBadgeClasses(sla.state)} />
+                    ) : null}
                     {ticket.triage_state?.priority ? (
                       <Badge
                         label={ticket.triage_state.priority}
