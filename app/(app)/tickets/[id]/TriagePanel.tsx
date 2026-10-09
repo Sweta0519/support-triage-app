@@ -166,9 +166,11 @@ export function TriagePanel({
             {reviewStatusLine(triageState, triage, currentUserId)}
           </p>
           <TriageReviewForm
-            // Remount when the AI run or the saved values change, so the
-            // selects start from what's now true rather than stale state.
-            key={`${triage?.id ?? "none"}:${triageState?.reviewed_at ?? "unreviewed"}`}
+            // Keyed by ticket only: after a save or a stale-run refusal the
+            // page revalidates, and remounting then would drop the form's
+            // success/error message. The selects keep the reviewer's choice,
+            // which after a save is what's stored anyway.
+            key={ticketId}
             ticketId={ticketId}
             resultId={triage?.id ?? null}
             ai={
