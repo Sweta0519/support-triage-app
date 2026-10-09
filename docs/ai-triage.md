@@ -34,6 +34,30 @@ them; the `triage_results` row stays as the append-only audit record of what the
 Nothing AI-derived is on the `tickets` row itself -- that is what keeps the model's verdict away
 from the customer who wrote the ticket, in the UI *and* through the Data API.
 
+## Staff review
+
+The AI's `priority`/`category`/`team` are a suggestion; staff confirm or correct them in the
+**Your review** block at the bottom of the triage panel
+(`app/(app)/tickets/[id]/TriageReviewForm.tsx`). The button reads **Confirm AI triage** while
+the selection still matches the AI run on screen and **Save correction** once it doesn't, so
+agreeing is one click and is recorded just like disagreeing.
+
+- **One write path:** `ticketing.review_triage()`, a `SECURITY DEFINER` RPC. It checks the
+  caller is staff and can see the ticket (mirroring the staff half of `tickets_select`, because
+  `can_view_ticket()` relies on RLS and a definer function bypasses it), writes the working
+  state, and logs `priority_changed` / `category_changed` / `team_changed` with the reviewer as
+  actor plus one `triage_reviewed` event whose value is `confirmed`, `corrected` or `manual`
+  (no AI run existed). Staff still have no direct write grant on `ticket_triage_state`.
+- **Against the run they saw:** the form submits the triage run's id; if a newer run has
+  landed the RPC refuses (`stale_triage`) and the agent is asked to look again.
+  `ticket_triage_state.reviewed_result_id` keeps which run was reviewed, so "AI said X, staff
+  set Y" is always compared against the right suggestion.
+- **Re-runs never overwrite a human.** Once `reviewed_at` is set, `applyTriageToTicket()` only
+  marks triage completed; the new suggestion is shown in the panel, labelled as not applied.
+
+This is the data the triage-quality numbers are built from: how often staff accept each field,
+and where the model is wrong.
+
 ## Pipeline (`app/lib/ai/triage.ts`)
 
 Triggered from `createTicketAction` via Next's `after()`, so it runs once the customer's
@@ -61,7 +85,8 @@ it from the ticket page.
    confidence clamped. Anything off-schema falls back to safe defaults and sets
    `needs_human_review`. Strict mode makes this mostly redundant; it's cheap insurance.
 6. **Persist.** Insert `triage_results`; update the staff-only `ticket_triage_state` row
-   (`priority`/`category`/`team`, `triage_status = 'completed'`); write a `triage_completed` event
+   (`priority`/`category`/`team` unless staff have already reviewed them,
+   `triage_status = 'completed'`); write a `triage_completed` event
    with `actor_id = null`.
 7. **On any failure**: `triage_status = 'failed'`, a `triage_failed` event, and a server-side log
    line. The ticket stays fully usable. Failure never surfaces to the customer.

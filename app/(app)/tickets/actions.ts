@@ -27,8 +27,14 @@ import { addComment, COMMENT_MAX_LENGTH } from "@/app/lib/db/comments";
 import { checkRateLimit, RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/db/rate-limit";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { rerunTriage, runTriage } from "@/app/lib/ai/triage";
-import { getLatestTriageResult } from "@/app/lib/db/triage";
+import { getLatestTriageResult, reviewTriage, StaleTriageError } from "@/app/lib/db/triage";
 import { publishTicketSummary, revokeShare } from "@/app/lib/db/shares";
+import {
+  isOneOf,
+  TRIAGE_CATEGORIES,
+  TRIAGE_PRIORITIES,
+  TRIAGE_TEAMS,
+} from "@/app/lib/triage-fields";
 
 export type TicketFormState = { error: string } | undefined;
 
@@ -98,6 +104,57 @@ export async function rerunTriageAction(formData: FormData) {
   await rerunTriage(ticketId);
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/queue");
+}
+
+// Staff confirm or correct the AI's priority / category / team. The form
+// always submits all three; ticketing.review_triage() records whether they
+// match the AI run the reviewer was shown ("confirmed") or not
+// ("corrected"), and enforces role and ticket visibility itself -- this
+// action only validates shape so a tampered form gets a clean message.
+export type TriageReviewState = { error: string } | { ok: string } | undefined;
+
+export async function reviewTriageAction(
+  _prevState: TriageReviewState,
+  formData: FormData
+): Promise<TriageReviewState> {
+  await requireStaff();
+  const ticketId = String(formData.get("ticketId") ?? "");
+  const rawResultId = String(formData.get("resultId") ?? "");
+  const resultId = rawResultId === "" ? null : rawResultId;
+  const priority = String(formData.get("priority") ?? "");
+  const category = String(formData.get("category") ?? "");
+  const team = String(formData.get("team") ?? "");
+
+  if (
+    !isUuid(ticketId) ||
+    (resultId !== null && !isUuid(resultId)) ||
+    !isOneOf(TRIAGE_PRIORITIES, priority) ||
+    !isOneOf(TRIAGE_CATEGORIES, category) ||
+    !isOneOf(TRIAGE_TEAMS, team)
+  ) {
+    return { error: "Choose a priority, category and team." };
+  }
+
+  let outcome;
+  try {
+    outcome = await reviewTriage(ticketId, resultId, { priority, category, team });
+  } catch (err) {
+    if (err instanceof StaleTriageError) {
+      revalidatePath(`/tickets/${ticketId}`);
+      return { error: "The AI assessment changed while you were reviewing. Check the new one and save again." };
+    }
+    // e.g. another agent claimed the ticket in the meantime.
+    if (err instanceof Error && err.message.includes("not_found")) {
+      return { error: "This ticket is no longer available to you." };
+    }
+    throw err;
+  }
+
+  revalidatePath(`/tickets/${ticketId}`);
+  revalidatePath("/queue");
+  return {
+    ok: outcome === "confirmed" ? "Confirmed the AI's triage." : "Saved your triage.",
+  };
 }
 
 export async function claimTicketAction(formData: FormData) {

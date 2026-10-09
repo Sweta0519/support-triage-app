@@ -2,7 +2,9 @@ import Link from "next/link";
 
 import { rerunTriageAction } from "../actions";
 import type { TriageResult } from "@/app/lib/db/triage";
-import { formatCostUsd } from "@/app/lib/format";
+import type { TriageState } from "@/app/lib/db/tickets";
+import { formatCostUsd, formatRelativeTime } from "@/app/lib/format";
+import { TriageReviewForm } from "./TriageReviewForm";
 import { Badge } from "@/app/components/Badge";
 import { priorityBadgeClasses } from "@/app/lib/badges";
 import { secondaryButtonClass } from "@/app/lib/styles";
@@ -14,15 +16,39 @@ const STATUS_COPY: Record<string, string> = {
   failed: "Triage failed. You can re-run it.",
 };
 
+function reviewStatusLine(
+  state: TriageState | null,
+  triage: TriageResult | null,
+  currentUserId: string
+): string {
+  if (!state?.reviewed_at) {
+    return "Not reviewed yet. Confirm the AI's fields or correct them.";
+  }
+  const who =
+    state.reviewed_by === currentUserId ? "you" : state.reviewed_by ? "a teammate" : "a former staff member";
+  const line = `Reviewed by ${who} ${formatRelativeTime(state.reviewed_at)}.`;
+  // A re-run after the review appends a new AI run but leaves the reviewed
+  // fields alone, so say so rather than silently showing two answers.
+  if (triage && state.reviewed_result_id !== triage.id) {
+    return `${line} The AI has re-assessed since; its new suggestion is shown above and not applied.`;
+  }
+  return line;
+}
+
 export function TriagePanel({
   ticketId,
   triageStatus,
   triage,
+  triageState,
+  currentUserId,
   fromFilter,
 }: {
   ticketId: string;
   triageStatus: string;
   triage: TriageResult | null;
+  // The ticket's working values (what the queue sorts by) and who reviewed them.
+  triageState: TriageState | null;
+  currentUserId: string;
   // The queue tab the agent arrived from, carried onto the duplicate/related
   // links so hopping between tickets doesn't lose the way back.
   fromFilter: QueueFilterKey;
@@ -132,6 +158,36 @@ export function TriagePanel({
           </p>
         </>
       )}
+
+      {triageStatus !== "processing" ? (
+        <div className="flex flex-col gap-2 border-t border-black/[.08] pt-3 dark:border-white/[.145]">
+          <h3 className="text-xs font-semibold text-black dark:text-zinc-50">Your review</h3>
+          <p className="text-xs text-zinc-500 dark:text-zinc-500">
+            {reviewStatusLine(triageState, triage, currentUserId)}
+          </p>
+          <TriageReviewForm
+            // Remount when the AI run or the saved values change, so the
+            // selects start from what's now true rather than stale state.
+            key={`${triage?.id ?? "none"}:${triageState?.reviewed_at ?? "unreviewed"}`}
+            ticketId={ticketId}
+            resultId={triage?.id ?? null}
+            ai={
+              triage
+                ? {
+                    priority: triage.priority ?? "",
+                    category: triage.category ?? "",
+                    team: triage.team ?? "",
+                  }
+                : null
+            }
+            current={{
+              priority: triageState?.priority ?? "",
+              category: triageState?.category ?? "",
+              team: triageState?.team ?? "",
+            }}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }

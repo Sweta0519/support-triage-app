@@ -41,6 +41,11 @@ export type TriageState = {
   priority: string | null;
   category: string | null;
   team: string | null;
+  // Set once staff confirm or correct the fields; from then on a triage
+  // re-run no longer overwrites them.
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  reviewed_result_id: string | null;
 };
 
 export type TicketSummary = {
@@ -64,7 +69,8 @@ export type TicketBase = TicketSummary & {
 
 export type Ticket = TicketBase & { triage_state: TriageState | null };
 
-const TRIAGE_STATE_EMBED = "triage_state:ticket_triage_state(triage_status, priority, category, team)";
+const TRIAGE_STATE_EMBED =
+  "triage_state:ticket_triage_state(triage_status, priority, category, team, reviewed_by, reviewed_at, reviewed_result_id)";
 const TICKET_BASE_COLUMNS = "id, subject, body, status, created_at, updated_at, customer_id, assignee_id";
 const TICKET_COLUMNS = `${TICKET_BASE_COLUMNS}, ${TRIAGE_STATE_EMBED}`;
 
