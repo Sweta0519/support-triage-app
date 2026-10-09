@@ -94,7 +94,7 @@ function SlaTable({ sla }: { sla: Analytics["sla"] }) {
             <tr key={r.priority}>
               <td className="py-2 capitalize text-zinc-700 dark:text-zinc-300">{r.priority}</td>
               <td className="py-2 tabular-nums text-zinc-500 dark:text-zinc-500">
-                {formatDuration(SLA_TARGET_MS[r.priority as keyof typeof SLA_TARGET_MS])}
+                {formatDuration(SLA_TARGET_MS[r.priority])}
               </td>
               <td className="py-2">
                 <div className="flex items-center gap-3">
@@ -175,8 +175,8 @@ function PriorityMatrix({ matrix }: { matrix: Analytics["triage"]["priorityMatri
 
 export default async function AnalyticsPage() {
   await requireAdmin();
-  const { rows, sampled } = await listAnalyticsTickets();
-  const a = computeAnalytics(rows);
+  const { recent, waiting, sampled } = await listAnalyticsTickets();
+  const a = computeAnalytics(recent, new Date(), waiting);
 
   const openAtRisk = a.sla.byPriority.reduce((sum, r) => sum + r.openAtRisk, 0);
   const openBreached = a.sla.byPriority.reduce((sum, r) => sum + r.openBreached, 0);
@@ -194,7 +194,7 @@ export default async function AnalyticsPage() {
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
-          label="Tickets"
+          label={sampled ? `Tickets (most recent ${MAX_ROWS.toLocaleString()})` : "Tickets"}
           value={a.ticketCount.toLocaleString()}
           detail={`${a.volume.reduce((sum, d) => sum + d.count, 0)} in the last ${VOLUME_DAYS} days`}
         />
