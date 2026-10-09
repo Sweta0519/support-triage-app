@@ -3,6 +3,7 @@ import "server-only";
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import { createServiceSupabaseClient } from "@/app/lib/supabase/service";
 import type { TicketStatus } from "@/app/lib/db/tickets";
+import type { TriageReviewFields } from "@/app/lib/triage-fields";
 
 export type TriageResult = {
   id: string;
@@ -48,6 +49,59 @@ export async function getLatestTriageResult(ticketId: string): Promise<TriageRes
     throw new Error(error.message);
   }
   return data;
+}
+
+// ---- Staff review of the AI's suggestion ---------------------------------
+
+export type TriageReviewOutcome = "confirmed" | "corrected" | "manual";
+
+// The refusals ticketing.review_triage() can raise, identified by SQLSTATE
+// (plus the exact message for the two stale cases, which use the default P0001)
+// rather than by searching message text.
+export type TriageReviewRefusal = "stale" | "stale_review" | "not_found" | "not_allowed";
+
+export class TriageReviewError extends Error {
+  constructor(readonly reason: TriageReviewRefusal) {
+    super(`review_triage refused: ${reason}`);
+  }
+}
+
+function reviewRefusal(error: { code: string; message: string }): TriageReviewRefusal | null {
+  if (error.code === "P0001" && error.message === "stale_triage") return "stale";
+  if (error.code === "P0001" && error.message === "stale_review") return "stale_review";
+  if (error.code === "P0002") return "not_found";
+  if (error.code === "42501") return "not_allowed";
+  return null;
+}
+
+// Runs as the signed-in user: ticketing.review_triage() checks staff role
+// and ticket visibility itself and writes the working state plus one event
+// per changed field. resultId is the triage run the reviewer was shown (null
+// when there is none); the function rejects it if a newer run has landed.
+// shownReviewedAt is the reviewed_at the reviewer was shown, passed back
+// verbatim (null when unreviewed); the function rejects it if someone else
+// has reviewed since.
+export async function reviewTriage(
+  ticketId: string,
+  resultId: string | null,
+  shownReviewedAt: string | null,
+  fields: TriageReviewFields
+): Promise<TriageReviewOutcome> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("review_triage", {
+    p_ticket_id: ticketId,
+    p_result_id: resultId,
+    p_priority: fields.priority,
+    p_category: fields.category,
+    p_team: fields.team,
+    p_reviewed_at: shownReviewedAt,
+  });
+
+  if (error) {
+    const reason = reviewRefusal(error);
+    throw reason ? new TriageReviewError(reason) : new Error(error.message);
+  }
+  return data as TriageReviewOutcome;
 }
 
 // ---- Service-role writes, called only from app/lib/ai/triage.ts ---------
@@ -179,18 +233,35 @@ export async function insertTriageResult(row: NewTriageResult): Promise<void> {
 // Seeds the ticket's *working* fields (staff-only ticket_triage_state) from
 // the AI's suggestion. Deliberately never touches tickets.status -- triage is
 // advisory, and the guard trigger's transition map would reject it anyway.
+// Once staff have reviewed the fields (reviewed_at set), a re-run only marks
+// triage completed: the new suggestion is shown beside the human decision,
+// never written over it.
 export async function applyTriageToTicket(
   ticketId: string,
   fields: { priority: string | null; category: string | null; team: string | null }
 ): Promise<void> {
   const supabase = createServiceSupabaseClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("ticket_triage_state")
     .update({ ...fields, triage_status: "completed" })
-    .eq("ticket_id", ticketId);
+    .eq("ticket_id", ticketId)
+    .is("reviewed_at", null)
+    .select("ticket_id");
 
   if (error) {
     throw new Error(error.message);
+  }
+  if (data.length > 0) {
+    return;
+  }
+
+  const { error: statusError } = await supabase
+    .from("ticket_triage_state")
+    .update({ triage_status: "completed" })
+    .eq("ticket_id", ticketId);
+
+  if (statusError) {
+    throw new Error(statusError.message);
   }
 }
 

@@ -85,9 +85,10 @@ Indexes on `customer_id`, `assignee_id`, `status`.
 
 The AI-derived *working state* of a ticket, one row per ticket (created by trigger the moment
 the ticket exists). **Staff-only**: RLS is `is_staff() and can_view_ticket(ticket_id)`, so for a
-customer the row does not exist -- embedding it into a ticket read returns `null`. Written only
-by the service role from the triage pipeline; the `triage_results` table keeps the full
-append-only history of what the model said.
+customer the row does not exist -- embedding it into a ticket read returns `null`. Written by
+the service role from the triage pipeline and by staff only through `review_triage()`; there is
+no write grant to `authenticated`. The `triage_results` table keeps the full append-only history
+of what the model said.
 
 | Column          | Type                        | Notes                                                              |
 |-----------------|-----------------------------|--------------------------------------------------------------------|
@@ -97,6 +98,9 @@ append-only history of what the model said.
 | `category`      | `ticketing.ticket_category` | Nullable until triage runs.                                        |
 | `team`          | `ticketing.ticket_team`     | Nullable until triage runs.                                        |
 | `updated_at`    | `timestamptz`               | Maintained by trigger; used to detect a stale `processing` run.    |
+| `reviewed_by`   | `uuid`                      | Staff member who last confirmed/corrected the fields. FK -> `auth.users.id`, `on delete set null`. |
+| `reviewed_at`   | `timestamptz`               | Null until reviewed. Once set, a triage re-run no longer overwrites `priority`/`category`/`team`. |
+| `reviewed_result_id` | `uuid`                 | The `triage_results` run the reviewer was shown. FK, `on delete set null`. |
 
 ### `ticketing.ticket_comments`
 
@@ -277,6 +281,7 @@ Two things RLS deliberately does *not* try to do, because it can't:
 | `handle_new_user()` (trigger)                         | DEFINER   | On `auth.users` insert: creates a `profiles` row with `role` **hard-coded to `customer`**, ignoring signup metadata (blocks self-escalation). Skipped for a user with no email, so this trigger can never break the other app's signups on the shared `auth.users`. |
 | `ensure_profile()`                                    | DEFINER   | Get-or-create the caller's profile (needed because `auth.users` is shared with notes-collections). Always creates as `customer`. |
 | `admin_set_role(uuid, app_role)`                      | DEFINER   | The only path to change a role. Re-checks `is_admin()`; takes a transaction-scoped advisory lock so two concurrent demotions can't both pass the last-admin check; refuses changing your own role and demoting the last admin; demoting staff to `customer` unassigns their tickets so they return to the shared queue. |
+| `review_triage(uuid, uuid, ticket_priority, ticket_category, ticket_team)` | DEFINER | Staff confirm or correct a ticket's AI triage. Checks `is_staff()` and visibility itself (admins: any ticket; agents: unassigned or their own -- mirrors `tickets_select`, since `can_view_ticket()` would see everything inside a DEFINER function); refuses a `p_result_id` that is not the ticket's latest run (`stale_triage`); writes the fields plus `reviewed_*`, a `*_changed` event per changed field and a `triage_reviewed` event (`confirmed` / `corrected` / `manual`). Granted to `authenticated`. |
 | `set_updated_at()` (trigger)                          | INVOKER   | Maintains `tickets.updated_at`.                                                                               |
 | `guard_ticket_update()` (trigger, `before update` on `tickets`) | DEFINER | Immutable `customer_id`/`subject`/`body`; `assignee_id` must be an agent or admin; legal status transitions (agents only -- admins bypass); stamps `resolved_at`/`closed_at`; writes `ticket_events`. DEFINER so it can insert into `ticket_events`. |
 | `stamp_first_response()` (trigger, `after insert` on `ticket_comments`) | DEFINER | Sets `tickets.first_response_at` on the first public staff comment.                                    |
@@ -292,7 +297,7 @@ Two things RLS deliberately does *not* try to do, because it can't:
 
 EXECUTE on every callable function above is revoked from `PUBLIC` and granted explicitly:
 `authenticated` for the helpers, `ensure_profile`, `admin_set_role`, `consume_rate_limit`,
-`save_note`, `match_documents`, `export_own_data` (RLS policies, the rate-limit triggers and notes run as the caller
+`save_note`, `match_documents`, `export_own_data`, `review_triage` (RLS policies, the rate-limit triggers and notes run as the caller
 and need them), `service_role` where the triage code calls them, and `service_role` only for
 `match_tickets`. `alter default privileges`
 makes the same true for any function added later.

@@ -18,16 +18,16 @@ import {
   upsertTicketEmbedding,
   type MatchedTicket,
 } from "@/app/lib/db/triage";
+import {
+  TRIAGE_CATEGORIES,
+  TRIAGE_PRIORITIES,
+  TRIAGE_TEAMS,
+  type TriageCategory,
+  type TriagePriority,
+  type TriageTeam,
+} from "@/app/lib/triage-fields";
 
 export const PROMPT_VERSION = "2026-09-03.2";
-
-const CATEGORIES = ["general", "billing", "technical", "bug", "feature_request", "account"] as const;
-const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
-const TEAMS = ["support", "billing", "engineering"] as const;
-
-type Category = (typeof CATEGORIES)[number];
-type Priority = (typeof PRIORITIES)[number];
-type Team = (typeof TEAMS)[number];
 
 // Two OpenRouter calls per ticket; cap what we send so a pasted log dump
 // can't run up the bill or blow the context window.
@@ -41,10 +41,10 @@ const MAX_COMPLETION_TOKENS = 1_200;
 // list it was shown, so it can't "reference" a ticket it never saw.
 type TriageOutput = {
   summary: string;
-  category: Category;
-  priority: Priority;
+  category: TriageCategory;
+  priority: TriagePriority;
   priority_reason: string;
-  team: Team;
+  team: TriageTeam;
   frustration: 1 | 2 | 3 | 4 | 5;
   is_escalation_risk: boolean;
   duplicate_of: string | null;
@@ -85,13 +85,13 @@ function buildSchema(candidateIds: string[]): JsonSchema {
         type: "string",
         description: "One sentence, under 25 words, describing what the customer needs. Written for an agent scanning a queue.",
       },
-      category: { type: "string", enum: [...CATEGORIES] },
-      priority: { type: "string", enum: [...PRIORITIES] },
+      category: { type: "string", enum: [...TRIAGE_CATEGORIES] },
+      priority: { type: "string", enum: [...TRIAGE_PRIORITIES] },
       priority_reason: {
         type: "string",
         description: "One sentence explaining the priority, citing what in the ticket drove it.",
       },
-      team: { type: "string", enum: [...TEAMS] },
+      team: { type: "string", enum: [...TRIAGE_TEAMS] },
       frustration: {
         type: "integer",
         enum: [1, 2, 3, 4, 5],
@@ -264,9 +264,9 @@ function normalize(
 ): { output: TriageOutput; needsHumanReview: boolean } {
   let needsHumanReview = false;
 
-  const category: Category = isOneOf(raw.category, CATEGORIES) ? raw.category : "general";
-  const priority: Priority = isOneOf(raw.priority, PRIORITIES) ? raw.priority : "normal";
-  const team: Team = isOneOf(raw.team, TEAMS) ? raw.team : "support";
+  const category: TriageCategory = isOneOf(raw.category, TRIAGE_CATEGORIES) ? raw.category : "general";
+  const priority: TriagePriority = isOneOf(raw.priority, TRIAGE_PRIORITIES) ? raw.priority : "normal";
+  const team: TriageTeam = isOneOf(raw.team, TRIAGE_TEAMS) ? raw.team : "support";
   if (category !== raw.category || priority !== raw.priority || team !== raw.team) {
     needsHumanReview = true;
   }

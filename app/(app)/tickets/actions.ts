@@ -27,8 +27,14 @@ import { addComment, COMMENT_MAX_LENGTH } from "@/app/lib/db/comments";
 import { checkRateLimit, RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/db/rate-limit";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { rerunTriage, runTriage } from "@/app/lib/ai/triage";
-import { getLatestTriageResult } from "@/app/lib/db/triage";
+import { getLatestTriageResult, reviewTriage, TriageReviewError } from "@/app/lib/db/triage";
 import { publishTicketSummary, revokeShare } from "@/app/lib/db/shares";
+import {
+  isOneOf,
+  TRIAGE_CATEGORIES,
+  TRIAGE_PRIORITIES,
+  TRIAGE_TEAMS,
+} from "@/app/lib/triage-fields";
 
 export type TicketFormState = { error: string } | undefined;
 
@@ -98,6 +104,68 @@ export async function rerunTriageAction(formData: FormData) {
   await rerunTriage(ticketId);
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/queue");
+}
+
+// Staff confirm or correct the AI's priority / category / team. The form
+// always submits all three; ticketing.review_triage() records whether they
+// match the AI run the reviewer was shown ("confirmed") or not
+// ("corrected"), and enforces role and ticket visibility itself -- this
+// action only validates shape so a tampered form gets a clean message.
+export type TriageReviewState = { error: string } | { ok: string } | undefined;
+
+export async function reviewTriageAction(
+  _prevState: TriageReviewState,
+  formData: FormData
+): Promise<TriageReviewState> {
+  await requireStaff();
+  const ticketId = String(formData.get("ticketId") ?? "");
+  const rawResultId = String(formData.get("resultId") ?? "");
+  const resultId = rawResultId === "" ? null : rawResultId;
+  const rawReviewedAt = String(formData.get("reviewedAt") ?? "");
+  const reviewedAt = rawReviewedAt === "" ? null : rawReviewedAt;
+  const priority = String(formData.get("priority") ?? "");
+  const category = String(formData.get("category") ?? "");
+  const team = String(formData.get("team") ?? "");
+
+  if (
+    !isUuid(ticketId) ||
+    (resultId !== null && !isUuid(resultId)) ||
+    (reviewedAt !== null && Number.isNaN(Date.parse(reviewedAt))) ||
+    !isOneOf(TRIAGE_PRIORITIES, priority) ||
+    !isOneOf(TRIAGE_CATEGORIES, category) ||
+    !isOneOf(TRIAGE_TEAMS, team)
+  ) {
+    return { error: "Choose a priority, category and team." };
+  }
+
+  let outcome;
+  try {
+    outcome = await reviewTriage(ticketId, resultId, reviewedAt, { priority, category, team });
+  } catch (err) {
+    if (!(err instanceof TriageReviewError)) {
+      throw err;
+    }
+    switch (err.reason) {
+      case "stale":
+        revalidatePath(`/tickets/${ticketId}`);
+        return { error: "The AI assessment changed while you were reviewing. Check the new one and save again." };
+      case "stale_review":
+        revalidatePath(`/tickets/${ticketId}`);
+        return { error: "Someone else reviewed this ticket while you had it open. Check their review and save again." };
+      case "not_found":
+        // e.g. another agent claimed the ticket in the meantime.
+        return { error: "This ticket is no longer available to you." };
+      case "not_allowed":
+        // The caller's staff role was removed after requireStaff() passed.
+        return { error: "You no longer have permission to review triage." };
+    }
+  }
+
+  revalidatePath(`/tickets/${ticketId}`);
+  revalidatePath("/queue");
+  return {
+    ok: outcome === "confirmed" ? "Confirmed the AI's triage." : "Saved your triage.",
+  };
 }
 
 export async function claimTicketAction(formData: FormData) {

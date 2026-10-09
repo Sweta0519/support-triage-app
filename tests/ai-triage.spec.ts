@@ -54,8 +54,8 @@ test("a new ticket is triaged by the AI, visible to staff and never to the custo
     await expect(panel.getByText("completed", { exact: true })).toBeVisible({ timeout: 1_500 });
   }).toPass({ timeout: 90_000, intervals: [2_000, 3_000, 5_000] });
 
-  await expect(panel.getByText("Category", { exact: true })).toBeVisible();
-  await expect(panel.getByText("Priority", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("term").filter({ hasText: /^Category$/ })).toBeVisible();
+  await expect(panel.getByRole("term").filter({ hasText: /^Priority$/ })).toBeVisible();
   await expect(panel.getByText("Suggested reply", { exact: false })).toBeVisible();
   // Usage/cost indicator: the footer line shows the real OpenRouter-billed
   // cost for this run (embedding + completion), not an estimate.

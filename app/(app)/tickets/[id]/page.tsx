@@ -206,6 +206,8 @@ export default async function TicketDetailPage({
               ticketId={ticket.id}
               triageStatus={ticket.triage_state?.triage_status ?? "pending"}
               triage={triage}
+              triageState={ticket.triage_state}
+              currentUserId={profile.id}
               fromFilter={fromFilter}
             />
             <SharePanel
