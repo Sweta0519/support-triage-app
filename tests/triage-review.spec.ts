@@ -166,6 +166,44 @@ test("a review against a superseded AI run is rejected, and a re-run never overw
   await expect(panel.getByLabel("Priority")).toHaveValue("normal");
 });
 
+test("a review saved from a page loaded before someone else's review is rejected", async ({ page }) => {
+  const db = serviceClient();
+  const { ticketId } = await seedTriagedTicket(db, `Concurrent review probe ${Date.now()}`, AI);
+
+  await login(page, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
+  await page.goto(`/tickets/${ticketId}`);
+  const panel = page.locator("section").filter({ hasText: "AI triage" });
+  await expect(panel.getByRole("button", { name: "Confirm AI triage" })).toBeVisible();
+
+  // An admin corrects the priority while the agent has the page open.
+  const { error: reviewError } = await db
+    .from("ticket_triage_state")
+    .update({
+      priority: "low",
+      reviewed_by: await profileId(db, requireEnv("TEST_ADMIN_EMAIL")),
+      reviewed_at: new Date().toISOString(),
+    })
+    .eq("ticket_id", ticketId);
+  if (reviewError) throw new Error(reviewError.message);
+
+  // Confirming from the old page must not put "high" back.
+  await panel.getByRole("button", { name: "Confirm AI triage" }).click();
+  await expect(panel.getByRole("alert")).toContainText("Someone else reviewed this ticket");
+  await expect(panel.getByLabel("Priority")).toHaveValue("low");
+
+  const { data: state } = await db
+    .from("ticket_triage_state")
+    .select("priority")
+    .eq("ticket_id", ticketId)
+    .single();
+  expect(state).toEqual({ priority: "low" });
+
+  // Saving again from the refreshed form works.
+  await panel.getByLabel("Priority").selectOption("normal");
+  await panel.getByRole("button", { name: "Save correction" }).click();
+  await expect(panel.getByRole("status")).toHaveText("Saved your triage.");
+});
+
 test("customers cannot call review_triage directly", async () => {
   const db = serviceClient();
   const { ticketId, resultId } = await seedTriagedTicket(db, `Customer RPC probe ${Date.now()}`, AI);
@@ -189,6 +227,7 @@ test("customers cannot call review_triage directly", async () => {
     p_priority: "urgent",
     p_category: "billing",
     p_team: "billing",
+    p_reviewed_at: null,
   });
   expect(error?.message).toContain("not_allowed");
 

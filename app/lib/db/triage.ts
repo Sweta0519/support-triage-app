@@ -56,9 +56,9 @@ export async function getLatestTriageResult(ticketId: string): Promise<TriageRes
 export type TriageReviewOutcome = "confirmed" | "corrected" | "manual";
 
 // The refusals ticketing.review_triage() can raise, identified by SQLSTATE
-// (plus the exact message for the stale case, which uses the default P0001)
+// (plus the exact message for the two stale cases, which use the default P0001)
 // rather than by searching message text.
-export type TriageReviewRefusal = "stale" | "not_found" | "not_allowed";
+export type TriageReviewRefusal = "stale" | "stale_review" | "not_found" | "not_allowed";
 
 export class TriageReviewError extends Error {
   constructor(readonly reason: TriageReviewRefusal) {
@@ -68,6 +68,7 @@ export class TriageReviewError extends Error {
 
 function reviewRefusal(error: { code: string; message: string }): TriageReviewRefusal | null {
   if (error.code === "P0001" && error.message === "stale_triage") return "stale";
+  if (error.code === "P0001" && error.message === "stale_review") return "stale_review";
   if (error.code === "P0002") return "not_found";
   if (error.code === "42501") return "not_allowed";
   return null;
@@ -77,9 +78,13 @@ function reviewRefusal(error: { code: string; message: string }): TriageReviewRe
 // and ticket visibility itself and writes the working state plus one event
 // per changed field. resultId is the triage run the reviewer was shown (null
 // when there is none); the function rejects it if a newer run has landed.
+// shownReviewedAt is the reviewed_at the reviewer was shown, passed back
+// verbatim (null when unreviewed); the function rejects it if someone else
+// has reviewed since.
 export async function reviewTriage(
   ticketId: string,
   resultId: string | null,
+  shownReviewedAt: string | null,
   fields: TriageReviewFields
 ): Promise<TriageReviewOutcome> {
   const supabase = await createServerSupabaseClient();
@@ -89,6 +94,7 @@ export async function reviewTriage(
     p_priority: fields.priority,
     p_category: fields.category,
     p_team: fields.team,
+    p_reviewed_at: shownReviewedAt,
   });
 
   if (error) {

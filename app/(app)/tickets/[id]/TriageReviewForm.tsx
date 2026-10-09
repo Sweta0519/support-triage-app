@@ -26,33 +26,31 @@ const FIELDS = [
 export function TriageReviewForm({
   ticketId,
   resultId,
+  reviewedAt,
   ai,
   current,
 }: {
   ticketId: string;
   // The triage run on screen, or null when there is none (failed / no key).
   resultId: string | null;
+  // The review on screen (ticket_triage_state.reviewed_at), or null.
+  reviewedAt: string | null;
   ai: Fields | null;
   current: Fields;
 }) {
   const [state, action, pending] = useActionState(reviewTriageAction, undefined);
   const [values, setValues] = useState<Fields>(current);
 
-  // A new AI run (a Re-run, or the one a stale save was refused for) arrives
-  // as a new resultId without remounting the form: restart from the values
-  // now stored, so the old run's selection can't be saved back over it. A
-  // message from before that run no longer applies and is hidden; one that
-  // arrives with it (the stale refusal) is kept.
-  const [seen, setSeen] = useState({ resultId, state });
-  const [hiddenState, setHiddenState] = useState<typeof state>(undefined);
-  if (resultId !== seen.resultId || state !== seen.state) {
-    if (resultId !== seen.resultId) {
-      setValues(current);
-      if (state === seen.state) setHiddenState(state);
-    }
-    setSeen({ resultId, state });
+  // A new AI run (a Re-run, or the one a stale save was refused for) or
+  // someone else's review arrives as a new resultId / reviewedAt without
+  // remounting the form: restart from the values now stored, so the old
+  // selection can't be saved back over it. Our own save changes reviewedAt
+  // too, but the stored values are then the ones already selected.
+  const [seen, setSeen] = useState({ resultId, reviewedAt });
+  if (resultId !== seen.resultId || reviewedAt !== seen.reviewedAt) {
+    setSeen({ resultId, reviewedAt });
+    setValues(current);
   }
-  const message = state === hiddenState ? undefined : state;
 
   const matchesAi =
     ai !== null &&
@@ -77,6 +75,7 @@ export function TriageReviewForm({
     >
       <input type="hidden" name="ticketId" value={ticketId} />
       <input type="hidden" name="resultId" value={resultId ?? ""} />
+      <input type="hidden" name="reviewedAt" value={reviewedAt ?? ""} />
 
       <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 text-xs">
         {FIELDS.map((field) => {
@@ -125,13 +124,13 @@ export function TriageReviewForm({
                 ? "Save triage"
                 : "Save correction"}
         </button>
-        {message && "error" in message ? (
+        {state && "error" in state ? (
           <p role="alert" className="text-xs text-red-700 dark:text-red-400">
-            {message.error}
+            {state.error}
           </p>
-        ) : message && "ok" in message ? (
+        ) : state && "ok" in state ? (
           <p role="status" className="text-xs text-emerald-700 dark:text-emerald-400">
-            {message.ok}
+            {state.ok}
           </p>
         ) : null}
       </div>

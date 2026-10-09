@@ -121,6 +121,8 @@ export async function reviewTriageAction(
   const ticketId = String(formData.get("ticketId") ?? "");
   const rawResultId = String(formData.get("resultId") ?? "");
   const resultId = rawResultId === "" ? null : rawResultId;
+  const rawReviewedAt = String(formData.get("reviewedAt") ?? "");
+  const reviewedAt = rawReviewedAt === "" ? null : rawReviewedAt;
   const priority = String(formData.get("priority") ?? "");
   const category = String(formData.get("category") ?? "");
   const team = String(formData.get("team") ?? "");
@@ -128,6 +130,7 @@ export async function reviewTriageAction(
   if (
     !isUuid(ticketId) ||
     (resultId !== null && !isUuid(resultId)) ||
+    (reviewedAt !== null && Number.isNaN(Date.parse(reviewedAt))) ||
     !isOneOf(TRIAGE_PRIORITIES, priority) ||
     !isOneOf(TRIAGE_CATEGORIES, category) ||
     !isOneOf(TRIAGE_TEAMS, team)
@@ -137,7 +140,7 @@ export async function reviewTriageAction(
 
   let outcome;
   try {
-    outcome = await reviewTriage(ticketId, resultId, { priority, category, team });
+    outcome = await reviewTriage(ticketId, resultId, reviewedAt, { priority, category, team });
   } catch (err) {
     if (!(err instanceof TriageReviewError)) {
       throw err;
@@ -146,6 +149,9 @@ export async function reviewTriageAction(
       case "stale":
         revalidatePath(`/tickets/${ticketId}`);
         return { error: "The AI assessment changed while you were reviewing. Check the new one and save again." };
+      case "stale_review":
+        revalidatePath(`/tickets/${ticketId}`);
+        return { error: "Someone else reviewed this ticket while you had it open. Check their review and save again." };
       case "not_found":
         // e.g. another agent claimed the ticket in the meantime.
         return { error: "This ticket is no longer available to you." };

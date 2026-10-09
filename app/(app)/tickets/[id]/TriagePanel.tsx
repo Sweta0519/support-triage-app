@@ -169,10 +169,11 @@ export function TriagePanel({
             // Keyed by ticket only: after a save or a stale-run refusal the
             // page revalidates, and remounting then would drop the form's
             // success/error message. The form resets its own selection when
-            // a new AI run (resultId) arrives.
+            // a new AI run (resultId) or review (reviewedAt) arrives.
             key={ticketId}
             ticketId={ticketId}
             resultId={triage?.id ?? null}
+            reviewedAt={triageState?.reviewed_at ?? null}
             ai={
               triage
                 ? {
