@@ -55,10 +55,22 @@ export async function getLatestTriageResult(ticketId: string): Promise<TriageRes
 
 export type TriageReviewOutcome = "confirmed" | "corrected" | "manual";
 
-export class StaleTriageError extends Error {
-  constructor() {
-    super("stale_triage");
+// The refusals ticketing.review_triage() can raise, identified by SQLSTATE
+// (plus the exact message for the stale case, which uses the default P0001)
+// rather than by searching message text.
+export type TriageReviewRefusal = "stale" | "not_found" | "not_allowed";
+
+export class TriageReviewError extends Error {
+  constructor(readonly reason: TriageReviewRefusal) {
+    super(`review_triage refused: ${reason}`);
   }
+}
+
+function reviewRefusal(error: { code: string; message: string }): TriageReviewRefusal | null {
+  if (error.code === "P0001" && error.message === "stale_triage") return "stale";
+  if (error.code === "P0002") return "not_found";
+  if (error.code === "42501") return "not_allowed";
+  return null;
 }
 
 // Runs as the signed-in user: ticketing.review_triage() checks staff role
@@ -80,10 +92,8 @@ export async function reviewTriage(
   });
 
   if (error) {
-    if (error.message.includes("stale_triage")) {
-      throw new StaleTriageError();
-    }
-    throw new Error(error.message);
+    const reason = reviewRefusal(error);
+    throw reason ? new TriageReviewError(reason) : new Error(error.message);
   }
   return data as TriageReviewOutcome;
 }

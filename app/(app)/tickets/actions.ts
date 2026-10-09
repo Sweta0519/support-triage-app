@@ -27,7 +27,7 @@ import { addComment, COMMENT_MAX_LENGTH } from "@/app/lib/db/comments";
 import { checkRateLimit, RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/db/rate-limit";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { rerunTriage, runTriage } from "@/app/lib/ai/triage";
-import { getLatestTriageResult, reviewTriage, StaleTriageError } from "@/app/lib/db/triage";
+import { getLatestTriageResult, reviewTriage, TriageReviewError } from "@/app/lib/db/triage";
 import { publishTicketSummary, revokeShare } from "@/app/lib/db/shares";
 import {
   isOneOf,
@@ -139,15 +139,20 @@ export async function reviewTriageAction(
   try {
     outcome = await reviewTriage(ticketId, resultId, { priority, category, team });
   } catch (err) {
-    if (err instanceof StaleTriageError) {
-      revalidatePath(`/tickets/${ticketId}`);
-      return { error: "The AI assessment changed while you were reviewing. Check the new one and save again." };
+    if (!(err instanceof TriageReviewError)) {
+      throw err;
     }
-    // e.g. another agent claimed the ticket in the meantime.
-    if (err instanceof Error && err.message.includes("not_found")) {
-      return { error: "This ticket is no longer available to you." };
+    switch (err.reason) {
+      case "stale":
+        revalidatePath(`/tickets/${ticketId}`);
+        return { error: "The AI assessment changed while you were reviewing. Check the new one and save again." };
+      case "not_found":
+        // e.g. another agent claimed the ticket in the meantime.
+        return { error: "This ticket is no longer available to you." };
+      case "not_allowed":
+        // The caller's staff role was removed after requireStaff() passed.
+        return { error: "You no longer have permission to review triage." };
     }
-    throw err;
   }
 
   revalidatePath(`/tickets/${ticketId}`);

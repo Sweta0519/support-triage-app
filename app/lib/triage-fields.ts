@@ -1,6 +1,7 @@
 // The closed sets behind ticketing.ticket_priority / ticket_category /
-// ticket_team. Shared by the review form (client) and the Server Action that
-// validates it, so it must not import anything server-only. Keep in sync
+// ticket_team, and the one copy in TypeScript: the triage pipeline's output
+// schema, the review form (client) and the Server Action that validates it
+// all read them from here, so it must not import anything server-only. Keep in sync
 // with the enums in supabase/migrations/20260903010000_tickets.sql.
 
 export const TRIAGE_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
