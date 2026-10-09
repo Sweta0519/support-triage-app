@@ -14,6 +14,7 @@ import { getActiveShareForTicket } from "@/app/lib/db/shares";
 import { Badge } from "@/app/components/Badge";
 import { priorityBadgeClasses, statusBadgeClasses, statusLabel } from "@/app/lib/badges";
 import { formatRelativeTime } from "@/app/lib/format";
+import { computeSla, slaBadgeClasses, slaBadgeLabel, slaDescription } from "@/app/lib/sla";
 import { CommentForm } from "./CommentForm";
 import { StaffControls } from "./StaffControls";
 import { TriagePanel } from "./TriagePanel";
@@ -158,6 +159,10 @@ export default async function TicketDetailPage({
   // Staff trace back through the queue tab they came from; customers
   // through their own list. The ticket itself is the current page.
   const parents = isStaff ? queueBreadcrumb(fromFilter) : [MY_TICKETS_CRUMB];
+  // Staff only: the response target is an internal commitment.
+  const sla = isStaff
+    ? computeSla({ ...ticket, priority: ticket.triage_state?.priority ?? null })
+    : null;
 
   return (
     <div
@@ -173,6 +178,12 @@ export default async function TicketDetailPage({
             <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
               Opened {formatRelativeTime(ticket.created_at)}
             </p>
+            {sla ? (
+              <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+                <Badge label={slaBadgeLabel(sla)} colorClasses={slaBadgeClasses(sla.state)} />
+                {slaDescription(sla)}
+              </p>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             {isStaff && ticket.triage_state?.priority ? (

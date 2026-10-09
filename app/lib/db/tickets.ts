@@ -57,6 +57,7 @@ export type TicketSummary = {
 
 export type QueueTicketSummary = TicketSummary & {
   assignee_id: string | null;
+  first_response_at: string | null;
   triage_state: TriageState | null;
 };
 
@@ -65,13 +66,15 @@ export type TicketBase = TicketSummary & {
   updated_at: string;
   customer_id: string;
   assignee_id: string | null;
+  first_response_at: string | null;
 };
 
 export type Ticket = TicketBase & { triage_state: TriageState | null };
 
 const TRIAGE_STATE_EMBED =
   "triage_state:ticket_triage_state(triage_status, priority, category, team, reviewed_by, reviewed_at, reviewed_result_id)";
-const TICKET_BASE_COLUMNS = "id, subject, body, status, created_at, updated_at, customer_id, assignee_id";
+const TICKET_BASE_COLUMNS =
+  "id, subject, body, status, created_at, updated_at, customer_id, assignee_id, first_response_at";
 const TICKET_COLUMNS = `${TICKET_BASE_COLUMNS}, ${TRIAGE_STATE_EMBED}`;
 
 // Every query here also filters by customer_id explicitly, even though RLS
@@ -148,7 +151,7 @@ export async function listQueueTickets(
   const supabase = await createServerSupabaseClient();
   let query = supabase
     .from("tickets")
-    .select(`id, subject, status, created_at, assignee_id, ${TRIAGE_STATE_EMBED}`)
+    .select(`id, subject, status, created_at, assignee_id, first_response_at, ${TRIAGE_STATE_EMBED}`)
     .neq("status", "closed")
     .order("created_at", { ascending: true });
 
