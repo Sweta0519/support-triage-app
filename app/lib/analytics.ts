@@ -3,6 +3,7 @@
 // without a database.
 
 import type { TicketStatus } from "@/app/lib/db/tickets";
+import { isFrustrated } from "@/app/lib/queue";
 import { computeSla } from "@/app/lib/sla";
 import { TRIAGE_PRIORITIES, type TriagePriority } from "@/app/lib/triage-fields";
 
@@ -12,6 +13,9 @@ export type AnalyticsTicketRow = {
   status: TicketStatus;
   created_at: string;
   first_response_at: string | null;
+  assignee_id: string | null;
+  // From the ticket's newest triage run; null before triage has run.
+  latest_triage: { frustration: number | null; is_escalation_risk: boolean } | null;
   triage_state:
     | (TriageFields & {
         reviewed_at: string | null;
@@ -62,14 +66,14 @@ function utcDay(date: Date): string {
 }
 
 // `rows` are the recent tickets every figure is computed from, except the
-// open at-risk / overdue counts, which use `waiting`: the open tickets still
-// without a first reply, fetched separately so the backlog is complete even
-// when `rows` is a sample (the oldest waiting tickets are the likeliest to
-// be overdue and the likeliest to fall outside it). Defaults to `rows`.
+// open at-risk / overdue counts, which use `open`: every open ticket,
+// fetched separately so the backlog is complete even when `rows` is a
+// sample (the oldest waiting tickets are the likeliest to be overdue and
+// the likeliest to fall outside it). Defaults to `rows`.
 export function computeAnalytics(
   rows: AnalyticsTicketRow[],
   now: Date = new Date(),
-  waiting: AnalyticsTicketRow[] = rows
+  open: AnalyticsTicketRow[] = rows
 ): Analytics {
   // Volume: one bucket per UTC day, including days with no tickets.
   const todayMs = Date.parse(utcDay(now));
@@ -99,7 +103,8 @@ export function computeAnalytics(
     bucket.answered += 1;
     if (sla.state === "met") bucket.met += 1;
   }
-  for (const row of waiting) {
+  // Answered tickets come back met/missed and aren't counted here.
+  for (const row of open) {
     const sla = computeSla(row, now);
     if (!sla) continue;
     const bucket = byPriority.get(sla.priority)!;
@@ -162,6 +167,83 @@ export function computeAnalytics(
       priorityMatrix,
     },
   };
+}
+
+export type WorkloadRow = {
+  // null: the Unassigned row.
+  assigneeId: string | null;
+  label: string;
+  open: number;
+  atRisk: number;
+  overdue: number;
+};
+
+// Open tickets per assignee, with how many of them are at risk of or past
+// their first-response SLA. Every listed staff member gets a row, even
+// with nothing assigned; anyone holding tickets who isn't in `staff` (e.g.
+// demoted since) still shows, as "Former staff member" plus the start of
+// their id so two of them stay distinguishable. Most loaded first, the
+// Unassigned row last.
+export function computeWorkload(
+  open: AnalyticsTicketRow[],
+  staff: { id: string; label: string }[],
+  now: Date = new Date()
+): WorkloadRow[] {
+  const rows = new Map<string | null, WorkloadRow>(
+    staff.map((s) => [s.id, { assigneeId: s.id, label: s.label, open: 0, atRisk: 0, overdue: 0 }])
+  );
+  rows.set(null, { assigneeId: null, label: "Unassigned", open: 0, atRisk: 0, overdue: 0 });
+  for (const ticket of open) {
+    if (ticket.status === "resolved" || ticket.status === "closed") continue;
+    let row = rows.get(ticket.assignee_id);
+    if (!row) {
+      row = {
+        assigneeId: ticket.assignee_id,
+        label: `Former staff member (${(ticket.assignee_id ?? "").slice(0, 8)})`,
+        open: 0,
+        atRisk: 0,
+        overdue: 0,
+      };
+      rows.set(ticket.assignee_id, row);
+    }
+    row.open += 1;
+    const state = computeSla(ticket, now)?.state;
+    if (state === "at_risk") row.atRisk += 1;
+    else if (state === "breached") row.overdue += 1;
+  }
+  const unassigned = rows.get(null)!;
+  rows.delete(null);
+  return [...[...rows.values()].sort((a, b) => b.open - a.open || a.label.localeCompare(b.label)), unassigned];
+}
+
+export type Sentiment = {
+  // From the AI's frustration score (1-5) on each ticket's newest triage run.
+  calm: number; // 1-2
+  neutral: number; // 3
+  frustrated: number; // 4-5
+  unscored: number; // not triaged yet, or the run has no score
+  // Frustrated customers still without a first reply, and tickets the AI
+  // flagged as likely to escalate.
+  frustratedWaiting: number;
+  escalationRisk: number;
+};
+
+// Over open tickets only, so every number on the card describes the same
+// set -- the customers someone still has to deal with.
+export function computeSentiment(open: AnalyticsTicketRow[]): Sentiment {
+  const out: Sentiment = { calm: 0, neutral: 0, frustrated: 0, unscored: 0, frustratedWaiting: 0, escalationRisk: 0 };
+  for (const row of open) {
+    if (row.status === "resolved" || row.status === "closed") continue;
+    const score = row.latest_triage?.frustration ?? null;
+    if (score === null) out.unscored += 1;
+    // "Frustrated" uses the same threshold as the queue card's chip.
+    else if (isFrustrated(score)) out.frustrated += 1;
+    else if (score === 3) out.neutral += 1;
+    else out.calm += 1;
+    if (row.latest_triage?.is_escalation_risk) out.escalationRisk += 1;
+    if (row.first_response_at === null && isFrustrated(score)) out.frustratedWaiting += 1;
+  }
+  return out;
 }
 
 // "83%", or "-" when there's nothing to divide by -- never a made-up 0%.
