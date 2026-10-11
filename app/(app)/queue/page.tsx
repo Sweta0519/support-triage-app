@@ -3,9 +3,10 @@ import Link from "next/link";
 import { requireStaff } from "@/app/lib/auth/session";
 import { listQueueTickets, type QueueTicketSummary } from "@/app/lib/db/tickets";
 import { Badge } from "@/app/components/Badge";
+import { SlaBadge } from "@/app/components/SlaBadge";
 import { priorityBadgeClasses, statusBadgeClasses, statusLabel } from "@/app/lib/badges";
 import { formatRelativeTime, formatTicketNumber } from "@/app/lib/format";
-import { computeSla, slaBadgeClasses, slaBadgeLabel } from "@/app/lib/sla";
+import { computeSla } from "@/app/lib/sla";
 import { fieldLabel } from "@/app/lib/triage-fields";
 import { primaryButtonClass } from "@/app/lib/styles";
 import { claimTicketAction } from "../tickets/actions";
@@ -120,7 +121,7 @@ function TicketCard({
           <Badge label={statusLabel(ticket.status)} colorClasses={statusBadgeClasses(ticket.status)} />
           {sla ? (
             <span className="ml-auto">
-              <Badge label={slaBadgeLabel(sla)} colorClasses={slaBadgeClasses(sla.state)} capitalize={false} />
+              <SlaBadge sla={sla} />
             </span>
           ) : null}
         </div>
@@ -367,7 +368,7 @@ export default async function QueuePage({
           </p>
         </div>
       ) : (
-        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+        <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {visible.map((ticket) => (
             <TicketCard key={ticket.id} ticket={ticket} filter={filter} currentUserId={profile.id} now={now} />
           ))}
