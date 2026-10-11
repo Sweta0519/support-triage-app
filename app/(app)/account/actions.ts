@@ -7,7 +7,9 @@ import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import { requireProfile } from "@/app/lib/auth/session";
 import { deleteOwnAccount, LastAdminError } from "@/app/lib/db/account";
 import { ProfileSettingsError, updateOwnProfile } from "@/app/lib/db/profiles";
-import { RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/db/rate-limit";
+import { checkRateLimit, RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/db/rate-limit";
+import { removeOwnAvatar, replaceOwnAvatar } from "@/app/lib/db/avatars";
+import { AVATAR_MAX_UPLOAD_BYTES, AvatarImageError, toAvatarWebp } from "@/app/lib/avatar-image";
 import { fullNameError, isQueueFilter, isQueueSort, isTheme } from "@/app/lib/preferences";
 
 // On an error the submitted values come back: React resets an uncontrolled
@@ -107,4 +109,57 @@ export async function deleteAccountAction(
   const supabase = await createServerSupabaseClient();
   await supabase.auth.signOut({ scope: "local" });
   redirect("/login?deleted=1");
+}
+
+export type AvatarState = { status: "saved" } | { status: "error"; error: string } | undefined;
+
+const AVATAR_ERRORS = {
+  too_large: "That picture is over 2 MB. Choose a smaller one.",
+  unsupported: "Use a JPEG, PNG or WebP picture.",
+} as const;
+
+export async function uploadAvatarAction(_prevState: AvatarState, formData: FormData): Promise<AvatarState> {
+  const profile = await requireProfile();
+
+  const file = formData.get("avatar");
+  if (!(file instanceof File) || file.size === 0) {
+    return { status: "error", error: "Choose a picture to upload." };
+  }
+  // Checked before reading the body into memory; toAvatarWebp checks again.
+  if (file.size > AVATAR_MAX_UPLOAD_BYTES) {
+    return { status: "error", error: AVATAR_ERRORS.too_large };
+  }
+
+  try {
+    // Charged before the resize, which is the costly part.
+    await checkRateLimit("update_avatar");
+    const webp = await toAvatarWebp(Buffer.from(await file.arrayBuffer()));
+    await replaceOwnAvatar(profile.id, webp);
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return { status: "error", error: RATE_LIMITED_MESSAGE };
+    }
+    if (err instanceof AvatarImageError) {
+      return { status: "error", error: AVATAR_ERRORS[err.reason] };
+    }
+    throw err;
+  }
+
+  revalidatePath("/", "layout");
+  return { status: "saved" };
+}
+
+export async function removeAvatarAction(): Promise<AvatarState> {
+  await requireProfile();
+  try {
+    await checkRateLimit("update_avatar");
+    await removeOwnAvatar();
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return { status: "error", error: RATE_LIMITED_MESSAGE };
+    }
+    throw err;
+  }
+  revalidatePath("/", "layout");
+  return { status: "saved" };
 }

@@ -5,6 +5,7 @@ import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { linkClass, secondaryButtonClass, readablePageClass } from "@/app/lib/styles";
 import { DeleteAccountForm } from "./DeleteAccountForm";
 import { SettingsForm } from "./SettingsForm";
+import { AvatarForm } from "./AvatarForm";
 
 const card =
   "flex flex-col gap-3 rounded-2xl border border-black/[.08] bg-white p-6 dark:border-white/[.08] dark:bg-zinc-950";
@@ -23,6 +24,10 @@ export default async function AccountPage() {
           with the <span className="capitalize">{profile.role}</span> role.
         </p>
       </div>
+
+      <section className={card}>
+        <AvatarForm id={profile.id} name={profile.full_name ?? profile.email} avatarPath={profile.avatar_path} />
+      </section>
 
       <section className={card} aria-label="Profile and preferences">
         <SettingsForm

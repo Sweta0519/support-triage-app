@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useRef, useState } from "react";
 
 import { signOutAction } from "@/app/lib/auth/actions";
+import { Avatar } from "@/app/components/Avatar";
 import { roleBadgeClasses } from "@/app/lib/badges";
 import type { AppRole } from "@/app/lib/db/profiles";
 
@@ -128,7 +129,7 @@ const linkActive = "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text
 export function AppSidebar({
   profile,
 }: {
-  profile: { email: string; fullName: string | null; role: AppRole };
+  profile: { id: string; email: string; fullName: string | null; avatarPath: string | null; role: AppRole };
 }) {
   const pathname = usePathname();
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -207,9 +208,7 @@ export function AppSidebar({
 
         <div className="mt-auto flex flex-col gap-2 border-t border-black/[.08] px-3 py-3 dark:border-white/[.145]">
           <div className="flex items-center gap-2.5 px-3 py-1">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-xs font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-              {(profile.fullName ?? profile.email).charAt(0).toUpperCase()}
-            </span>
+            <Avatar id={profile.id} name={profile.fullName ?? profile.email} avatarPath={profile.avatarPath} size={32} />
             <div className="flex min-w-0 flex-col leading-tight">
               {/* The display name from account settings, else the email. */}
               <span className="truncate text-xs font-medium text-black dark:text-zinc-50" title={profile.email}>

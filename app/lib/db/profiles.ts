@@ -16,6 +16,7 @@ export type Profile = {
   theme: Theme;
   queue_default_filter: QueueFilterKey;
   queue_default_sort: QueueSort;
+  avatar_path: string | null;
   created_at: string;
   updated_at: string;
 };

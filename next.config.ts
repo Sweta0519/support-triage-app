@@ -37,6 +37,9 @@ const nextConfig: NextConfig = {
       // domain explicitly so that check keeps working if the app is ever
       // fronted by a proxy or custom domain whose Host header differs.
       allowedOrigins: ["support-triage-app-one.vercel.app"],
+      // Default 1MB. Profile pictures may be up to 2MB (resized on the
+      // server before storing), plus multipart overhead.
+      bodySizeLimit: "3mb",
     },
   },
   async headers() {
