@@ -106,9 +106,15 @@ test.describe("profile pictures", () => {
     const a = await signedIn(requireEnv("TEST_USER_EMAIL"), requireEnv("TEST_USER_PASSWORD"));
     const webp = await sharp(await photo()).resize(256, 256).webp().toBuffer();
 
-    // B uploads a picture of their own (directly, under the same policies).
+    // Only the server uploads (after re-encoding): a direct Storage upload
+    // is refused even into your own folder, so nothing can skip sharp or
+    // the rate limit.
+    const own = await b.db.storage.from(BUCKET).upload(`${b.id}/${randomUUID()}.webp`, webp, { contentType: "image/webp" });
+    expect(own.error).not.toBeNull();
+
+    // A picture of B's, put there the way the server does.
     const bPath = `${b.id}/${randomUUID()}.webp`;
-    expect((await b.db.storage.from(BUCKET).upload(bPath, webp, { contentType: "image/webp" })).error).toBeNull();
+    expect((await service().storage.from(BUCKET).upload(bPath, webp, { contentType: "image/webp" })).error).toBeNull();
     try {
       // A can't write into B's folder, or overwrite B's picture...
       const intoB = await a.db.storage.from(BUCKET).upload(`${b.id}/${randomUUID()}.webp`, webp, { contentType: "image/webp" });
@@ -118,10 +124,17 @@ test.describe("profile pictures", () => {
       // ...can't point their own profile at it...
       const { error: pointError } = await a.db.rpc("set_own_avatar", { p_path: bPath });
       expect(pointError?.code).toBe("22023");
-      // ...and can't delete it (the policy filters it out: nothing removed).
+      // ...and can't delete it (no policy: nothing removed).
       const { data: removed } = await a.db.storage.from(BUCKET).remove([bPath]);
       expect(removed ?? []).toHaveLength(0);
-      expect((await b.db.storage.from(BUCKET).download(bPath)).error).toBeNull();
+      expect((await service().storage.from(BUCKET).download(bPath)).error).toBeNull();
+
+      // The bucket can't be listed or read directly by anyone signed in --
+      // not even the owner; pictures are only served by the app's route.
+      const { data: listing } = await a.db.storage.from(BUCKET).list(b.id);
+      expect(listing ?? []).toHaveLength(0);
+      expect((await a.db.storage.from(BUCKET).download(bPath)).error).not.toBeNull();
+      expect((await b.db.storage.from(BUCKET).download(bPath)).error).not.toBeNull();
 
       // A path in your own folder that was never uploaded is refused too.
       const { error: ghost } = await a.db.rpc("set_own_avatar", { p_path: `${a.id}/${randomUUID()}.webp` });
@@ -135,7 +148,7 @@ test.describe("profile pictures", () => {
       expect(res.status()).not.toBe(200);
       await anon.close();
     } finally {
-      await b.db.storage.from(BUCKET).remove([bPath]);
+      await service().storage.from(BUCKET).remove([bPath]);
     }
   });
 

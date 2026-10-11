@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+
 import { avatarUrl, fallbackColour, initials } from "@/app/lib/avatars";
 
 // A person's picture, or their initials on a colour derived from their id.
@@ -14,10 +18,21 @@ export function Avatar({
   size?: number;
 }) {
   const style = { width: size, height: size };
-  if (avatarPath) {
+  // A picture that fails to load (removed meanwhile, Storage error) falls
+  // back to the initials rather than a broken-image icon.
+  const [failedPath, setFailedPath] = useState<string | null>(null);
+  if (avatarPath && failedPath !== avatarPath) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- already a 256px WebP; served by our own route behind the session
-      <img src={avatarUrl(avatarPath)} alt="" width={size} height={size} style={style} className="shrink-0 rounded-full object-cover" />
+      <img
+        src={avatarUrl(avatarPath)}
+        alt=""
+        width={size}
+        height={size}
+        style={style}
+        onError={() => setFailedPath(avatarPath)}
+        className="shrink-0 rounded-full object-cover"
+      />
     );
   }
   return (

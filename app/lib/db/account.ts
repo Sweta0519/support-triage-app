@@ -46,17 +46,18 @@ export async function deleteOwnAccount(userId: string): Promise<void> {
   }
 
   // Storage objects don't cascade from auth.users, so the profile pictures
-  // in the user's folder go explicitly -- only after the deletion went
-  // through, so a refused deletion (last admin) keeps them.
-  const folder = service.storage.from(AVATAR_BUCKET);
-  const { data: objects, error: listError } = await folder.list(userId);
-  if (listError) {
-    throw new Error(listError.message);
-  }
-  if (objects.length > 0) {
-    const { error: removeError } = await folder.remove(objects.map((o) => `${userId}/${o.name}`));
-    if (removeError) {
-      throw new Error(removeError.message);
+  // in the user's folder go explicitly -- after the deletion went through,
+  // so a refused deletion (last admin) keeps them. Best effort: the account
+  // is already gone, so a Storage error is logged, not shown to the user.
+  try {
+    const folder = service.storage.from(AVATAR_BUCKET);
+    const { data: objects, error: listError } = await folder.list(userId, { limit: 1000 });
+    if (listError) throw listError;
+    if (objects.length > 0) {
+      const { error: removeError } = await folder.remove(objects.map((o) => `${userId}/${o.name}`));
+      if (removeError) throw removeError;
     }
+  } catch (err) {
+    console.error(`Couldn't remove profile pictures of deleted user ${userId}:`, err);
   }
 }

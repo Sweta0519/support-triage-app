@@ -6,9 +6,20 @@ import { removeAvatarAction, uploadAvatarAction, type AvatarState } from "./acti
 import { Avatar } from "@/app/components/Avatar";
 import { secondaryButtonClass } from "@/app/lib/styles";
 
+const MAX_BYTES = 2 * 1024 * 1024;
+
 // One state for both buttons, so whichever ran last reports.
 async function avatarAction(prev: AvatarState, formData: FormData): Promise<AvatarState> {
-  return formData.get("intent") === "remove" ? removeAvatarAction() : uploadAvatarAction(prev, formData);
+  if (formData.get("intent") === "remove") {
+    return removeAvatarAction();
+  }
+  // Caught here so an oversized file gets the friendly message instead of
+  // the framework's body-size error; the server checks again.
+  const file = formData.get("avatar");
+  if (file instanceof File && file.size > MAX_BYTES) {
+    return { status: "error", error: "That picture is over 2 MB. Choose a smaller one." };
+  }
+  return uploadAvatarAction(prev, formData);
 }
 
 export function AvatarForm({

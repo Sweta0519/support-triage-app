@@ -13,7 +13,9 @@ export function avatarUrl(path: string): string {
 
 export function initials(name: string): string {
   const words = name.replace(/@.*$/, "").split(/[\s._-]+/).filter(Boolean);
-  const letters = words.length > 1 ? words[0][0] + words[words.length - 1][0] : (words[0] ?? "?").slice(0, 2);
+  // Array.from splits by code point, so an emoji initial stays whole.
+  const first = Array.from(words[0] ?? "?");
+  const letters = words.length > 1 ? first[0] + Array.from(words[words.length - 1])[0] : first.slice(0, 2).join("");
   return letters.toUpperCase();
 }
 
