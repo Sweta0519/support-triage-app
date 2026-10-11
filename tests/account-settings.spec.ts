@@ -48,9 +48,12 @@ test.describe("account settings", () => {
       await page.reload();
       await expect(page.getByLabel("Display name")).toHaveValue(name);
       await expect(page.getByLabel("Theme")).toHaveValue("dark");
+      // The sidebar's user card shows the name instead of the email.
+      await expect(page.getByRole("complementary").getByText(name, { exact: true })).toBeVisible();
       // The app layout carries the choice, and the page really is dark.
       await expect(page.locator("[data-theme=dark]")).toHaveCount(1);
-      await expect(page.locator("[data-theme=dark]")).toHaveCSS("background-color", "rgb(10, 10, 10)");
+      // The page itself (body) turns dark too, via :root:has([data-theme]).
+      await expect(page.locator("body")).toHaveCSS("background-color", "rgb(10, 10, 10)");
 
       // "Light" wins over a device set to dark: the background and the
       // dark: utility classes both stay light.
@@ -59,8 +62,8 @@ test.describe("account settings", () => {
       await page.getByRole("button", { name: "Save settings" }).click();
       await expect(page.getByRole("status")).toHaveText("Settings saved.");
       await page.reload();
-      const light = page.locator("[data-theme=light]");
-      await expect(light).toHaveCSS("background-color", "rgb(255, 255, 255)");
+      await expect(page.locator("[data-theme=light]")).toHaveCount(1);
+      await expect(page.locator("body")).toHaveCSS("background-color", "rgb(255, 255, 255)");
       await expect(page.getByRole("heading", { name: "Account settings" })).toHaveCSS("color", "rgb(0, 0, 0)");
 
       // An overlong name is refused, and nothing changes.
@@ -68,6 +71,8 @@ test.describe("account settings", () => {
       await page.getByLabel("Display name").fill("x".repeat(81));
       await page.getByRole("button", { name: "Save settings" }).click();
       await expect(page.getByRole("status")).toHaveText(/80 characters or fewer/);
+      // The refused input stays in the field to be corrected.
+      await expect(page.getByLabel("Display name")).toHaveValue("x".repeat(81));
       await page.reload();
       await expect(page.getByLabel("Display name")).toHaveValue(name);
     } finally {

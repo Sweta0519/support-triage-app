@@ -43,7 +43,9 @@ export default defineConfig({
     },
     {
       // Changes the shared test accounts' theme and queue defaults, so it
-      // runs after the main suite rather than alongside it.
+      // runs after the main suite rather than alongside it (if a main-suite
+      // test fails, this shows as "did not run"). On its own:
+      // npx playwright test --project=settings --no-deps
       name: "settings",
       use: { ...devices["Desktop Chrome"] },
       dependencies: ["chromium"],

@@ -27,6 +27,9 @@ export function SettingsForm({
   queueDefaultSort: QueueSort;
 }) {
   const [state, action, pending] = useActionState(updateSettingsAction, undefined);
+  // After a refused save, show what was submitted rather than the stored
+  // values (React resets the form to these defaults after the action).
+  const shown = state?.status === "error" ? state.values : null;
 
   return (
     <form action={action} className="flex flex-col gap-6">
@@ -41,9 +44,9 @@ export function SettingsForm({
             name="fullName"
             type="text"
             autoComplete="name"
-            defaultValue={fullName}
+            defaultValue={shown?.fullName ?? fullName}
             maxLength={FULL_NAME_MAX_LENGTH}
-            placeholder="How your name appears to others"
+            placeholder="How your name appears in the app"
             className={inputClass}
           />
           <p className="text-xs text-zinc-500 dark:text-zinc-500">
@@ -62,13 +65,16 @@ export function SettingsForm({
           <label htmlFor="theme" className={labelClass}>
             Theme
           </label>
-          <select id="theme" name="theme" defaultValue={theme} className={inputClass}>
+          <select id="theme" name="theme" defaultValue={shown?.theme ?? theme} className={inputClass}>
             {(Object.keys(THEMES) as Theme[]).map((key) => (
               <option key={key} value={key}>
                 {THEMES[key]}
               </option>
             ))}
           </select>
+          <p className="text-xs text-zinc-500 dark:text-zinc-500">
+            Applies while you&apos;re signed in; the sign-in page follows your device.
+          </p>
         </div>
         {isStaff ? (
           <div className="grid gap-3 sm:grid-cols-2">
@@ -79,7 +85,7 @@ export function SettingsForm({
               <select
                 id="queueDefaultFilter"
                 name="queueDefaultFilter"
-                defaultValue={queueDefaultFilter}
+                defaultValue={shown?.queueDefaultFilter ?? queueDefaultFilter}
                 className={inputClass}
               >
                 {QUEUE_FILTERS.map((f) => (
@@ -96,7 +102,7 @@ export function SettingsForm({
               <select
                 id="queueDefaultSort"
                 name="queueDefaultSort"
-                defaultValue={queueDefaultSort}
+                defaultValue={shown?.queueDefaultSort ?? queueDefaultSort}
                 className={inputClass}
               >
                 {(Object.keys(QUEUE_SORTS) as QueueSort[]).map((key) => (

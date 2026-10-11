@@ -125,7 +125,11 @@ const linkIdle =
 const linkActive = "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300";
 
 // Only what the sidebar shows, not the whole profile row.
-export function AppSidebar({ profile }: { profile: { email: string; role: AppRole } }) {
+export function AppSidebar({
+  profile,
+}: {
+  profile: { email: string; fullName: string | null; role: AppRole };
+}) {
   const pathname = usePathname();
   const menuButton = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -204,11 +208,12 @@ export function AppSidebar({ profile }: { profile: { email: string; role: AppRol
         <div className="mt-auto flex flex-col gap-2 border-t border-black/[.08] px-3 py-3 dark:border-white/[.145]">
           <div className="flex items-center gap-2.5 px-3 py-1">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-xs font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-              {profile.email.charAt(0).toUpperCase()}
+              {(profile.fullName ?? profile.email).charAt(0).toUpperCase()}
             </span>
             <div className="flex min-w-0 flex-col leading-tight">
+              {/* The display name from account settings, else the email. */}
               <span className="truncate text-xs font-medium text-black dark:text-zinc-50" title={profile.email}>
-                {profile.email}
+                {profile.fullName ?? profile.email}
               </span>
               <span
                 className={`mt-0.5 w-fit rounded-full px-1.5 py-0 text-[10px] font-medium capitalize ${roleBadgeClasses(profile.role)}`}

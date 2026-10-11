@@ -29,11 +29,13 @@ export function isAppRole(value: unknown): value is AppRole {
 // RLS decides what comes back: admins get every profile, agents only staff
 // rows, a customer only their own. Only the admin-gated /admin/users page
 // calls this.
-export async function listProfiles(): Promise<Profile[]> {
+export type ProfileSummary = Pick<Profile, "id" | "email" | "full_name" | "role" | "created_at" | "updated_at">;
+
+export async function listProfiles(): Promise<ProfileSummary[]> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, full_name, role, theme, queue_default_filter, queue_default_sort, created_at, updated_at")
+    .select("id, email, full_name, role, created_at, updated_at")
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -108,8 +110,9 @@ export async function getOrCreateProfile(): Promise<Profile | null> {
 export type ProfileSettings = {
   fullName: string;
   theme: Theme;
-  queueDefaultFilter: QueueFilterKey;
-  queueDefaultSort: QueueSort;
+  // Null keeps the stored value (customers' forms have no queue fields).
+  queueDefaultFilter: QueueFilterKey | null;
+  queueDefaultSort: QueueSort | null;
 };
 
 export class ProfileSettingsError extends Error {
@@ -131,7 +134,8 @@ export async function updateOwnProfile(settings: ProfileSettings): Promise<void>
   });
   if (!error) return;
   if (error.message.includes("rate_limited")) throw new RateLimitError("update_profile");
-  // 22023 from the function's own checks, 23514 from a column constraint.
-  if (error.code === "22023" || error.code === "23514") throw new ProfileSettingsError();
+  // 22023 from the function's own checks, 23514 from a column constraint,
+  // 42501 / P0002 if the session or profile vanished since the page loaded.
+  if (["22023", "23514", "42501", "P0002"].includes(error.code)) throw new ProfileSettingsError();
   throw new Error(error.message);
 }

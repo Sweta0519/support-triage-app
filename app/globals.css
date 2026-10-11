@@ -33,14 +33,17 @@
   }
 }
 
-/* An explicit choice wins over the system setting for everything inside the
-   element that carries it. */
+/* An explicit choice wins over the system setting. :root:has() carries it up
+   to the page itself, so the body background, scrollbars and overscroll
+   follow it too, not just the app layout's element. */
+:root:has([data-theme="light"]),
 [data-theme="light"] {
   --background: #ffffff;
   --foreground: #171717;
   color-scheme: light;
 }
 
+:root:has([data-theme="dark"]),
 [data-theme="dark"] {
   --background: #0a0a0a;
   --foreground: #ededed;

@@ -26,11 +26,18 @@ export function parseQueueFilter(
 ): QueueFilterKey {
   const value = Array.isArray(raw) ? raw[0] : raw;
   // Object.hasOwn, not `in`: "?from=toString" must not count as a tab.
-  return value !== undefined && Object.hasOwn(FILTER_LABELS, value) ? (value as QueueFilterKey) : fallback;
+  return isQueueFilter(value) ? value : fallback;
 }
 
+export function isQueueFilter(value: unknown): value is QueueFilterKey {
+  return typeof value === "string" && Object.hasOwn(FILTER_LABELS, value);
+}
+
+// Always names the tab: a bare /queue opens on the user's own default tab
+// (account settings), which may not be the one meant here. Bare /queue is
+// for "my queue, as I set it up" (the sidebar, the dashboard card).
 export function queueHref(filter: QueueFilterKey): string {
-  return filter === "all" ? "/queue" : `/queue?filter=${filter}`;
+  return `/queue?filter=${filter}`;
 }
 
 // Where a ticket link from the queue points. "All" is the default, so it is
@@ -47,8 +54,8 @@ export function safeQueueReturn(raw: string): string {
   return /^\/queue(\?[^/\\\r\n]*)?$/.test(raw) ? raw : "/queue";
 }
 
-// The queue half of a ticket page's breadcrumb: "Queue" always, then the
-// tab the agent came from when it wasn't the default "All".
+// The queue half of a ticket page's breadcrumb: "Queue" (the whole queue)
+// always, then the tab the agent came from when it wasn't "All".
 export function queueBreadcrumb(filter: QueueFilterKey): { label: string; href: string }[] {
   const crumbs = [{ label: "Queue", href: queueHref("all") }];
   if (filter !== "all") {

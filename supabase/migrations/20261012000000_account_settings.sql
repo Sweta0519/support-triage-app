@@ -20,7 +20,8 @@ alter table ticketing.profiles
       check (queue_default_sort in ('sla', 'newest', 'oldest'));
 
 -- Display names were capped at 120 by audit S4's constraint; the settings
--- form allows 80, and no row is longer today.
+-- form allows 80. No profile had a name when this was applied (checked
+-- beforehand), and the constraint itself would have failed otherwise.
 alter table ticketing.profiles drop constraint profiles_full_name_length;
 alter table ticketing.profiles
   add constraint profiles_full_name_length check (full_name is null or char_length(full_name) <= 80);

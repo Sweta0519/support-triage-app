@@ -3,7 +3,7 @@
 // import, so client components can use the labels. The database enforces
 // the same sets with check constraints on ticketing.profiles.
 
-import { QUEUE_FILTERS, type QueueFilterKey } from "@/app/lib/queue-filters";
+export { isQueueFilter } from "@/app/lib/queue-filters";
 import { QUEUE_SORTS, type QueueSort } from "@/app/lib/queue";
 
 export const THEMES = {
@@ -19,10 +19,6 @@ export function isTheme(value: unknown): value is Theme {
   return typeof value === "string" && Object.hasOwn(THEMES, value);
 }
 
-export function isQueueFilter(value: unknown): value is QueueFilterKey {
-  return typeof value === "string" && QUEUE_FILTERS.some((f) => f.key === value);
-}
-
 export function isQueueSort(value: unknown): value is QueueSort {
   return typeof value === "string" && Object.hasOwn(QUEUE_SORTS, value);
 }
@@ -30,10 +26,13 @@ export function isQueueSort(value: unknown): value is QueueSort {
 // Trimmed; blank means "no name" (the app shows the email instead). Returns
 // an error message, or null when the name is acceptable.
 export function fullNameError(name: string): string | null {
-  if (name.length > FULL_NAME_MAX_LENGTH) {
+  // Counted in code points, like Postgres char_length(), so an emoji is one
+  // character here as it is in the database.
+  if (Array.from(name).length > FULL_NAME_MAX_LENGTH) {
     return `Keep your name to ${FULL_NAME_MAX_LENGTH} characters or fewer.`;
   }
-  if (/[\u0000-\u001f\u007f]/.test(name)) {
+  // C0, DEL and C1 -- the same set as Postgres [[:cntrl:]] under UTF-8.
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(name)) {
     return "Your name can't contain line breaks or control characters.";
   }
   return null;
