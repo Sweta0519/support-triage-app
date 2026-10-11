@@ -182,3 +182,48 @@ test("a triaged ticket's card shows its number, AI summary and AI flags, and sea
     await db.from("tickets").delete().eq("id", created.id);
   }
 });
+
+test("Claim on a card opens the ticket; a lost race says so instead of doing nothing", async ({ page }) => {
+  const db = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
+    db: { schema: "ticketing" },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: customer } = await db.from("profiles").select("id").eq("email", requireEnv("TEST_USER_EMAIL")).single();
+  const { data: admin } = await db.from("profiles").select("id").eq("email", requireEnv("TEST_ADMIN_EMAIL")).single();
+  const seed = async (subject: string) => {
+    const { data, error } = await db
+      .from("tickets")
+      .insert({ customer_id: customer!.id, subject, body: "Claim probe." })
+      .select("id, number")
+      .single();
+    if (error) throw new Error(error.message);
+    return data;
+  };
+  const won = await seed(`Claim probe ${Date.now()}`);
+  const lost = await seed(`Lost claim probe ${Date.now()}`);
+
+  try {
+    await login(page, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
+
+    // Success: lands on the ticket, with the queue tab kept for the breadcrumb.
+    await page.goto(`/queue?filter=unassigned&q=${encodeURIComponent(`#${won.number}`)}`);
+    await page.getByRole("button", { name: new RegExp(`^Claim #${won.number}:`) }).click();
+    await expect(page).toHaveURL(new RegExp(`/tickets/${won.id}\\?from=unassigned$`));
+    await expect(page.getByText("Assigned to you")).toBeVisible();
+
+    // Lost race: someone else claims it after the queue rendered.
+    await page.goto(`/queue?q=${encodeURIComponent(`#${lost.number}`)}`);
+    const claim = page.getByRole("button", { name: new RegExp(`^Claim #${lost.number}:`) });
+    await expect(claim).toBeVisible();
+    const { error } = await db.from("tickets").update({ assignee_id: admin!.id, status: "assigned" }).eq("id", lost.id);
+    if (error) throw new Error(error.message);
+    await claim.click();
+    // Back on the same queue view (search kept), with a notice, and the
+    // card gone: the ticket now belongs to someone else.
+    await expect(page).toHaveURL(new RegExp(`/queue\\?q=%23${lost.number}&notice=claim-taken$`));
+    await expect(page.getByRole("status").filter({ hasText: "Someone else already claimed that ticket." })).toBeVisible();
+    await expect(page.getByRole("button", { name: new RegExp(`^Claim #${lost.number}:`) })).toHaveCount(0);
+  } finally {
+    await db.from("tickets").delete().in("id", [won.id, lost.id]);
+  }
+});

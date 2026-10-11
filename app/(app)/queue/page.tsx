@@ -8,8 +8,7 @@ import { priorityBadgeClasses, statusBadgeClasses, statusLabel } from "@/app/lib
 import { formatRelativeTime, formatTicketNumber } from "@/app/lib/format";
 import { computeSla } from "@/app/lib/sla";
 import { fieldLabel } from "@/app/lib/triage-fields";
-import { primaryButtonClass } from "@/app/lib/styles";
-import { claimTicketAction } from "../tickets/actions";
+import { ClaimButton } from "./ClaimButton";
 import {
   QUEUE_FILTERS,
   parseQueueFilter,
@@ -95,11 +94,14 @@ function TicketCard({
   filter,
   currentUserId,
   now,
+  returnTo,
 }: {
   ticket: QueueTicketSummary;
   filter: QueueFilterKey;
   currentUserId: string;
   now: Date;
+  // This queue view's URL, for a claim that loses the race to come back to.
+  returnTo: string;
 }) {
   const sla = computeSla(ticket, now);
   const priority = ticket.triage_state?.priority ?? null;
@@ -153,19 +155,12 @@ function TicketCard({
         </div>
       </Link>
       {unassigned ? (
-        <form
-          action={claimTicketAction}
-          className="flex justify-end border-t border-black/[.08] px-4 py-2 dark:border-white/[.145]"
-        >
-          <input type="hidden" name="ticketId" value={ticket.id} />
-          <button
-            type="submit"
-            aria-label={`Claim ${formatTicketNumber(ticket.number)}: ${ticket.subject}`}
-            className={`${primaryButtonClass} !px-3 !py-1 !text-xs`}
-          >
-            Claim
-          </button>
-        </form>
+        <ClaimButton
+          ticketId={ticket.id}
+          label={`Claim ${formatTicketNumber(ticket.number)}: ${ticket.subject}`}
+          from={filter}
+          returnTo={returnTo}
+        />
       ) : null}
     </li>
   );
@@ -179,6 +174,7 @@ export default async function QueuePage({
     status?: string | string[];
     sort?: string | string[];
     q?: string | string[];
+    notice?: string | string[];
   }>;
 }) {
   const profile = await requireStaff();
@@ -187,6 +183,8 @@ export default async function QueuePage({
   const params = await searchParams;
   const filter = parseQueueFilter(params.filter);
   const view = parseQueueView(params);
+  const returnTo = viewHref(filter, view);
+  const claimTaken = params.notice === "claim-taken";
   const now = new Date();
 
   const tabCounts: Record<QueueFilterKey, number> = {
@@ -252,6 +250,15 @@ export default async function QueuePage({
           </span>
         </form>
       </div>
+
+      {claimTaken ? (
+        <p
+          role="status"
+          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"
+        >
+          Someone else already claimed that ticket. The queue below is up to date.
+        </p>
+      ) : null}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
@@ -370,7 +377,14 @@ export default async function QueuePage({
       ) : (
         <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {visible.map((ticket) => (
-            <TicketCard key={ticket.id} ticket={ticket} filter={filter} currentUserId={profile.id} now={now} />
+            <TicketCard
+              key={ticket.id}
+              ticket={ticket}
+              filter={filter}
+              currentUserId={profile.id}
+              now={now}
+              returnTo={returnTo}
+            />
           ))}
         </ul>
       )}
