@@ -7,7 +7,7 @@ import { useState, useTransition } from "react";
 import { moveTicketAction } from "../tickets/actions";
 import { Badge } from "@/app/components/Badge";
 import { priorityBadgeClasses } from "@/app/lib/badges";
-import { BOARD_COLUMNS, boardTargets, canMove, COLUMN_LABELS } from "@/app/lib/board";
+import { BOARD_COLUMNS, boardTargets, canMove, COLUMN_LABELS, moveClaimsTicket } from "@/app/lib/board";
 import type { TicketStatus } from "@/app/lib/ticket-status";
 
 export type BoardCard = {
@@ -31,49 +31,72 @@ export function Board({ cards: initial }: { cards: BoardCard[] }) {
   const [seenInitial, setSeenInitial] = useState(initial);
   const [dragging, setDragging] = useState<BoardCard | null>(null);
   const [overColumn, setOverColumn] = useState<TicketStatus | null>(null);
-  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const [message, setMessage] = useState<{ text: string; error: boolean; seq: number } | null>(null);
+  const [pending, setPending] = useState(0);
   const [, startTransition] = useTransition();
 
-  // Fresh server data (after a move or a refresh) replaces local state.
-  if (initial !== seenInitial) {
+  // Fresh server data replaces local state -- but not while a move is
+  // still in flight, or an earlier move's refresh could snap a later,
+  // not-yet-saved move back.
+  if (initial !== seenInitial && pending === 0) {
     setSeenInitial(initial);
     setCards(initial);
   }
 
+  function say(text: string, error: boolean) {
+    // seq makes a repeated identical message a new announcement.
+    setMessage((m) => ({ text, error, seq: (m?.seq ?? 0) + 1 }));
+  }
+
   function move(card: BoardCard, to: TicketStatus) {
     if (!canMove(card.status, to)) return;
-    // Optimistic: show it in the new column straight away.
-    setCards((cs) => cs.map((c) => (c.id === card.id ? { ...c, status: to, mine: c.mine || c.assigneeId === null } : c)));
-    setMessage(null);
+    const claims = moveClaimsTicket(card.assigneeId, to);
+    // Optimistic: show it in the new column straight away (and as yours if
+    // the move claims it).
+    setCards((cs) => cs.map((c) => (c.id === card.id ? { ...c, status: to, ...(claims ? { assigneeId: "me", mine: true } : {}) } : c)));
+    setPending((n) => n + 1);
     startTransition(async () => {
-      const result = await moveTicketAction(card.id, to);
-      if (result.ok) {
-        setMessage({ text: `Moved ${card.number} to ${COLUMN_LABELS[to]}.`, error: false });
-      } else {
-        setCards((cs) => cs.map((c) => (c.id === card.id ? card : c)));
-        setMessage({ text: result.error, error: true });
+      try {
+        const result = await moveTicketAction(card.id, to);
+        if (result.ok) {
+          say(`Moved ${card.number} to ${COLUMN_LABELS[to]}.`, false);
+        } else {
+          setCards((cs) => cs.map((c) => (c.id === card.id ? { ...c, status: card.status, assigneeId: card.assigneeId, mine: card.mine } : c)));
+          say(result.error, true);
+        }
+      } catch {
+        setCards((cs) => cs.map((c) => (c.id === card.id ? { ...c, status: card.status, assigneeId: card.assigneeId, mine: card.mine } : c)));
+        say("That move couldn't be saved. Refreshing the board.", true);
+      } finally {
+        setPending((n) => n - 1);
+        router.refresh();
       }
-      router.refresh();
     });
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    // min-w-0: let the board scroll inside itself instead of widening the page.
+    <div className="flex min-w-0 flex-col gap-3">
       <p
         role="status"
         aria-live="polite"
         className={`min-h-5 text-sm ${message?.error ? "text-red-700 dark:text-red-400" : "text-emerald-700 dark:text-emerald-400"}`}
       >
-        {message?.text ?? ""}
+        <span key={message?.seq}>{message?.text ?? ""}</span>
       </p>
-      <div className="grid gap-3 overflow-x-auto pb-2 md:grid-cols-5">
+      {/* Each column track has a minimum width, so narrow screens scroll the
+          board sideways instead of squeezing columns on top of each other.
+          `relative` makes this the containing block for the cards'
+          absolutely positioned sr-only labels, so off-screen columns can't
+          stretch the page past the scroll area. */}
+      <div className="relative grid gap-3 overflow-x-auto pb-2 md:grid-cols-[repeat(5,minmax(12rem,1fr))]">
         {BOARD_COLUMNS.map((column) => {
           const inColumn = cards.filter((c) => c.status === column);
           const droppable = dragging !== null && canMove(dragging.status, column);
           return (
             <section
               key={column}
-              aria-label={`${COLUMN_LABELS[column]}, ${inColumn.length} tickets`}
+              aria-label={`${COLUMN_LABELS[column]}, ${inColumn.length} ticket${inColumn.length === 1 ? "" : "s"}`}
               onDragOver={(e) => {
                 if (!droppable) return;
                 e.preventDefault();
@@ -86,7 +109,7 @@ export function Board({ cards: initial }: { cards: BoardCard[] }) {
                 if (dragging && droppable) move(dragging, column);
                 setDragging(null);
               }}
-              className={`flex min-h-48 min-w-56 flex-col gap-2 rounded-xl border p-2 transition-colors ${
+              className={`flex min-h-48 min-w-0 flex-col gap-2 rounded-xl border p-2 transition-colors ${
                 overColumn === column
                   ? "border-indigo-400 bg-indigo-50 dark:border-indigo-600 dark:bg-indigo-950/30"
                   : droppable
@@ -104,6 +127,7 @@ export function Board({ cards: initial }: { cards: BoardCard[] }) {
               {inColumn.map((card) => (
                 <article
                   key={card.id}
+                  aria-labelledby={`card-${card.id}`}
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.effectAllowed = "move";
@@ -126,7 +150,7 @@ export function Board({ cards: initial }: { cards: BoardCard[] }) {
                       </span>
                     ) : null}
                   </div>
-                  <Link href={`/tickets/${card.id}`} className="line-clamp-2 text-sm font-medium text-black hover:underline dark:text-zinc-50">
+                  <Link id={`card-${card.id}`} href={`/tickets/${card.id}`} className="line-clamp-2 text-sm font-medium text-black hover:underline dark:text-zinc-50">
                     {card.subject}
                   </Link>
                   <div className="flex flex-wrap items-center gap-1">
@@ -138,26 +162,47 @@ export function Board({ cards: initial }: { cards: BoardCard[] }) {
                       <span className={`${chip} bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-300`}>Frustrated</span>
                     ) : null}
                   </div>
-                  <div className="flex items-center justify-between gap-2 pt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
-                    <span>{card.assigneeId === null ? "Unassigned" : card.mine ? "Yours" : "Assigned"}</span>
-                    <label className="sr-only" htmlFor={`move-${card.id}`}>
-                      Move {card.number} {card.subject}
-                    </label>
-                    <select
-                      id={`move-${card.id}`}
-                      value=""
-                      onChange={(e) => {
-                        if (e.target.value) move(card, e.target.value as TicketStatus);
+                  <p className="pt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
+                    {card.assigneeId === null ? "Unassigned" : card.mine ? "Yours" : "Assigned"}
+                  </p>
+                  {/* Its own full-width row: next to the owner it overflowed
+                      narrow columns and the Move button was covered. */}
+                  <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    {/* Pick, then press Move: a select that moved on change would
+                        fire while arrow-keying through a closed select on
+                        Windows and in Firefox. */}
+                    <form
+                      className="flex w-full items-center gap-1"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const to = new FormData(e.currentTarget).get("to");
+                        if (typeof to === "string" && to) move(card, to as TicketStatus);
                       }}
-                      className="rounded-md border border-black/[.08] bg-transparent px-1 py-0.5 text-[11px] dark:border-white/[.145]"
                     >
-                      <option value="">Move to…</option>
-                      {boardTargets(card.status).map((to) => (
-                        <option key={to} value={to}>
-                          {COLUMN_LABELS[to]}
-                        </option>
-                      ))}
-                    </select>
+                      <label className="sr-only" htmlFor={`move-${card.id}`}>
+                        Move {card.number} {card.subject} to
+                      </label>
+                      <select
+                        id={`move-${card.id}`}
+                        name="to"
+                        defaultValue=""
+                        className="min-w-0 flex-1 rounded-md border border-black/[.08] bg-transparent px-1 py-0.5 text-[11px] dark:border-white/[.145]"
+                      >
+                        <option value="">Move to…</option>
+                        {boardTargets(card.status).map((to) => (
+                          <option key={to} value={to}>
+                            {COLUMN_LABELS[to]}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="submit"
+                        aria-label={`Move ${card.number}`}
+                        className="shrink-0 rounded-md border border-black/[.08] px-1.5 py-0.5 text-[11px] font-medium hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-white/[.06]"
+                      >
+                        Move
+                      </button>
+                    </form>
                   </div>
                 </article>
               ))}

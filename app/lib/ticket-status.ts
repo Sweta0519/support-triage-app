@@ -10,9 +10,11 @@ export type TicketStatus =
   | "resolved"
   | "closed";
 
-// Mirrors ticketing.guard_ticket_update()'s transition map exactly -- this
-// is only used to decide which buttons to render. The trigger is the real
-// enforcement; keep the two in sync if the map ever changes.
+// Mirrors ticketing.guard_ticket_update()'s transition map exactly. Used to
+// decide which buttons/moves to offer and as a server-side check in the
+// status actions. The trigger enforces it for agents; admins bypass the
+// trigger's map, so the board's move is also conditional on the status it
+// read (moveTicketStatus). Keep the two in sync if the map ever changes.
 export const ALLOWED_STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
   new: ["assigned", "in_progress"],
   triaged: ["assigned", "in_progress"],

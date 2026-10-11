@@ -49,7 +49,7 @@ async function seed(subject: string) {
   return data as { id: string; number: number };
 }
 const column = (page: import("@playwright/test").Page, name: string) =>
-  page.getByRole("region", { name: new RegExp(`^${name}, \\d+ tickets$`) });
+  page.getByRole("region", { name: new RegExp(`^${name}, \\d+ tickets?$`) });
 
 test("dragging a new ticket to In progress claims it; the Move menu offers only allowed moves", async ({ page }) => {
   const subject = `Board drag probe ${Date.now()}`;
@@ -81,6 +81,7 @@ test("dragging a new ticket to In progress claims it; the Move menu offers only 
 
   // Keyboard path: the Move menu.
   await page.getByLabel(new RegExp(`^Move #${ticket.number} `)).selectOption("resolved");
+  await page.getByRole("button", { name: `Move #${ticket.number}`, exact: true }).click();
   await expect(column(page, "Resolved").locator("article", { hasText: subject })).toBeVisible();
   // The card moves optimistically; wait for the server to confirm.
   await expect(page.getByRole("status").filter({ hasText: `Moved #${ticket.number} to Resolved.` })).toBeVisible();
@@ -99,6 +100,7 @@ test("a move that loses a claim race says so and puts the card back", async ({ p
   // The admin takes it after the board rendered.
   await db().from("tickets").update({ assignee_id: admin!.id, status: "assigned" }).eq("id", ticket.id);
   await page.getByLabel(new RegExp(`^Move #${ticket.number} `)).selectOption("in_progress");
+  await page.getByRole("button", { name: `Move #${ticket.number}`, exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "no longer available to you" })).toBeVisible();
   // The refreshed board no longer shows it to this agent (RLS).
   await expect(page.locator("article", { hasText: subject })).toHaveCount(0);

@@ -292,6 +292,31 @@ export async function assignTicket(
   return data;
 }
 
+// The board's move: applies only if the ticket is still in the status the
+// caller saw, so a concurrent change (someone else resolving or closing
+// it) isn't overwritten -- for an admin the guard trigger doesn't check
+// the transition map, so this is what keeps the move honest. null = it
+// changed (or isn't visible).
+export async function moveTicketStatus(
+  ticketId: string,
+  from: TicketStatus,
+  to: TicketStatus
+): Promise<TicketBase | null> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("tickets")
+    .update({ status: to })
+    .eq("id", ticketId)
+    .eq("status", from)
+    .select(TICKET_BASE_COLUMNS)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data;
+}
+
 export async function updateTicketStatus(
   ticketId: string,
   status: TicketStatus

@@ -16,6 +16,7 @@ import {
   claimTicket,
   getTicketForStaff,
   isUuid,
+  moveTicketStatus,
   staffCreateTicket,
   StaffTicketError,
   updateTicketStatus,
@@ -360,33 +361,47 @@ export async function moveTicketAction(ticketId: string, to: string): Promise<Mo
     return { ok: false, error: "That move isn't possible." };
   }
   const target = to as TicketStatus;
-  const ticket = await getTicketForStaff(ticketId);
-  if (!ticket) {
-    return { ok: false, error: "This ticket is no longer available to you." };
-  }
-  if (!canMove(ticket.status, target)) {
-    return { ok: false, error: `A ticket can't go from ${COLUMN_LABELS[ticket.status]} to ${COLUMN_LABELS[target]}.` };
-  }
-
-  let status = ticket.status;
-  if (moveClaimsTicket(ticket.assignee_id, target)) {
-    const claimed = await claimTicket(profile.id, ticketId);
-    if (!claimed) {
-      revalidatePath("/board");
-      return { ok: false, error: "Someone else claimed this ticket first." };
-    }
-    status = claimed.status;
-  }
-  if (status !== target) {
-    const updated = await updateTicketStatus(ticketId, target);
-    if (!updated) {
+  try {
+    const ticket = await getTicketForStaff(ticketId);
+    if (!ticket) {
       return { ok: false, error: "This ticket is no longer available to you." };
     }
+    if (!canMove(ticket.status, target)) {
+      return { ok: false, error: `A ticket can't go from ${COLUMN_LABELS[ticket.status]} to ${COLUMN_LABELS[target]}.` };
+    }
+
+    let status = ticket.status;
+    if (moveClaimsTicket(ticket.assignee_id, target)) {
+      const claimed = await claimTicket(profile.id, ticketId);
+      if (!claimed) {
+        return { ok: false, error: "Someone else claimed this ticket first." };
+      }
+      status = claimed.status;
+    }
+    if (status !== target) {
+      // Conditional on the status just seen: a concurrent change wins and
+      // the mover is told, rather than silently overwriting it.
+      const moved = await moveTicketStatus(ticketId, status, target);
+      if (!moved) {
+        return {
+          ok: false,
+          error:
+            status !== ticket.status
+              ? "Claimed for you, but its status changed meanwhile. The board shows where it is now."
+              : "This ticket changed while you were moving it. The board shows its current state.",
+        };
+      }
+    }
+    return { ok: true };
+  } catch {
+    // e.g. the guard trigger refused the transition after a concurrent
+    // change. The refreshed board shows the real state.
+    return { ok: false, error: "That move couldn't be saved. The board shows the ticket's current state." };
+  } finally {
+    revalidatePath("/board");
+    revalidatePath("/queue");
+    revalidatePath(`/tickets/${ticketId}`);
   }
-  revalidatePath("/board");
-  revalidatePath("/queue");
-  revalidatePath(`/tickets/${ticketId}`);
-  return { ok: true };
 }
 
 // Publishes a snapshot of the ticket's subject/status/AI summary to a
