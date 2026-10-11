@@ -78,7 +78,7 @@ test.describe("computeAnalytics", () => {
     expect(a.sla).toMatchObject({ answered: 2, met: 1 });
   });
 
-  test("open at-risk and overdue counts come from the waiting list, not the recent sample", () => {
+  test("open at-risk and overdue counts come from the open set, not the recent sample", () => {
     // An old unanswered ticket that fell outside the recent sample still counts.
     const oldWaiting = row({ created_at: hoursAgo(200) });
     const a = computeAnalytics([row({ created_at: hoursAgo(1) })], NOW, [oldWaiting]);
@@ -128,35 +128,31 @@ test.describe("computeAnalytics", () => {
     expect(rows).toEqual([
       { assigneeId: "a", label: "alice@x.test", open: 3, atRisk: 1, overdue: 1 },
       { assigneeId: "b", label: "bob@x.test", open: 1, atRisk: 0, overdue: 0 },
-      { assigneeId: "gone", label: "Former staff member", open: 1, atRisk: 0, overdue: 0 },
+      { assigneeId: "gone", label: "Former staff member (gone)", open: 1, atRisk: 0, overdue: 0 },
       { assigneeId: "c", label: "carol@x.test", open: 0, atRisk: 0, overdue: 0 },
       { assigneeId: null, label: "Unassigned", open: 1, atRisk: 0, overdue: 1 },
     ]);
   });
 
-  test("sentiment buckets the AI frustration score and counts what needs action", () => {
+  test("sentiment buckets the AI frustration score of open tickets and counts what needs action", () => {
     const ai = (frustration: number | null, is_escalation_risk = false) => ({ frustration, is_escalation_risk });
-    const recent = [
+    const open = [
       row({ latest_triage: ai(1) }),
       row({ latest_triage: ai(2) }),
       row({ latest_triage: ai(3) }),
-      row({ latest_triage: ai(4) }),
-      row({ latest_triage: ai(5, true) }),
-      row({ latest_triage: ai(null) }),
-      row(), // not triaged
-    ];
-    const open = [
+      row({ latest_triage: ai(4), first_response_at: hoursAgo(0.5) }), // frustrated but answered
       row({ latest_triage: ai(5, true) }), // frustrated, waiting, escalation risk
-      row({ latest_triage: ai(4), first_response_at: hoursAgo(0.5) }), // answered
-      row({ latest_triage: ai(4, true), status: "resolved" }), // not open
+      row({ latest_triage: ai(null) }), // run without a score
+      row(), // not triaged
+      row({ latest_triage: ai(5, true), status: "resolved" }), // not open: ignored
     ];
-    expect(computeSentiment(recent, open)).toEqual({
+    expect(computeSentiment(open)).toEqual({
       calm: 2,
       neutral: 1,
       frustrated: 2,
       unscored: 2,
       frustratedWaiting: 1,
-      openEscalationRisk: 1,
+      escalationRisk: 1,
     });
   });
 

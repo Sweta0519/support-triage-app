@@ -3,6 +3,7 @@
 // without a database.
 
 import type { TicketStatus } from "@/app/lib/db/tickets";
+import { isFrustrated } from "@/app/lib/queue";
 import { computeSla } from "@/app/lib/sla";
 import { TRIAGE_PRIORITIES, type TriagePriority } from "@/app/lib/triage-fields";
 
@@ -180,7 +181,8 @@ export type WorkloadRow = {
 // Open tickets per assignee, with how many of them are at risk of or past
 // their first-response SLA. Every listed staff member gets a row, even
 // with nothing assigned; anyone holding tickets who isn't in `staff` (e.g.
-// demoted since) still shows, under their id. Most loaded first, the
+// demoted since) still shows, as "Former staff member" plus the start of
+// their id so two of them stay distinguishable. Most loaded first, the
 // Unassigned row last.
 export function computeWorkload(
   open: AnalyticsTicketRow[],
@@ -195,7 +197,13 @@ export function computeWorkload(
     if (ticket.status === "resolved" || ticket.status === "closed") continue;
     let row = rows.get(ticket.assignee_id);
     if (!row) {
-      row = { assigneeId: ticket.assignee_id, label: "Former staff member", open: 0, atRisk: 0, overdue: 0 };
+      row = {
+        assigneeId: ticket.assignee_id,
+        label: `Former staff member (${(ticket.assignee_id ?? "").slice(0, 8)})`,
+        open: 0,
+        atRisk: 0,
+        overdue: 0,
+      };
       rows.set(ticket.assignee_id, row);
     }
     row.open += 1;
@@ -213,26 +221,27 @@ export type Sentiment = {
   calm: number; // 1-2
   neutral: number; // 3
   frustrated: number; // 4-5
-  unscored: number; // no triage run, or no score
-  // Open tickets: frustrated customers still without a first reply, and
-  // tickets the AI flagged as likely to escalate.
+  unscored: number; // not triaged yet, or the run has no score
+  // Frustrated customers still without a first reply, and tickets the AI
+  // flagged as likely to escalate.
   frustratedWaiting: number;
-  openEscalationRisk: number;
+  escalationRisk: number;
 };
 
-export function computeSentiment(rows: AnalyticsTicketRow[], open: AnalyticsTicketRow[]): Sentiment {
-  const out: Sentiment = { calm: 0, neutral: 0, frustrated: 0, unscored: 0, frustratedWaiting: 0, openEscalationRisk: 0 };
-  for (const row of rows) {
-    const score = row.latest_triage?.frustration ?? null;
-    if (score === null) out.unscored += 1;
-    else if (score <= 2) out.calm += 1;
-    else if (score === 3) out.neutral += 1;
-    else out.frustrated += 1;
-  }
+// Over open tickets only, so every number on the card describes the same
+// set -- the customers someone still has to deal with.
+export function computeSentiment(open: AnalyticsTicketRow[]): Sentiment {
+  const out: Sentiment = { calm: 0, neutral: 0, frustrated: 0, unscored: 0, frustratedWaiting: 0, escalationRisk: 0 };
   for (const row of open) {
     if (row.status === "resolved" || row.status === "closed") continue;
-    if (row.latest_triage?.is_escalation_risk) out.openEscalationRisk += 1;
-    if (row.first_response_at === null && (row.latest_triage?.frustration ?? 0) >= 4) out.frustratedWaiting += 1;
+    const score = row.latest_triage?.frustration ?? null;
+    if (score === null) out.unscored += 1;
+    // "Frustrated" uses the same threshold as the queue card's chip.
+    else if (isFrustrated(score)) out.frustrated += 1;
+    else if (score === 3) out.neutral += 1;
+    else out.calm += 1;
+    if (row.latest_triage?.is_escalation_risk) out.escalationRisk += 1;
+    if (row.first_response_at === null && isFrustrated(score)) out.frustratedWaiting += 1;
   }
   return out;
 }

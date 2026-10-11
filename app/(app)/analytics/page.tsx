@@ -189,10 +189,10 @@ function WorkloadTable({ rows }: { rows: WorkloadRow[] }) {
     <table className="w-full text-sm">
       <thead>
         <tr className="text-left text-xs text-zinc-500 dark:text-zinc-500">
-          <th className="w-1/2 pb-2 font-medium">Assignee</th>
-          <th className="w-1/4 pb-2 font-medium">Open</th>
-          <th className="pb-2 text-right font-medium">At risk</th>
-          <th className="pb-2 text-right font-medium">Overdue</th>
+          <th scope="col" className="w-1/2 pb-2 font-medium">Assignee</th>
+          <th scope="col" className="w-1/4 pb-2 font-medium">Open</th>
+          <th scope="col" className="pb-2 text-right font-medium">At risk</th>
+          <th scope="col" className="pb-2 text-right font-medium">Overdue</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-black/[.06] dark:divide-white/[.08]">
@@ -248,7 +248,7 @@ function SentimentBreakdown({ sentiment: s }: { sentiment: Sentiment }) {
             {buckets
               .filter((b) => b.value > 0)
               .map((b) => (
-                <div key={b.key} className={b.bar} style={{ width: `${(b.value / scored) * 100}%` }} title={`${b.label}: ${b.value}`} />
+                <div key={b.key} className={b.bar} style={{ width: `${(b.value / scored) * 100}%` }} />
               ))}
           </div>
           <ul className="grid grid-cols-3 gap-2">
@@ -273,13 +273,13 @@ function SentimentBreakdown({ sentiment: s }: { sentiment: Sentiment }) {
           <p className={mutedClasses}>Frustrated customers still waiting for a first reply</p>
         </div>
         <div>
-          <p className={`text-lg font-semibold tabular-nums ${s.openEscalationRisk > 0 ? "text-red-700 dark:text-red-400" : "text-black dark:text-zinc-50"}`}>
-            {s.openEscalationRisk}
+          <p className={`text-lg font-semibold tabular-nums ${s.escalationRisk > 0 ? "text-red-700 dark:text-red-400" : "text-black dark:text-zinc-50"}`}>
+            {s.escalationRisk}
           </p>
-          <p className={mutedClasses}>Open tickets flagged as an escalation risk</p>
+          <p className={mutedClasses}>Flagged by the AI as an escalation risk</p>
         </div>
       </div>
-      {s.unscored > 0 ? <p className={mutedClasses}>{s.unscored} recent tickets have no score yet (not triaged).</p> : null}
+      {s.unscored > 0 ? <p className={mutedClasses}>{s.unscored} open tickets have no score yet.</p> : null}
     </div>
   );
 }
@@ -294,7 +294,7 @@ export default async function AnalyticsPage() {
     staff.map((s) => ({ id: s.id, label: s.email })),
     now
   );
-  const sentiment = computeSentiment(recent, open);
+  const sentiment = computeSentiment(open);
 
   const openAtRisk = a.sla.byPriority.reduce((sum, r) => sum + r.openAtRisk, 0);
   const openBreached = a.sla.byPriority.reduce((sum, r) => sum + r.openBreached, 0);
@@ -415,7 +415,7 @@ export default async function AnalyticsPage() {
           <div>
             <h2 className={sectionTitleClasses}>Customer sentiment</h2>
             <p className={`mt-1 ${mutedClasses}`}>
-              AI-estimated from the frustration score (1-5) in each ticket&apos;s latest triage. A
+              Open tickets, AI-estimated from the frustration score (1-5) in each ticket&apos;s latest triage. A
               signal for prioritising, not a measurement.
             </p>
           </div>
@@ -424,7 +424,11 @@ export default async function AnalyticsPage() {
       </section>
 
       {sampled ? (
-        <p className={mutedClasses}>Figures are computed over the most recent {MAX_ROWS.toLocaleString()} tickets.</p>
+        <p className={mutedClasses}>
+          The data is capped at {MAX_ROWS.toLocaleString()} rows per query: volume, on-time and triage-quality
+          figures use the most recent {MAX_ROWS.toLocaleString()} tickets, and workload, sentiment and the
+          overdue counts the oldest {MAX_ROWS.toLocaleString()} open ones.
+        </p>
       ) : null}
     </div>
   );
