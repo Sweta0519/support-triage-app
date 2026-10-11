@@ -1,5 +1,5 @@
-// The app's mark -- a support speech bubble holding three bars sorted by
-// length (triage), with a spark for the AI -- next to its name. The
+// The app's mark -- one incoming line routed into three paths that end in
+// red, amber and green: tickets triaged by priority -- next to its name. The
 // artwork lives only in app/icon.svg (also the browser-tab icon);
 // scripts/render-icons.mjs renders apple-icon.png and favicon.ico from it.
 export function Logo({ size = 28, textSize = "text-base" }: { size?: number; textSize?: string }) {
