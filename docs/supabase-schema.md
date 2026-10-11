@@ -68,11 +68,13 @@ their own submission even through the Data API.
 | Column              | Type                        | Notes                                                                        |
 |---------------------|-----------------------------|------------------------------------------------------------------------------|
 | `id`                | `uuid`                      | Primary key, `gen_random_uuid()`.                                            |
+| `number`            | `bigint`                    | Short readable number (#1042) from `tickets_number_seq`; unique, never client-set. |
 | `customer_id`       | `uuid`                      | FK -> `auth.users.id`, `on delete cascade`. Defaults to `auth.uid()`. **Immutable.** |
 | `subject`           | `text`                      | **Immutable** after insert.                                                  |
 | `body`              | `text`                      | **Immutable** after insert.                                                  |
 | `status`            | `ticketing.ticket_status`   | Default `new`. Transitions guarded by trigger (see below).                   |
-| `assignee_id`       | `uuid`                      | FK -> `auth.users.id`, `on delete set null`. Must be null on insert.         |
+| `assignee_id`       | `uuid`                      | FK -> `auth.users.id`, `on delete set null`. Must be null on a customer's insert. |
+| `created_by`        | `uuid`, nullable            | The staff member who filed it on the customer's behalf; null = filed by the customer. FK -> `auth.users.id`, `on delete set null`. Outside every client column grant: only `staff_create_ticket()` sets it. |
 | `first_response_at` | `timestamptz`               | Stamped by trigger on the first public staff comment. Never client-set.      |
 | `resolved_at`       | `timestamptz`               | Stamped by trigger when status enters `resolved`; cleared if it leaves.      |
 | `closed_at`         | `timestamptz`               | Stamped by trigger when status enters `closed`; cleared if it leaves.        |
@@ -80,6 +82,15 @@ their own submission even through the Data API.
 | `updated_at`        | `timestamptz`               | Maintained by the `set_updated_at` trigger.                                  |
 
 Indexes on `customer_id`, `assignee_id`, `status`.
+
+**Who can insert.** A customer inserts their own ticket through the column grant
+`(customer_id, subject, body)` and the `tickets_insert_customer` policy. Staff file a ticket on a
+customer's behalf (phone, chat, email) only through `ticketing.staff_create_ticket(email,
+subject, body, assign_to_me)`, a SECURITY DEFINER function that re-checks `is_staff()`, charges
+the caller's `staff_create_ticket` rate-limit bucket (30/hour) on **every** call -- so probing
+emails costs the same as filing -- resolves the email to an existing *customer* profile
+(returning null otherwise, never anything about the customer), inserts with `created_by`, and
+writes `filed_by_staff` (plus `status_changed` / `assignee_changed` when it assigns the caller).
 
 ### `ticketing.ticket_triage_state`
 

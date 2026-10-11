@@ -79,6 +79,9 @@ export type TicketBase = TicketSummary & {
   customer_id: string;
   assignee_id: string | null;
   first_response_at: string | null;
+  // The staff member who filed it on the customer's behalf; null when the
+  // customer filed it themselves.
+  created_by: string | null;
 };
 
 export type Ticket = TicketBase & { triage_state: TriageState | null };
@@ -86,7 +89,7 @@ export type Ticket = TicketBase & { triage_state: TriageState | null };
 const TRIAGE_STATE_EMBED =
   "triage_state:ticket_triage_state(triage_status, priority, category, team, reviewed_by, reviewed_at, reviewed_result_id)";
 const TICKET_BASE_COLUMNS =
-  "id, number, subject, body, status, created_at, updated_at, customer_id, assignee_id, first_response_at";
+  "id, number, subject, body, status, created_at, updated_at, customer_id, assignee_id, first_response_at, created_by";
 const TICKET_COLUMNS = `${TICKET_BASE_COLUMNS}, ${TRIAGE_STATE_EMBED}`;
 
 // Every query here also filters by customer_id explicitly, even though RLS
@@ -150,6 +153,42 @@ export async function createTicket(
     throw new Error(error.message);
   }
   return data;
+}
+
+export class StaffTicketError extends Error {
+  constructor(readonly reason: "customer_not_found" | "not_allowed") {
+    super(`staff_create_ticket refused: ${reason}`);
+  }
+}
+
+// Staff filing a ticket for a customer (phone, chat, forwarded email).
+// ticketing.staff_create_ticket() does every check itself -- staff role,
+// the staff rate limit (charged on every call, hit or miss), that the
+// email is an existing *customer* account, the table's length limits --
+// and records who filed it. It returns only the new ticket's id (or null
+// for an unknown email), never anything about the customer.
+export async function staffCreateTicket(
+  customerEmail: string,
+  subject: string,
+  body: string,
+  assignToMe: boolean
+): Promise<{ id: string }> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("staff_create_ticket", {
+    p_customer_email: customerEmail,
+    p_subject: subject,
+    p_body: body,
+    p_assign_to_me: assignToMe,
+  });
+  if (error) {
+    if (error.code === "42501") throw new StaffTicketError("not_allowed");
+    if (error.message.includes("rate_limited")) throw new RateLimitError("staff_create_ticket");
+    throw new Error(error.message);
+  }
+  // null = no customer account with that email. Returned rather than
+  // raised so the database keeps the rate-limit charge for the lookup.
+  if (data === null) throw new StaffTicketError("customer_not_found");
+  return { id: data as string };
 }
 
 // Queue visibility mirrors the tickets_select RLS policy: agents see
