@@ -18,12 +18,15 @@ import { formatRelativeTime, formatTicketNumber } from "@/app/lib/format";
 import { computeSla, slaDescription } from "@/app/lib/sla";
 import { CommentForm } from "./CommentForm";
 import { StaffControls } from "./StaffControls";
+import { RatingPanel } from "./RatingPanel";
+import { getTicketRating } from "@/app/lib/db/ratings";
 import { TriagePanel } from "./TriagePanel";
 import { SharePanel } from "./SharePanel";
 import { parseQueueFilter, queueBreadcrumb } from "@/app/lib/queue-filters";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { MY_TICKETS_CRUMB } from "@/app/lib/crumbs";
 import { readablePageClass, widePageClass } from "@/app/lib/styles";
+import { Stars } from "@/app/components/Stars";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -79,13 +82,16 @@ export default async function TicketDetailPage({
   // issue the query.
   const isAdmin = profile.role === "admin";
   const filedByOther = isStaff && ticket.created_by !== null && ticket.created_by !== profile.id;
-  const [comments, triage, staff, share, filerEmail] = await Promise.all([
+  const showRating = ticket.status === "resolved" || ticket.status === "closed";
+  const [comments, triage, staff, share, filerEmail, rating] = await Promise.all([
     listComments(id, isStaff),
     isStaff ? getLatestTriageResult(id) : Promise.resolve(null),
     // Only admins reassign, so only admins get the staff list.
     isAdmin ? listStaffProfiles() : Promise.resolve([] as StaffProfile[]),
     isStaff ? getActiveShareForTicket(id) : Promise.resolve(null),
     filedByOther ? getStaffEmail(ticket.created_by as string) : Promise.resolve(null),
+    // RLS decides who sees it: the customer, an admin, or the credited agent.
+    showRating ? getTicketRating(id) : Promise.resolve(null),
   ]);
 
   const ticketBody = (
@@ -230,6 +236,20 @@ export default async function TicketDetailPage({
               isAdmin={isAdmin}
               staff={staff}
             />
+            {rating ? (
+              <section className="flex flex-col gap-1 rounded-xl border border-black/[.08] p-4 text-sm dark:border-white/[.145]">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-600">
+                  Customer rating
+                </h2>
+                <p className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300">
+                  <Stars score={rating.score} />
+                  <span aria-hidden>{rating.score} of 5</span>
+                </p>
+                {rating.comment ? (
+                  <p className="text-zinc-600 dark:text-zinc-400">“{rating.comment}”</p>
+                ) : null}
+              </section>
+            ) : null}
             <TriagePanel
               ticketId={ticket.id}
               triageStatus={ticket.triage_state?.triage_status ?? "pending"}
@@ -249,6 +269,13 @@ export default async function TicketDetailPage({
       ) : (
         <>
           {ticketBody}
+          {showRating ? (
+            <RatingPanel
+              ticketId={ticket.id}
+              rating={rating ? { score: rating.score, comment: rating.comment } : null}
+              editable={ticket.status === "resolved"}
+            />
+          ) : null}
           {commentsSection}
         </>
       )}

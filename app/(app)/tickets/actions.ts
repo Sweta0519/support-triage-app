@@ -33,6 +33,8 @@ import { getLatestTriageResult, reviewTriage, TriageReviewError } from "@/app/li
 import { publishTicketSummary, revokeShare } from "@/app/lib/db/shares";
 import { parseQueueFilter, safeQueueReturn, ticketHref } from "@/app/lib/queue-filters";
 import { stripAllLinks } from "@/app/lib/ai/links";
+import { rateTicket, RatingError } from "@/app/lib/db/ratings";
+import { RATING_COMMENT_MAX_LENGTH } from "@/app/lib/ratings";
 import {
   isOneOf,
   TRIAGE_CATEGORIES,
@@ -52,6 +54,49 @@ function ticketFieldsError(subject: string, body: string): string | null {
     return `Description must be at most ${BODY_MAX_LENGTH.toLocaleString()} characters.`;
   }
   return null;
+}
+
+export type RatingFormState = { error: string } | { ok: string } | undefined;
+
+// The customer rating their resolved ticket (CSAT). rate_ticket() enforces
+// ownership, the resolved status and the rate limit itself.
+export async function rateTicketAction(
+  _prevState: RatingFormState,
+  formData: FormData
+): Promise<RatingFormState> {
+  await requireRole("customer");
+  const ticketId = String(formData.get("ticketId") ?? "");
+  const score = Number(formData.get("score"));
+  const comment = String(formData.get("comment") ?? "").trim();
+
+  if (!isUuid(ticketId)) {
+    return { error: "That ticket can't be rated." };
+  }
+  if (!Number.isInteger(score) || score < 1 || score > 5) {
+    return { error: "Choose a rating from 1 to 5 stars." };
+  }
+  if (comment.length > RATING_COMMENT_MAX_LENGTH) {
+    return { error: `Keep the comment under ${RATING_COMMENT_MAX_LENGTH} characters.` };
+  }
+
+  try {
+    await rateTicket(ticketId, score, comment);
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return { error: RATE_LIMITED_MESSAGE };
+    }
+    if (err instanceof RatingError) {
+      return {
+        error:
+          err.reason === "not_resolved"
+            ? "This ticket can only be rated while it's resolved."
+            : "That ticket can't be rated.",
+      };
+    }
+    throw err;
+  }
+  revalidatePath(`/tickets/${ticketId}`);
+  return { ok: "Thanks for your feedback." };
 }
 
 // Staff filing a ticket on a customer's behalf. Same validation and the

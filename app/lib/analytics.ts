@@ -169,51 +169,147 @@ export function computeAnalytics(
   };
 }
 
-export type WorkloadRow = {
+// A customer's CSAT rating as the analytics page reads it (see
+// app/lib/db/ratings.ts).
+export type CsatRating = {
+  ticket_id: string;
+  score: number;
+  comment: string | null;
+  // The assignee credited when the rating was given; null if unassigned.
+  agent_id: string | null;
+  created_at: string;
+  // Last change: a re-rating counts as recent.
+  updated_at: string;
+  ticket: { number: number; subject: string; status: TicketStatus } | null;
+};
+
+export type TeamRow = {
   // null: the Unassigned row.
   assigneeId: string | null;
   label: string;
+  // Workload now, over every open ticket.
   open: number;
   atRisk: number;
   overdue: number;
+  // Over the recent sample: tickets this person resolved or closed, and
+  // their first replies (met = within the SLA target).
+  resolved: number;
+  repliesOnTime: number;
+  repliesAnswered: number;
+  // Over all ratings credited to them.
+  csatSum: number;
+  csatCount: number;
 };
 
-// Open tickets per assignee, with how many of them are at risk of or past
-// their first-response SLA. Every listed staff member gets a row, even
-// with nothing assigned; anyone holding tickets who isn't in `staff` (e.g.
-// demoted since) still shows, as "Former staff member" plus the start of
-// their id so two of them stay distinguishable. Most loaded first, the
-// Unassigned row last.
-export function computeWorkload(
-  open: AnalyticsTicketRow[],
-  staff: { id: string; label: string }[],
-  now: Date = new Date()
-): WorkloadRow[] {
-  const rows = new Map<string | null, WorkloadRow>(
-    staff.map((s) => [s.id, { assigneeId: s.id, label: s.label, open: 0, atRisk: 0, overdue: 0 }])
-  );
-  rows.set(null, { assigneeId: null, label: "Unassigned", open: 0, atRisk: 0, overdue: 0 });
+// One row per staff member: current workload, recent output, and CSAT.
+// Every listed staff member gets a row, even with nothing assigned; anyone
+// holding tickets or ratings who isn't in `staff` (e.g. demoted since)
+// still shows, as "Former staff member" plus the start of their id so two
+// of them stay distinguishable. Most open work first, Unassigned last.
+export function computeTeamPerformance({
+  open,
+  recent,
+  ratings,
+  staff,
+  now = new Date(),
+}: {
+  open: AnalyticsTicketRow[];
+  recent: AnalyticsTicketRow[];
+  ratings: CsatRating[];
+  staff: { id: string; label: string }[];
+  now?: Date;
+}): TeamRow[] {
+  const empty = (assigneeId: string | null, label: string): TeamRow => ({
+    assigneeId,
+    label,
+    open: 0,
+    atRisk: 0,
+    overdue: 0,
+    resolved: 0,
+    repliesOnTime: 0,
+    repliesAnswered: 0,
+    csatSum: 0,
+    csatCount: 0,
+  });
+  const rows = new Map<string | null, TeamRow>(staff.map((s) => [s.id, empty(s.id, s.label)]));
+  rows.set(null, empty(null, "Unassigned"));
+  // Someone no longer on staff only gets a row while they still hold open
+  // tickets; their past output and ratings don't add rows of their own.
+  const rowFor = (id: string | null, create: boolean) => {
+    let row = rows.get(id);
+    if (!row && create) {
+      row = empty(id, `Former staff member (${(id ?? "").slice(0, 8)})`);
+      rows.set(id, row);
+    }
+    return row;
+  };
+
   for (const ticket of open) {
     if (ticket.status === "resolved" || ticket.status === "closed") continue;
-    let row = rows.get(ticket.assignee_id);
-    if (!row) {
-      row = {
-        assigneeId: ticket.assignee_id,
-        label: `Former staff member (${(ticket.assignee_id ?? "").slice(0, 8)})`,
-        open: 0,
-        atRisk: 0,
-        overdue: 0,
-      };
-      rows.set(ticket.assignee_id, row);
-    }
+    const row = rowFor(ticket.assignee_id, true)!;
     row.open += 1;
     const state = computeSla(ticket, now)?.state;
     if (state === "at_risk") row.atRisk += 1;
     else if (state === "breached") row.overdue += 1;
   }
+  for (const ticket of recent) {
+    if (ticket.assignee_id === null) continue;
+    const row = rowFor(ticket.assignee_id, false);
+    if (!row) continue;
+    if (ticket.status === "resolved" || ticket.status === "closed") row.resolved += 1;
+    const state = computeSla(ticket, now)?.state;
+    if (state === "met" || state === "missed") {
+      row.repliesAnswered += 1;
+      if (state === "met") row.repliesOnTime += 1;
+    }
+  }
+  for (const rating of countableRatings(ratings)) {
+    if (rating.agent_id === null) continue;
+    const row = rowFor(rating.agent_id, false);
+    if (!row) continue;
+    row.csatSum += rating.score;
+    row.csatCount += 1;
+  }
+
   const unassigned = rows.get(null)!;
   rows.delete(null);
   return [...[...rows.values()].sort((a, b) => b.open - a.open || a.label.localeCompare(b.label)), unassigned];
+}
+
+// "4.6", or null below the minimum number of ratings (shown as "-").
+export function formatCsat(sum: number, count: number, minimum: number): string | null {
+  return count >= minimum && count > 0 ? (sum / count).toFixed(1) : null;
+}
+
+export type CsatSummary = {
+  average: string | null;
+  count: number;
+  // Ratings of tickets nobody was assigned to when rated: in the team
+  // average, but in no person's row.
+  unassigned: number;
+  // Ratings of 1-2 stars, newest first, for an admin to follow up.
+  recentLow: CsatRating[];
+};
+
+// A rating counts while its ticket is resolved or closed: if the ticket
+// was reopened it's being worked again, and the old rating waits until the
+// customer rates the new resolution.
+function countableRatings(ratings: CsatRating[]): CsatRating[] {
+  return ratings.filter((r) => !r.ticket || r.ticket.status === "resolved" || r.ticket.status === "closed");
+}
+
+export function computeCsat(ratings: CsatRating[], lowLimit = 5): CsatSummary {
+  const counted = countableRatings(ratings);
+  const sum = counted.reduce((total, r) => total + r.score, 0);
+  return {
+    average: formatCsat(sum, counted.length, 1),
+    count: counted.length,
+    unassigned: counted.filter((r) => r.agent_id === null).length,
+    recentLow: counted
+      .filter((r) => r.score <= 2)
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+      .slice(0, lowLimit),
+  };
 }
 
 export type Sentiment = {
