@@ -27,12 +27,19 @@ export default defineConfig({
       // accounts' rate-limit counters) both run here, before every suite run.
       name: "setup",
       testMatch: /\.setup\.ts$/,
+      // After every run, delete the probe tickets the suite filed in the
+      // shared project (tests/cleanup.teardown.ts).
+      teardown: "cleanup",
+    },
+    {
+      name: "cleanup",
+      testMatch: /\.teardown\.ts$/,
     },
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"], storageState: "playwright/.auth/customerA.json" },
       dependencies: ["setup"],
-      testIgnore: /\.setup\.ts$/,
+      testIgnore: /\.(setup|teardown)\.ts$/,
     },
   ],
 
