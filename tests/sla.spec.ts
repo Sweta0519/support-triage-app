@@ -117,7 +117,7 @@ test("an overdue ticket shows as overdue in the queue and on the ticket page", a
 
     await row.click();
     await expect(
-      page.getByText(/First reply overdue by 1h( \d+m)? \(4h target for high priority\)\./)
+      page.getByRole("alert").filter({ hasText: /First reply overdue\. Overdue by 1h( \d+m)? · 4h target for high priority\./ })
     ).toBeVisible();
   } finally {
     await db.from("tickets").delete().eq("id", ticket.id);

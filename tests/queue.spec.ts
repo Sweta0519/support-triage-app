@@ -166,6 +166,16 @@ test("a triaged ticket's card shows its number, AI summary and AI flags, and sea
       await expect(card.getByText(chip, { exact: true })).toBeVisible();
     }
 
+    // The ticket page header shows the same AI read, labelled as AI-estimated,
+    // and the SLA as a banner.
+    await card.click();
+    const sentiment = page.getByLabel("AI-estimated customer sentiment");
+    await expect(sentiment.getByText("Escalation risk", { exact: true })).toBeVisible();
+    await expect(sentiment.getByText("Frustrated 5/5", { exact: true })).toBeVisible();
+    await expect(sentiment.getByText("AI-estimated", { exact: true })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "First reply on track." })).toBeVisible();
+    await page.goto(`/queue?q=${encodeURIComponent(`#${created.number}`)}`);
+
     // The status filter keeps the search; a status the ticket isn't in hides it.
     await page.getByRole("navigation", { name: "Filter by status" }).getByRole("link", { name: /^assigned/i }).click();
     await expect(page).toHaveURL(/status=assigned/);

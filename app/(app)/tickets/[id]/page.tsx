@@ -12,10 +12,12 @@ import { getLatestTriageResult } from "@/app/lib/db/triage";
 import { getStaffEmail, listStaffProfiles, type StaffProfile } from "@/app/lib/db/profiles";
 import { getActiveShareForTicket } from "@/app/lib/db/shares";
 import { Badge } from "@/app/components/Badge";
-import { SlaBadge } from "@/app/components/SlaBadge";
+import { SlaBanner } from "@/app/components/SlaBanner";
+import { isFrustrated } from "@/app/lib/queue";
+import { fieldLabel } from "@/app/lib/triage-fields";
 import { priorityBadgeClasses, statusBadgeClasses, statusLabel } from "@/app/lib/badges";
 import { formatRelativeTime, formatTicketNumber } from "@/app/lib/format";
-import { computeSla, slaDescription } from "@/app/lib/sla";
+import { computeSla } from "@/app/lib/sla";
 import { CommentForm } from "./CommentForm";
 import { StaffControls } from "./StaffControls";
 import { RatingPanel } from "./RatingPanel";
@@ -43,6 +45,21 @@ function commentAuthorLabel(
   if (authorId === viewerId) return "You";
   if (authorId === customerId) return "Customer";
   return "Support team";
+}
+
+const headerChip = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium";
+
+// The triage frustration score (1-5) in words; isFrustrated() is the same
+// 4+ threshold the queue card uses.
+function frustrationLabel(score: number): string {
+  return isFrustrated(score) ? "Frustrated" : score === 3 ? "Neutral" : "Calm";
+}
+function frustrationTone(score: number): string {
+  return isFrustrated(score)
+    ? "bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-300"
+    : score === 3
+      ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
+      : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300";
 }
 
 export default async function TicketDetailPage({
@@ -197,14 +214,36 @@ export default async function TicketDetailPage({
               {formatRelativeTime(ticket.created_at)}
               {filedBy ? <> · {filedBy}</> : null}
             </p>
-            {sla ? (
-              <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
-                <SlaBadge sla={sla} />
-                {slaDescription(sla)}
+            {isStaff && (triage?.is_escalation_risk || triage?.frustration != null) ? (
+              // The AI's read of the customer, up front: it's what decides
+              // how carefully to word the first reply. AI-estimated, and
+              // labelled as such.
+              <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs" aria-label="AI-estimated customer sentiment">
+                {triage.is_escalation_risk ? (
+                  <span className={`${headerChip} bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300`}>
+                    Escalation risk
+                  </span>
+                ) : null}
+                {triage.frustration != null ? (
+                  <span className={`${headerChip} ${frustrationTone(triage.frustration)}`}>
+                    {frustrationLabel(triage.frustration)} {triage.frustration}/5
+                  </span>
+                ) : null}
+                <span className="text-zinc-400 dark:text-zinc-500">AI-estimated</span>
               </p>
             ) : null}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {isStaff && ticket.triage_state?.category ? (
+              <span className={`${headerChip} border border-black/[.08] capitalize text-zinc-600 dark:border-white/[.145] dark:text-zinc-400`}>
+                {fieldLabel(ticket.triage_state.category)}
+              </span>
+            ) : null}
+            {isStaff && ticket.triage_state?.team ? (
+              <span className={`${headerChip} border border-black/[.08] capitalize text-zinc-600 dark:border-white/[.145] dark:text-zinc-400`}>
+                {ticket.triage_state.team} team
+              </span>
+            ) : null}
             {isStaff && ticket.triage_state?.priority ? (
               <Badge
                 label={ticket.triage_state.priority}
@@ -215,6 +254,8 @@ export default async function TicketDetailPage({
           </div>
         </div>
       </div>
+
+      {sla ? <SlaBanner sla={sla} /> : null}
 
       {isStaff ? (
         <div
