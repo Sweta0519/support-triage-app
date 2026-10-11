@@ -17,12 +17,16 @@ export const QUEUE_FILTERS = (Object.keys(FILTER_LABELS) as QueueFilterKey[]).ma
 }));
 
 // Next hands a repeated query param over as an array; anything unrecognised
-// (a hand-edited URL, a stale link) falls back to the full queue rather
-// than erroring.
-export function parseQueueFilter(raw: string | string[] | undefined): QueueFilterKey {
+// (a hand-edited URL, a stale link) falls back to `fallback` -- the full
+// queue, or on the queue page itself the user's default tab -- rather than
+// erroring.
+export function parseQueueFilter(
+  raw: string | string[] | undefined,
+  fallback: QueueFilterKey = "all"
+): QueueFilterKey {
   const value = Array.isArray(raw) ? raw[0] : raw;
   // Object.hasOwn, not `in`: "?from=toString" must not count as a tab.
-  return value !== undefined && Object.hasOwn(FILTER_LABELS, value) ? (value as QueueFilterKey) : "all";
+  return value !== undefined && Object.hasOwn(FILTER_LABELS, value) ? (value as QueueFilterKey) : fallback;
 }
 
 export function queueHref(filter: QueueFilterKey): string {
