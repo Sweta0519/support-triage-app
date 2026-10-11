@@ -26,6 +26,7 @@ import {
   type TriagePriority,
   type TriageTeam,
 } from "@/app/lib/triage-fields";
+import { stripAllLinks, stripForeignLinks } from "@/app/lib/ai/links";
 
 export const PROMPT_VERSION = "2026-09-03.2";
 
@@ -204,42 +205,6 @@ function neutralizeTags(text: string): string {
   return text.replace(/</g, "＜").replace(/>/g, "＞");
 }
 
-// Any URL or email in the draft reply that did not appear in the ticket
-// being assessed can only have come from the model or from another
-// customer's text -- neither is something an agent should paste to a
-// customer unreviewed.
-// Scheme URLs, bare "host.tld/path" links, and email addresses.
-const URL_OR_EMAIL_RE =
-  /\bhttps?:\/\/[^\s)<>"']+|\b(?:[a-z0-9-]+\.)+[a-z]{2,}\/[^\s)<>"']*|\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b/gi;
-// A URL at the end of a sentence drags its punctuation into the match
-// ("…/ticket/123,"); compare without it so the same link in the ticket and
-// in the reply is recognised as the same link.
-const TRAILING_PUNCT_RE = /[.,;:!?)\]]+$/;
-
-function linkKey(match: string): string {
-  return match.replace(TRAILING_PUNCT_RE, "").toLowerCase();
-}
-
-function stripForeignLinks(reply: string, ticketText: string): string {
-  const allowed = new Set((ticketText.match(URL_OR_EMAIL_RE) ?? []).map(linkKey));
-  return reply.replace(URL_OR_EMAIL_RE, (match) => {
-    if (allowed.has(linkKey(match))) {
-      return match;
-    }
-    const trailing = match.match(TRAILING_PUNCT_RE)?.[0] ?? "";
-    return `[link removed]${trailing}`;
-  });
-}
-
-// The summary, priority reason and missing-info lines never need a link,
-// and the summary is what staff publish on the public status page and what
-// other tickets' triage sees as candidate text -- so a prompt-injected
-// ticket mustn't be able to plant a URL or address there. Unlike the draft
-// reply, even links from the ticket itself are removed.
-function stripAllLinks(text: string): string {
-  return text.replace(URL_OR_EMAIL_RE, (match) => `[link removed]${match.match(TRAILING_PUNCT_RE)?.[0] ?? ""}`);
-}
-
 function stripTimeframePromises(reply: string): string {
   const sentences = reply.split(/(?<=[.!?])\s+/);
   return sentences
@@ -304,10 +269,11 @@ function normalize(
   return {
     output: {
       summary:
-        stripAllLinks(String(raw.summary ?? "").trim().slice(0, 300)) || "Needs review: model returned no summary.",
+        // Strip before capping: "[link removed]" is longer than a short email.
+        stripAllLinks(String(raw.summary ?? "").trim()).slice(0, 300) || "Needs review: model returned no summary.",
       category,
       priority,
-      priority_reason: stripAllLinks(String(raw.priority_reason ?? "").trim().slice(0, 500)),
+      priority_reason: stripAllLinks(String(raw.priority_reason ?? "").trim()).slice(0, 500),
       team,
       frustration,
       is_escalation_risk: Boolean(raw.is_escalation_risk),
@@ -321,7 +287,7 @@ function normalize(
         ? raw.missing_info
             .filter((s): s is string => typeof s === "string")
             .slice(0, 10)
-            .map((s) => stripAllLinks(s.trim().slice(0, 200)))
+            .map((s) => stripAllLinks(s.trim()).slice(0, 200))
         : [],
       confidence,
     },
