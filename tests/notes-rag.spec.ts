@@ -15,11 +15,16 @@ async function openSage(page: Page) {
 }
 
 async function askSage(page: Page, question: string) {
+  const messages = page.getByTestId("assistant-widget-message");
+  const before = await messages.count();
   await page.getByPlaceholder("Message Sage...").fill(question);
   await page.getByRole("button", { name: "Send" }).click();
   // A retrieval turn is up to three completions plus embedding calls.
   await expect(page.getByPlaceholder("Message Sage...")).toBeEnabled({ timeout: 120_000 });
-  return page.getByTestId("assistant-widget-message").last();
+  // The question and its reply both landed -- otherwise (a rate limit, a
+  // failed call) .last() would quietly be the previous turn's reply.
+  await expect(messages).toHaveCount(before + 2);
+  return messages.last();
 }
 
 async function saveNote(page: Page, title: string, body: string) {
@@ -29,7 +34,9 @@ async function saveNote(page: Page, title: string, body: string) {
   await page.getByRole("button", { name: "Save note" }).click();
   // Redirects to the list on success, where the new note is visible.
   await expect(page).toHaveURL(/\/notes$/);
-  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  // .first(): a repeated run (--repeat-each) saves the same note again
+  // before the reset setup clears it; the newest note is listed first.
+  await expect(page.getByRole("heading", { name: title }).first()).toBeVisible();
 }
 
 test.describe("Sage: chat with your own notes", () => {
