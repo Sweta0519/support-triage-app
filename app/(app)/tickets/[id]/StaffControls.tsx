@@ -2,6 +2,7 @@ import { assignTicketAction, claimTicketAction, updateStatusAction } from "../ac
 import type { TicketStatus } from "@/app/lib/db/tickets";
 import type { StaffProfile } from "@/app/lib/db/profiles";
 import { primaryButtonClass, secondaryButtonClass } from "@/app/lib/styles";
+import { assignedToLabel } from "@/app/lib/people";
 
 const STATUS_LABELS: Record<TicketStatus, string> = {
   new: "New",
@@ -30,8 +31,6 @@ export function StaffControls({
   // Only populated for admins; agents never see other staff listed here.
   staff: StaffProfile[];
 }) {
-  const assignee = staff.find((s) => s.id === assigneeId);
-  const assigneeName = assignee ? (assignee.full_name ?? assignee.email) : undefined;
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-black/[.08] p-4 dark:border-white/[.145]">
@@ -44,9 +43,7 @@ export function StaffControls({
           ? "Unassigned"
           : assigneeId === currentUserId
             ? "Assigned to you"
-            : assigneeName
-              ? `Assigned to ${assigneeName}`
-              : "Assigned"}
+            : assignedToLabel(staff.find((s) => s.id === assigneeId))}
       </p>
 
       {assigneeId === null && status !== "resolved" && status !== "closed" ? (

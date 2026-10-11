@@ -4,6 +4,7 @@ import { setRoleAction } from "../actions";
 import { Badge } from "@/app/components/Badge";
 import { roleBadgeClasses } from "@/app/lib/badges";
 import { Avatar } from "@/app/components/Avatar";
+import { profileName } from "@/app/lib/people";
 
 const ERROR_MESSAGES: Record<string, string> = {
   self: "You can't change your own role.",
@@ -56,10 +57,10 @@ export default async function AdminUsersPage({
                 <tr key={p.id} className="border-b border-black/[.06] last:border-0 dark:border-white/[.08]">
                   <td className="px-4 py-3 text-black dark:text-zinc-50">
                     <div className="flex items-center gap-2.5">
-                      <Avatar id={p.id} name={p.full_name ?? p.email} avatarPath={p.avatar_path} size={28} />
+                      <Avatar id={p.id} name={profileName(p)} avatarPath={p.avatar_path} size={28} />
                       <div className="flex min-w-0 flex-col">
                         <span>
-                          {p.full_name ?? p.email}
+                          {profileName(p)}
                           {isSelf ? (
                             <span className="ml-2 text-xs text-zinc-500 dark:text-zinc-500">(you)</span>
                           ) : null}

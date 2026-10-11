@@ -19,6 +19,7 @@ import { listAnalyticsTickets } from "@/app/lib/db/analytics";
 import { listRatingsForAnalytics } from "@/app/lib/db/ratings";
 import { MIN_RATINGS_FOR_CSAT } from "@/app/lib/ratings";
 import { listStaffProfiles } from "@/app/lib/db/profiles";
+import { profileName } from "@/app/lib/people";
 import { MAX_ROWS } from "@/app/lib/db/admin";
 import { formatDuration, SLA_TARGET_MS } from "@/app/lib/sla";
 import { TRIAGE_PRIORITIES } from "@/app/lib/triage-fields";
@@ -356,7 +357,11 @@ export default async function AnalyticsPage() {
     open,
     recent,
     ratings,
-    staff: staff.map((s) => ({ id: s.id, label: s.full_name ?? s.email })),
+    staff: staff.map((s) => ({
+      id: s.id,
+      // Display names needn't be unique; add the email when two collide.
+      label: staff.filter((o) => profileName(o) === profileName(s)).length > 1 ? `${profileName(s)} · ${s.email}` : profileName(s),
+    })),
     now,
   });
   const csat = computeCsat(ratings);

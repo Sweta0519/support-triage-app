@@ -26,8 +26,9 @@ full, email and role included.
 | `avatar_path` | `profiles.avatar_path`; the picture itself is served by `/avatar/...` |
 | `is_staff` | whether the person is an agent or admin |
 
-There is no email and no role column, so nothing that can read a card can
-learn either.
+There is no email and no role column: a card reveals a person's name,
+picture and whether they're staff -- never their email, and not which
+staff role they hold.
 
 A trigger on `profiles` (`profiles_sync_card`, SECURITY DEFINER) keeps the
 cards in sync on insert and on any change to name, picture or role.
@@ -41,13 +42,23 @@ the caller's own RLS, so card visibility follows ticket visibility
 exactly:
 
 - **Your own card.**
-- **Staff:** every staff card, and the card of any customer whose ticket
-  they can see. For an agent that's unassigned tickets and their own; for
-  an admin, every ticket.
-- **Anyone:** the card of a staff member who is assigned to, filed, or
-  commented on a ticket the caller can see. For a customer, that's the
-  staff on their own tickets, with internal notes excluded by the comments
-  policy. A customer never sees another customer's card.
+- **Staff:** every staff card, and the card of anyone attached to a ticket
+  they can see (as customer, assignee, filer or comment author). For an
+  agent, that means unassigned tickets and their own; for an admin, every
+  ticket. Because this doesn't depend on `is_staff`, a demoted colleague
+  keeps their name on their old comments.
+- **Customers:** the cards of staff assigned to, or commenting on, their
+  own tickets. Internal notes are excluded by the comments policy. The
+  staff member who *filed* a ticket for them isn't included, because the
+  page says "our support team" there. A customer never sees another
+  customer's card.
+
+`tickets.created_by` and `ticket_comments.author_id` are indexed for these
+lookups (migration `20261012060000`).
+
+A customer chooses their own display name, so staff always see it marked
+as the customer's ("Customer: Dana", "Dana (Customer)"). A customer can't
+pass themselves off as support.
 
 ### Alternatives considered
 
@@ -69,7 +80,8 @@ When a name isn't set or the card isn't visible, the app falls back to:
 - "Customer", for staff looking at a customer;
 - "Support team", for a customer looking at staff.
 
-A customer sees a staff member as "Priya (Support)".
+A customer sees a staff member as "Priya (Support)"; staff see a customer
+as "Dana (Customer)".
 
 ## Tests
 

@@ -46,6 +46,7 @@ test.describe("names and pictures (profile_cards)", () => {
     const { data: created, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
     expect(error).toBeNull();
     const customerId = created.user!.id;
+    let staffId: string | undefined;
 
     try {
       const customer = await signedIn(email, password);
@@ -86,9 +87,35 @@ test.describe("names and pictures (profile_cards)", () => {
       expect(await agentSees()).toEqual([{ id: customerId, display_name: "Probe Customer" }]);
       // ...but the profile row (email, role) stays out of reach.
       expect((await agent.db.from("profiles").select("email, role").eq("id", customerId)).data).toHaveLength(0);
+
+      // A ticket the agent filed for the customer: the customer still can't
+      // read the filer's card (the page says "our support team").
+      const { error: filedError } = await admin
+        .from("tickets")
+        .insert({ customer_id: customerId, subject: `Filed probe ${Date.now()}`, body: "Probe body", created_by: agent.id });
+      expect(filedError).toBeNull();
+      expect((await customer.db.from("profile_cards").select("id").eq("id", agent.id)).data).toHaveLength(0);
+
+      // A colleague who commented and was later demoted keeps their name for
+      // staff on that ticket.
+      const staffEmail = `sup24-staff-probe-${Date.now()}@example.com`;
+      const staffPassword = `Pw-${randomUUID()}`;
+      const { data: staffUser } = await admin.auth.admin.createUser({ email: staffEmail, password: staffPassword, email_confirm: true });
+      staffId = staffUser.user!.id;
+      const colleague = await signedIn(staffEmail, staffPassword);
+      const adminSession = await signedIn(requireEnv("TEST_ADMIN_EMAIL"), requireEnv("TEST_ADMIN_PASSWORD"));
+      expect((await adminSession.db.rpc("admin_set_role", { target_user_id: staffId, new_role: "agent" })).error).toBeNull();
+      expect((await colleague.db.rpc("update_own_profile", { ...NO_PREFS, p_full_name: "Former Colleague" })).error).toBeNull();
+      expect(
+        (await colleague.db.from("ticket_comments").insert({ ticket_id: ticket!.id, author_id: staffId, body: "Internal look", is_internal: true })).error
+      ).toBeNull();
+      expect((await adminSession.db.rpc("admin_set_role", { target_user_id: staffId, new_role: "customer" })).error).toBeNull();
+      const { data: demoted } = await agent.db.from("profile_cards").select("display_name").eq("id", staffId);
+      expect(demoted).toEqual([{ display_name: "Former Colleague" }]);
     } finally {
       await admin.from("tickets").delete().eq("customer_id", customerId);
       await admin.auth.admin.deleteUser(customerId);
+      if (staffId) await admin.auth.admin.deleteUser(staffId);
     }
   });
 
@@ -99,11 +126,16 @@ test.describe("names and pictures (profile_cards)", () => {
     const agentPassword = requireEnv("TEST_AGENT_PASSWORD");
     const email = `sup24-page-probe-${Date.now()}@example.com`;
     const password = `Pw-${randomUUID()}`;
-    const { data: created } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+    const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+    expect(createError).toBeNull();
     const customerId = created.user!.id;
-    const agent = await signedIn(agentEmail, agentPassword);
+    let agent: Awaited<ReturnType<typeof signedIn>> | undefined;
+    let agentBefore: { full_name: string | null; theme: string } | null = null;
 
     try {
+      agent = await signedIn(agentEmail, agentPassword);
+      // Put the agent's own settings back afterwards, not blank them.
+      agentBefore = (await agent.db.from("profiles").select("full_name, theme").eq("id", agent.id).single()).data;
       const customer = await signedIn(email, password);
       expect((await customer.db.rpc("update_own_profile", { ...NO_PREFS, p_full_name: "Dana Customer" })).error).toBeNull();
       expect((await agent.db.rpc("update_own_profile", { ...NO_PREFS, p_full_name: "Priya Agent" })).error).toBeNull();
@@ -121,7 +153,8 @@ test.describe("names and pictures (profile_cards)", () => {
       const agentPage = await agentContext.newPage();
       await login(agentPage, agentEmail, agentPassword);
       await agentPage.goto(`/tickets/${ticket!.id}`);
-      await expect(agentPage.getByText("Dana Customer").first()).toBeVisible();
+      // Marked as the customer: a customer picks their own name.
+      await expect(agentPage.getByText("Dana Customer (Customer)")).toBeVisible();
       await expect(agentPage.getByText(email)).toHaveCount(0);
       await agentContext.close();
 
@@ -134,7 +167,13 @@ test.describe("names and pictures (profile_cards)", () => {
       await expect(customerPage.getByText(agentEmail)).toHaveCount(0);
       await customerContext.close();
     } finally {
-      await agent.db.rpc("update_own_profile", { ...NO_PREFS, p_full_name: "" });
+      if (agent && agentBefore) {
+        await agent.db.rpc("update_own_profile", {
+          ...NO_PREFS,
+          p_full_name: agentBefore.full_name ?? "",
+          p_theme: agentBefore.theme,
+        });
+      }
       await admin.from("tickets").delete().eq("customer_id", customerId);
       await admin.auth.admin.deleteUser(customerId);
     }

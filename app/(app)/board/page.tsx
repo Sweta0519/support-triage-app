@@ -1,7 +1,8 @@
 import { requireStaff } from "@/app/lib/auth/session";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { listQueueTickets } from "@/app/lib/db/tickets";
-import { getPersonCards } from "@/app/lib/db/people";
+import { listStaffProfiles } from "@/app/lib/db/profiles";
+import { assignedToLabel } from "@/app/lib/people";
 import { computeSla, slaBadgeClasses, slaBadgeLabel } from "@/app/lib/sla";
 import { formatTicketNumber } from "@/app/lib/format";
 import { isFrustrated, sortQueue } from "@/app/lib/queue";
@@ -16,8 +17,10 @@ export default async function BoardPage() {
   const profile = await requireStaff();
   const now = new Date();
   const tickets = sortQueue(await listQueueTickets(profile.id, profile.role), "sla", now);
-  // Staff see every staff card, so an admin's board can name the assignee.
-  const people = await getPersonCards(tickets.map((t) => t.assignee_id));
+  // Only admins see others' tickets, so only they need the staff list.
+  const staff = new Map(
+    (profile.role === "admin" ? await listStaffProfiles() : []).map((s) => [s.id, s])
+  );
 
   const cards: BoardCard[] = tickets.map((t) => {
     const sla = computeSla(t, now);
@@ -28,7 +31,7 @@ export default async function BoardPage() {
       status: t.status,
       assigneeId: t.assignee_id,
       mine: t.assignee_id === profile.id,
-      assigneeName: t.assignee_id ? (people.get(t.assignee_id)?.display_name ?? null) : null,
+      assigneeLabel: t.assignee_id ? assignedToLabel(staff.get(t.assignee_id)) : null,
       priority: t.triage_state?.priority ?? null,
       sla: sla ? { label: slaBadgeLabel(sla), classes: slaBadgeClasses(sla.state) } : null,
       escalation: t.latest_triage?.is_escalation_risk ?? false,

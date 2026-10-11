@@ -15,7 +15,7 @@ export async function getPersonCards(ids: (string | null | undefined)[]): Promis
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("profile_cards")
-    .select("id, display_name, avatar_path, is_staff")
+    .select("id, display_name, avatar_path")
     .in("id", unique);
   if (error) {
     throw new Error(error.message);

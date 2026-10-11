@@ -55,13 +55,14 @@ export async function listStaffProfiles(): Promise<StaffProfile[]> {
   const { data, error } = await supabase
     .from("profiles")
     .select("id, email, role, full_name, avatar_path")
-    .in("role", ["agent", "admin"])
-    .order("email", { ascending: true });
+    .in("role", ["agent", "admin"]);
 
   if (error) {
     throw new Error(error.message);
   }
-  return data;
+  // By the name people see (display name, else email), not by email.
+  const shown = (p: { full_name: string | null; email: string }) => (p.full_name ?? p.email).toLowerCase();
+  return data.sort((a, b) => shown(a).localeCompare(shown(b)));
 }
 
 // A staff member's email, e.g. for "Filed by …" on a ticket. RLS lets

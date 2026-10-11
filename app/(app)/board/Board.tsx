@@ -17,8 +17,8 @@ export type BoardCard = {
   status: TicketStatus;
   assigneeId: string | null;
   mine: boolean;
-  // The assignee's display name, when it isn't the viewer and they set one.
-  assigneeName: string | null;
+  // "Assigned to …" when assigned (used when it isn't the viewer).
+  assigneeLabel: string | null;
   priority: string | null;
   sla: { label: string; classes: string } | null;
   escalation: boolean;
@@ -165,7 +165,7 @@ export function Board({ cards: initial }: { cards: BoardCard[] }) {
                     ) : null}
                   </div>
                   <p className="pt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
-                    {card.assigneeId === null ? "Unassigned" : card.mine ? "Yours" : card.assigneeName ? `Assigned to ${card.assigneeName}` : "Assigned"}
+                    {card.assigneeId === null ? "Unassigned" : card.mine ? "Yours" : (card.assigneeLabel ?? "Assigned")}
                   </p>
                   {/* Its own full-width row: next to the owner it overflowed
                       narrow columns and the Move button was covered. */}

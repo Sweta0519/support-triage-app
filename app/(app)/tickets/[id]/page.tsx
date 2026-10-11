@@ -12,7 +12,7 @@ import { getLatestTriageResult } from "@/app/lib/db/triage";
 import { getStaffEmail, listStaffProfiles, type StaffProfile } from "@/app/lib/db/profiles";
 import { getActiveShareForTicket } from "@/app/lib/db/shares";
 import { getPersonCards } from "@/app/lib/db/people";
-import { personName, type PersonCard } from "@/app/lib/people";
+import { personName, profileName, type PersonCard } from "@/app/lib/people";
 import { Avatar } from "@/app/components/Avatar";
 import { Badge } from "@/app/components/Badge";
 import { SlaBanner } from "@/app/components/SlaBanner";
@@ -48,7 +48,9 @@ function commentAuthorLabel(
   if (authorId === null) return "Deleted account";
   if (authorId === viewerId) return "You";
   const card = people.get(authorId);
-  if (authorId === customerId) return personName(card, "Customer");
+  // A customer chooses their own name ("Support Team" included), so staff
+  // always see it marked as the customer.
+  if (authorId === customerId) return card?.display_name ? `${card.display_name} (Customer)` : "Customer";
   if (!card?.display_name) return "Support team";
   return viewerIsStaff ? card.display_name : `${card.display_name} (Support)`;
 }
@@ -108,8 +110,14 @@ export default async function TicketDetailPage({
   const isAdmin = profile.role === "admin";
   const filedByOther = isStaff && ticket.created_by !== null && ticket.created_by !== profile.id;
   const showRating = ticket.status === "resolved" || ticket.status === "closed";
-  const [comments, triage, staff, share, filerEmail, rating] = await Promise.all([
-    listComments(id, isStaff),
+  // Names and pictures of everyone on the page the viewer may see; chained
+  // off the comments (for their authors) so it runs alongside the rest.
+  const commentsWithPeople = listComments(id, isStaff).then(async (list) => ({
+    comments: list,
+    people: await getPersonCards([ticket.customer_id, ticket.created_by, ...list.map((c: Comment) => c.author_id)]),
+  }));
+  const [{ comments, people }, triage, staff, share, filerEmail, rating] = await Promise.all([
+    commentsWithPeople,
     isStaff ? getLatestTriageResult(id) : Promise.resolve(null),
     // Only admins reassign, so only admins get the staff list.
     isAdmin ? listStaffProfiles() : Promise.resolve([] as StaffProfile[]),
@@ -117,12 +125,6 @@ export default async function TicketDetailPage({
     filedByOther ? getStaffEmail(ticket.created_by as string) : Promise.resolve(null),
     // RLS decides who sees it: the customer, an admin, or the credited agent.
     showRating ? getTicketRating(id) : Promise.resolve(null),
-  ]);
-  // Names and pictures of everyone on the page that the viewer may see.
-  const people = await getPersonCards([
-    ticket.customer_id,
-    ticket.created_by,
-    ...comments.map((c: Comment) => c.author_id),
   ]);
   const customerCard = people.get(ticket.customer_id);
 
@@ -154,7 +156,7 @@ export default async function TicketDetailPage({
                 {comment.author_id ? (
                   <Avatar
                     id={comment.author_id}
-                    name={label === "You" ? (profile.full_name ?? profile.email) : label}
+                    name={comment.author_id === profile.id ? profileName(profile) : (author?.display_name ?? null)}
                     avatarPath={comment.author_id === profile.id ? profile.avatar_path : (author?.avatar_path ?? null)}
                   />
                 ) : (
@@ -208,6 +210,7 @@ export default async function TicketDetailPage({
   // The customer's page names "our support team" rather than the person:
   // that's a UI choice (created_by is an opaque id they could still read,
   // like assignee_id), and it's what a customer needs to know.
+  // Staff only see this line with a name; customers get the team.
   const filedBy = !ticket.created_by
     ? null
     : !isStaff
@@ -233,11 +236,19 @@ export default async function TicketDetailPage({
               <p className="mt-2 flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
                 <Avatar
                   id={ticket.customer_id}
-                  name={personName(customerCard, "Customer")}
+                  name={customerCard?.display_name ?? null}
                   avatarPath={customerCard?.avatar_path ?? null}
                   size={24}
                 />
-                <span>{personName(customerCard, "Customer")}</span>
+                <span>
+                  {customerCard?.display_name ? (
+                    <>
+                      <span className="text-zinc-500 dark:text-zinc-400">Customer:</span> {customerCard.display_name}
+                    </>
+                  ) : (
+                    "Customer"
+                  )}
+                </span>
               </p>
             ) : null}
             <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">

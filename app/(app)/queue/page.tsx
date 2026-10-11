@@ -1,8 +1,8 @@
 import Link from "next/link";
 
 import { requireStaff } from "@/app/lib/auth/session";
-import { getPersonCards } from "@/app/lib/db/people";
-import { personName, type PersonCard } from "@/app/lib/people";
+import { listStaffProfiles, type StaffProfile } from "@/app/lib/db/profiles";
+import { assignedToLabel, profileName } from "@/app/lib/people";
 import { Avatar } from "@/app/components/Avatar";
 import { listQueueTickets, type QueueTicketSummary } from "@/app/lib/db/tickets";
 import { Badge } from "@/app/components/Badge";
@@ -111,8 +111,8 @@ function TicketCard({
   ticket: QueueTicketSummary;
   filter: QueueFilterKey;
   currentUserId: string;
-  // Someone else's name and picture (admins see others' tickets).
-  assignee: PersonCard | undefined;
+  // Someone else's profile (only admins see others' tickets).
+  assignee: StaffProfile | undefined;
   now: Date;
   // This queue view's URL, for a claim that loses the race to come back to.
   returnTo: string;
@@ -169,11 +169,11 @@ function TicketCard({
             <span className="flex items-center gap-1.5">
               <Avatar
                 id={ticket.assignee_id}
-                name={personName(assignee, "Assigned")}
+                name={assignee ? profileName(assignee) : null}
                 avatarPath={assignee?.avatar_path ?? null}
                 size={18}
               />
-              {assignee?.display_name ? `Assigned to ${assignee.display_name}` : "Assigned"}
+              {assignedToLabel(assignee)}
             </span>
           ) : null}
         </div>
@@ -203,7 +203,11 @@ export default async function QueuePage({
 }) {
   const profile = await requireStaff();
   const tickets = await listQueueTickets(profile.id, profile.role);
-  const people = await getPersonCards(tickets.map((t) => (t.assignee_id === profile.id ? null : t.assignee_id)));
+  // Only admins see tickets assigned to someone else, so only they need
+  // the staff list to name the assignee.
+  const staff = new Map(
+    (profile.role === "admin" ? await listStaffProfiles() : []).map((s) => [s.id, s])
+  );
 
   const params = await searchParams;
   const defaults: QueueDefaults = { filter: profile.queue_default_filter, sort: profile.queue_default_sort };
@@ -401,7 +405,7 @@ export default async function QueuePage({
               ticket={ticket}
               filter={filter}
               currentUserId={profile.id}
-              assignee={ticket.assignee_id ? people.get(ticket.assignee_id) : undefined}
+              assignee={ticket.assignee_id ? staff.get(ticket.assignee_id) : undefined}
               now={now}
               returnTo={returnTo}
             />
