@@ -43,6 +43,9 @@ yarn-error.log*
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+# Playwright MCP browser session output (screenshots, console logs of
+# signed-in pages) -- never commit it.
+/.playwright-mcp/
 
 # typescript
 *.tsbuildinfo

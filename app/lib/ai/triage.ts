@@ -231,6 +231,15 @@ function stripForeignLinks(reply: string, ticketText: string): string {
   });
 }
 
+// The summary, priority reason and missing-info lines never need a link,
+// and the summary is what staff publish on the public status page and what
+// other tickets' triage sees as candidate text -- so a prompt-injected
+// ticket mustn't be able to plant a URL or address there. Unlike the draft
+// reply, even links from the ticket itself are removed.
+function stripAllLinks(text: string): string {
+  return text.replace(URL_OR_EMAIL_RE, (match) => `[link removed]${match.match(TRAILING_PUNCT_RE)?.[0] ?? ""}`);
+}
+
 function stripTimeframePromises(reply: string): string {
   const sentences = reply.split(/(?<=[.!?])\s+/);
   return sentences
@@ -294,10 +303,11 @@ function normalize(
 
   return {
     output: {
-      summary: String(raw.summary ?? "").trim().slice(0, 300) || "Needs review: model returned no summary.",
+      summary:
+        stripAllLinks(String(raw.summary ?? "").trim().slice(0, 300)) || "Needs review: model returned no summary.",
       category,
       priority,
-      priority_reason: String(raw.priority_reason ?? "").trim().slice(0, 500),
+      priority_reason: stripAllLinks(String(raw.priority_reason ?? "").trim().slice(0, 500)),
       team,
       frustration,
       is_escalation_risk: Boolean(raw.is_escalation_risk),
@@ -311,7 +321,7 @@ function normalize(
         ? raw.missing_info
             .filter((s): s is string => typeof s === "string")
             .slice(0, 10)
-            .map((s) => s.trim().slice(0, 200))
+            .map((s) => stripAllLinks(s.trim().slice(0, 200)))
         : [],
       confidence,
     },
