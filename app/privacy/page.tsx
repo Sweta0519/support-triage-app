@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { Logo } from "@/app/components/Logo";
 import { linkClass } from "@/app/lib/styles";
 
 export const metadata: Metadata = {
@@ -29,12 +30,7 @@ export default function PrivacyPolicyPage() {
   return (
     <div className="flex flex-1 justify-center bg-zinc-50 px-6 py-12 dark:bg-black">
       <article className="flex w-full max-w-2xl flex-col gap-8">
-        <div className="flex items-center gap-2 text-base font-semibold tracking-tight text-black dark:text-zinc-50">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600 text-sm font-bold text-white">
-            S
-          </span>
-          Support Triage
-        </div>
+        <Logo size={32} />
 
         <header className="flex flex-col gap-2">
           <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Privacy policy</h1>

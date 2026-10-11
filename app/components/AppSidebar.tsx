@@ -163,7 +163,7 @@ export function AppSidebar({
     >
       <div className="flex h-14 items-center justify-between px-4 lg:h-16 lg:px-5">
         <Link href="/" aria-label="Support Triage home">
-          <Logo size={28} className="text-sm" />
+          <Logo size={28} textSize="text-sm" />
         </Link>
         <button
           ref={menuButton}
