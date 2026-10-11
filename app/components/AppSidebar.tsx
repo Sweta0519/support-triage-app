@@ -40,6 +40,13 @@ const icons = {
       <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
     </svg>
   ),
+  board: (
+    <svg {...iconProps}>
+      <rect x="3" y="3" width="5" height="18" rx="1" />
+      <rect x="10" y="3" width="5" height="12" rx="1" />
+      <rect x="17" y="3" width="4" height="8" rx="1" />
+    </svg>
+  ),
   plus: (
     <svg {...iconProps}>
       <path d="M12 5v14M5 12h14" />
@@ -97,6 +104,7 @@ function navItems(role: AppRole): NavItem[] {
       icon: icons.inbox,
       isActive: (p) => p === "/queue" || (p.startsWith("/tickets/") && p !== "/tickets/new"),
     },
+    { href: "/board", label: "Board", icon: icons.board, isActive: (p) => p === "/board" },
     // Logging a ticket for a customer who called or emailed.
     { href: "/tickets/new", label: "New ticket", icon: icons.plus, isActive: (p) => p === "/tickets/new" },
     { href: "/notes", label: "Notes", icon: icons.note, isActive: under("/notes") },

@@ -13,25 +13,8 @@ export function isUuid(value: string): boolean {
 export const SUBJECT_MAX_LENGTH = 200;
 export const BODY_MAX_LENGTH = 20_000;
 
-export type TicketStatus =
-  | "new"
-  | "triaged"
-  | "assigned"
-  | "in_progress"
-  | "resolved"
-  | "closed";
-
-// Mirrors ticketing.guard_ticket_update()'s transition map exactly -- this
-// is only used to decide which buttons to render. The trigger is the real
-// enforcement; keep the two in sync if the map ever changes.
-export const ALLOWED_STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
-  new: ["assigned", "in_progress"],
-  triaged: ["assigned", "in_progress"],
-  assigned: ["in_progress", "triaged"],
-  in_progress: ["resolved", "assigned"],
-  resolved: ["closed", "in_progress"],
-  closed: [],
-};
+export { ALLOWED_STATUS_TRANSITIONS, type TicketStatus } from "@/app/lib/ticket-status";
+import type { TicketStatus } from "@/app/lib/ticket-status";
 
 // AI-derived working state lives in ticketing.ticket_triage_state, a
 // staff-only table (RLS). It is embedded into staff reads and comes back as
@@ -301,6 +284,31 @@ export async function assignTicket(
     .eq("id", ticketId)
     .select(TICKET_BASE_COLUMNS)
     // null = RLS hid the row (or it doesn't exist): a no-op, not a 500.
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data;
+}
+
+// The board's move: applies only if the ticket is still in the status the
+// caller saw, so a concurrent change (someone else resolving or closing
+// it) isn't overwritten -- for an admin the guard trigger doesn't check
+// the transition map, so this is what keeps the move honest. null = it
+// changed (or isn't visible).
+export async function moveTicketStatus(
+  ticketId: string,
+  from: TicketStatus,
+  to: TicketStatus
+): Promise<TicketBase | null> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("tickets")
+    .update({ status: to })
+    .eq("id", ticketId)
+    .eq("status", from)
+    .select(TICKET_BASE_COLUMNS)
     .maybeSingle();
 
   if (error) {
