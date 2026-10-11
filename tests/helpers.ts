@@ -16,3 +16,28 @@ export function requireEnv(name: string): string {
   }
   return value;
 }
+
+// Sage is a floating widget on every staff page, opened via the launcher.
+export async function openSage(page: Page) {
+  await page.getByRole("button", { name: "Open Sage" }).click();
+  await expect(page.getByPlaceholder("Message Sage...")).toBeEnabled({ timeout: 15_000 });
+}
+
+// Sends one message and returns Sage's reply bubble. Waits for the question
+// and the reply to both land -- or fails with the widget's own error text
+// (a rate limit, a model error) -- so a failed send is never read as the
+// previous turn's reply via .last().
+export async function askSage(page: Page, question: string) {
+  const messages = page.getByTestId("assistant-widget-message");
+  const sendError = page.getByTestId("assistant-widget-error");
+  const before = await messages.count();
+  await page.getByPlaceholder("Message Sage...").fill(question);
+  await page.getByRole("button", { name: "Send" }).click();
+  // A retrieval turn is up to three completions plus embedding calls.
+  await expect(messages.nth(before + 1).or(sendError)).toBeVisible({ timeout: 120_000 });
+  if (await sendError.isVisible()) {
+    throw new Error(`Sage didn't reply: ${await sendError.textContent()}`);
+  }
+  await expect(messages).toHaveCount(before + 2);
+  return messages.last();
+}

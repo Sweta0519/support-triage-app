@@ -210,7 +210,9 @@ export function AssistantWidget() {
 
           {/* A load failure gets its own retry UI above; this is only for a send failure. */}
           {loaded && error ? (
-            <p className="border-t border-black/[.08] px-3 py-1.5 text-xs text-red-600 dark:border-white/[.145] dark:text-red-400">
+            <p
+              data-testid="assistant-widget-error"
+              className="border-t border-black/[.08] px-3 py-1.5 text-xs text-red-600 dark:border-white/[.145] dark:text-red-400">
               {error}
             </p>
           ) : null}

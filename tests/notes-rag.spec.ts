@@ -1,31 +1,15 @@
+import { randomUUID } from "node:crypto";
+
 import { test, expect, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
-import { login, requireEnv } from "./helpers";
+import { askSage, login, openSage, requireEnv } from "./helpers";
 
 // Sage's "chat with your own notes" feature: a staff member's private notes
 // are chunked + embedded on save, and Sage can call a search_notes tool to
 // answer from them. Hits the real OpenRouter API (embeddings + chat), so
 // these are slow and run serially -- they also share the one Sage
 // conversation per staff member, like tests/ai-chat.spec.ts.
-
-async function openSage(page: Page) {
-  await page.getByRole("button", { name: "Open Sage" }).click();
-  await expect(page.getByPlaceholder("Message Sage...")).toBeEnabled({ timeout: 15_000 });
-}
-
-async function askSage(page: Page, question: string) {
-  const messages = page.getByTestId("assistant-widget-message");
-  const before = await messages.count();
-  await page.getByPlaceholder("Message Sage...").fill(question);
-  await page.getByRole("button", { name: "Send" }).click();
-  // A retrieval turn is up to three completions plus embedding calls.
-  await expect(page.getByPlaceholder("Message Sage...")).toBeEnabled({ timeout: 120_000 });
-  // The question and its reply both landed -- otherwise (a rate limit, a
-  // failed call) .last() would quietly be the previous turn's reply.
-  await expect(messages).toHaveCount(before + 2);
-  return messages.last();
-}
 
 async function saveNote(page: Page, title: string, body: string) {
   await page.goto("/notes/new");
@@ -135,7 +119,7 @@ test.describe("Sage: chat with your own notes", () => {
     const adminPassword = requireEnv("TEST_ADMIN_PASSWORD");
 
     // User A (the agent) writes down something distinctive.
-    const marker = `SECRET_MARKER-${Date.now()}`;
+    const marker = `SECRET_MARKER-${randomUUID()}`;
     const secretTitle = "Vendor access codes";
     const contextA = await browser.newContext();
     const pageA = await contextA.newPage();
