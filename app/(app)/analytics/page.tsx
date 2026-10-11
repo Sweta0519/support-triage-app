@@ -290,10 +290,10 @@ function LowRatings({ ratings }: { ratings: CsatRating[] }) {
 // Three buckets as one stacked bar plus a labelled legend, so colour is
 // never the only cue; the counts underneath are what's worth acting on.
 function SentimentBreakdown({ sentiment: s }: { sentiment: Sentiment }) {
-  const scored = s.calm + s.neutral + s.frustrated;
+  const scored = s.calm + s.annoyed + s.frustrated;
   const buckets = [
     { key: "calm", label: "Calm (1-2)", value: s.calm, bar: "bg-emerald-500" },
-    { key: "neutral", label: "Neutral (3)", value: s.neutral, bar: "bg-zinc-400 dark:bg-zinc-500" },
+    { key: "annoyed", label: "Annoyed (3)", value: s.annoyed, bar: "bg-amber-400" },
     { key: "frustrated", label: "Frustrated (4-5)", value: s.frustrated, bar: "bg-orange-500" },
   ];
   return (

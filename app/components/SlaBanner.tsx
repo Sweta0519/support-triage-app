@@ -41,7 +41,16 @@ function detail(sla: Sla): string {
   }
 }
 
-const timeFormat = new Intl.DateTimeFormat("en", { weekday: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+// Day and month too: a ticket overdue for days would otherwise point at
+// the wrong week ("Mon 02:30 PM").
+const timeFormat = new Intl.DateTimeFormat("en", {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "UTC",
+});
 
 export function SlaBanner({ sla }: { sla: Sla }) {
   const tone = TONE[sla.state];

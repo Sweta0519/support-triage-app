@@ -198,7 +198,7 @@ test.describe("computeAnalytics", () => {
     ];
     expect(computeSentiment(open)).toEqual({
       calm: 2,
-      neutral: 1,
+      annoyed: 1,
       frustrated: 2,
       unscored: 2,
       frustratedWaiting: 1,

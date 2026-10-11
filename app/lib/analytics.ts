@@ -315,7 +315,7 @@ export function computeCsat(ratings: CsatRating[], lowLimit = 5): CsatSummary {
 export type Sentiment = {
   // From the AI's frustration score (1-5) on each ticket's newest triage run.
   calm: number; // 1-2
-  neutral: number; // 3
+  annoyed: number; // 3 (the triage prompt: "1 calm, 3 annoyed, 5 furious")
   frustrated: number; // 4-5
   unscored: number; // not triaged yet, or the run has no score
   // Frustrated customers still without a first reply, and tickets the AI
@@ -327,14 +327,14 @@ export type Sentiment = {
 // Over open tickets only, so every number on the card describes the same
 // set -- the customers someone still has to deal with.
 export function computeSentiment(open: AnalyticsTicketRow[]): Sentiment {
-  const out: Sentiment = { calm: 0, neutral: 0, frustrated: 0, unscored: 0, frustratedWaiting: 0, escalationRisk: 0 };
+  const out: Sentiment = { calm: 0, annoyed: 0, frustrated: 0, unscored: 0, frustratedWaiting: 0, escalationRisk: 0 };
   for (const row of open) {
     if (row.status === "resolved" || row.status === "closed") continue;
     const score = row.latest_triage?.frustration ?? null;
     if (score === null) out.unscored += 1;
     // "Frustrated" uses the same threshold as the queue card's chip.
     else if (isFrustrated(score)) out.frustrated += 1;
-    else if (score === 3) out.neutral += 1;
+    else if (score === 3) out.annoyed += 1;
     else out.calm += 1;
     if (row.latest_triage?.is_escalation_risk) out.escalationRisk += 1;
     if (row.first_response_at === null && isFrustrated(score)) out.frustratedWaiting += 1;

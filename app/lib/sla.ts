@@ -102,22 +102,6 @@ export function slaBadgeLabel(sla: Sla): string {
   }
 }
 
-// The longer sentence for the ticket view.
-export function slaDescription(sla: Sla): string {
-  const target = `${formatDuration(sla.targetMs)} target for ${sla.priority} priority`;
-  switch (sla.state) {
-    case "on_track":
-    case "at_risk":
-      return `First reply due in ${formatDuration(sla.remainingMs)} (${target}).`;
-    case "breached":
-      return `First reply overdue by ${formatDuration(sla.remainingMs)} (${target}).`;
-    case "met":
-      return `First reply sent after ${formatDuration(sla.responseMs)}, within the ${target}.`;
-    case "missed":
-      return `First reply sent after ${formatDuration(sla.responseMs)}, past the ${target}.`;
-  }
-}
-
 export function slaBadgeClasses(state: SlaState): string {
   switch (state) {
     case "on_track":
