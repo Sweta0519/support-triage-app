@@ -35,6 +35,14 @@ export function ticketHref(ticketId: string, filter: QueueFilterKey): string {
   return filter === "all" ? `/tickets/${ticketId}` : `/tickets/${ticketId}?from=${filter}`;
 }
 
+// Where a queue-card form may send the agent back to: only a same-origin
+// /queue URL with a query string free of slashes, backslashes and line
+// breaks. Anything else (e.g. "//evil.example", "/queue\\evil") falls
+// back to the plain queue, so a tampered form can't redirect off-site.
+export function safeQueueReturn(raw: string): string {
+  return /^\/queue(\?[^/\\\r\n]*)?$/.test(raw) ? raw : "/queue";
+}
+
 // The queue half of a ticket page's breadcrumb: "Queue" always, then the
 // tab the agent came from when it wasn't the default "All".
 export function queueBreadcrumb(filter: QueueFilterKey): { label: string; href: string }[] {

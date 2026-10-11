@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import type { QueueTicketSummary } from "../app/lib/db/tickets";
 import { isFrustrated, matchesSearch, parseQueueView, sortQueue } from "../app/lib/queue";
+import { safeQueueReturn } from "../app/lib/queue-filters";
 import { login, requireEnv } from "./helpers";
 
 // The queue's cards, search, status filter and sort. The view logic is a
@@ -86,6 +87,15 @@ test.describe("queue view logic", () => {
     ]);
     expect(sortQueue(tickets, "newest", NOW)[0].id).toBe("plenty-left");
     expect(sortQueue(tickets, "oldest", NOW)[0].id).toBe("answered");
+  });
+
+  test("a claim only ever returns to a /queue URL", () => {
+    for (const ok of ["/queue", "/queue?q=%231042", "/queue?filter=mine&status=new&sort=oldest&q=billing"]) {
+      expect(safeQueueReturn(ok), ok).toBe(ok);
+    }
+    for (const bad of ["", "//evil.example", "https://evil.example/queue", "/queue/../admin", "/queue?x=//evil", "/queue\\evil", "/queue?x=1\r\nSet-Cookie: a=b", "/queuex", "/tickets/1"]) {
+      expect(safeQueueReturn(bad), JSON.stringify(bad)).toBe("/queue");
+    }
   });
 
   test("only high frustration is flagged", () => {
@@ -180,5 +190,66 @@ test("a triaged ticket's card shows its number, AI summary and AI flags, and sea
     await expect(card.getByText("AI unsure", { exact: true })).toBeVisible();
   } finally {
     await db.from("tickets").delete().eq("id", created.id);
+  }
+});
+
+test("Claim on a card opens the ticket; a lost race says so instead of doing nothing", async ({ page }) => {
+  const db = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
+    db: { schema: "ticketing" },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: customer } = await db.from("profiles").select("id").eq("email", requireEnv("TEST_USER_EMAIL")).single();
+  const { data: admin } = await db.from("profiles").select("id").eq("email", requireEnv("TEST_ADMIN_EMAIL")).single();
+  const seed = async (subject: string) => {
+    const { data, error } = await db
+      .from("tickets")
+      .insert({ customer_id: customer!.id, subject, body: "Claim probe." })
+      .select("id, number")
+      .single();
+    if (error) throw new Error(error.message);
+    return data;
+  };
+  const won = await seed(`Claim probe ${Date.now()}`);
+  const lost = await seed(`Lost claim probe ${Date.now()}`);
+  // Work had started, then an admin unassigned it: claiming must not move
+  // it back to "assigned".
+  const started = await seed(`Started claim probe ${Date.now()}`);
+  const { error: startError } = await db.from("tickets").update({ status: "in_progress" }).eq("id", started.id);
+  if (startError) throw new Error(startError.message);
+
+  try {
+    await login(page, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
+
+    // Success: lands on the ticket, with the queue tab kept for the breadcrumb.
+    await page.goto(`/queue?filter=unassigned&q=${encodeURIComponent(`#${won.number}`)}`);
+    await page.getByRole("button", { name: new RegExp(`^Claim #${won.number}:`) }).click();
+    await expect(page).toHaveURL(new RegExp(`/tickets/${won.id}\\?from=unassigned$`));
+    await expect(page.getByText("Assigned to you")).toBeVisible();
+
+    // An in-progress ticket keeps its status when claimed.
+    await page.goto(`/queue?q=${encodeURIComponent(`#${started.number}`)}`);
+    await page.getByRole("button", { name: new RegExp(`^Claim #${started.number}:`) }).click();
+    await expect(page).toHaveURL(new RegExp(`/tickets/${started.id}$`));
+    await expect(page.getByText("Assigned to you")).toBeVisible();
+    const { data: startedNow } = await db.from("tickets").select("status, assignee_id").eq("id", started.id).single();
+    expect(startedNow?.status).toBe("in_progress");
+
+    // Lost race: someone else claims it after the queue rendered.
+    await page.goto(`/queue?q=${encodeURIComponent(`#${lost.number}`)}`);
+    const claim = page.getByRole("button", { name: new RegExp(`^Claim #${lost.number}:`) });
+    await expect(claim).toBeVisible();
+    const { error } = await db.from("tickets").update({ assignee_id: admin!.id, status: "assigned" }).eq("id", lost.id);
+    if (error) throw new Error(error.message);
+    await claim.click();
+    // Back on the same queue view (search kept), with a notice, and the
+    // card gone: the ticket now belongs to someone else.
+    await expect(page.getByRole("status").filter({ hasText: "That ticket is no longer available to claim." })).toBeVisible();
+    await expect(page.getByRole("button", { name: new RegExp(`^Claim #${lost.number}:`) })).toHaveCount(0);
+    // The notice is dropped from the URL once shown, so a reload doesn't repeat it.
+    await expect(page).not.toHaveURL(/notice=/);
+    await page.reload();
+    await expect(page.getByText("That ticket is no longer available to claim.")).toHaveCount(0);
+  } finally {
+    await db.from("tickets").delete().in("id", [won.id, lost.id, started.id]);
   }
 });
