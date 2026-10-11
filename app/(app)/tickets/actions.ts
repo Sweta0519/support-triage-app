@@ -29,7 +29,7 @@ import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { rerunTriage, runTriage } from "@/app/lib/ai/triage";
 import { getLatestTriageResult, reviewTriage, TriageReviewError } from "@/app/lib/db/triage";
 import { publishTicketSummary, revokeShare } from "@/app/lib/db/shares";
-import { parseQueueFilter, ticketHref } from "@/app/lib/queue-filters";
+import { parseQueueFilter, safeQueueReturn, ticketHref } from "@/app/lib/queue-filters";
 import { stripAllLinks } from "@/app/lib/ai/links";
 import {
   isOneOf,
@@ -189,17 +189,16 @@ export async function claimTicketAction(formData: FormData) {
 }
 
 // The queue card's Claim. Same atomic claim as above, but on success the
-// agent lands on the ticket (claiming means starting work on it). A lost
-// race goes back to the same queue view with a notice: the card itself
+// agent lands on the ticket (claiming means starting work on it). A failed
+// claim (someone else got it first, or it no longer exists) goes back to
+// the same queue view with a notice: the card itself
 // can't carry the message, because once someone else owns the ticket RLS
 // hides it from this agent and the card disappears.
 export async function claimFromQueueAction(formData: FormData) {
   const profile = await requireStaff();
   const ticketId = String(formData.get("ticketId") ?? "");
   const from = parseQueueFilter(String(formData.get("from") ?? ""));
-  // Only ever a queue URL built by the page; anything else falls back.
-  const rawReturn = String(formData.get("returnTo") ?? "");
-  const returnTo = /^\/queue(\?[^/\\]*)?$/.test(rawReturn) ? rawReturn : "/queue";
+  const returnTo = safeQueueReturn(String(formData.get("returnTo") ?? ""));
   if (!isUuid(ticketId)) {
     redirect(returnTo);
   }

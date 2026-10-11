@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import type { QueueTicketSummary } from "../app/lib/db/tickets";
 import { isFrustrated, matchesSearch, parseQueueView, sortQueue } from "../app/lib/queue";
+import { safeQueueReturn } from "../app/lib/queue-filters";
 import { login, requireEnv } from "./helpers";
 
 // The queue's cards, search, status filter and sort. The view logic is a
@@ -86,6 +87,15 @@ test.describe("queue view logic", () => {
     ]);
     expect(sortQueue(tickets, "newest", NOW)[0].id).toBe("plenty-left");
     expect(sortQueue(tickets, "oldest", NOW)[0].id).toBe("answered");
+  });
+
+  test("a claim only ever returns to a /queue URL", () => {
+    for (const ok of ["/queue", "/queue?q=%231042", "/queue?filter=mine&status=new&sort=oldest&q=billing"]) {
+      expect(safeQueueReturn(ok), ok).toBe(ok);
+    }
+    for (const bad of ["", "//evil.example", "https://evil.example/queue", "/queue/../admin", "/queue?x=//evil", "/queue\\evil", "/queue?x=1\r\nSet-Cookie: a=b", "/queuex", "/tickets/1"]) {
+      expect(safeQueueReturn(bad), JSON.stringify(bad)).toBe("/queue");
+    }
   });
 
   test("only high frustration is flagged", () => {
@@ -221,7 +231,7 @@ test("Claim on a card opens the ticket; a lost race says so instead of doing not
     // Back on the same queue view (search kept), with a notice, and the
     // card gone: the ticket now belongs to someone else.
     await expect(page).toHaveURL(new RegExp(`/queue\\?q=%23${lost.number}&notice=claim-taken$`));
-    await expect(page.getByRole("status").filter({ hasText: "Someone else already claimed that ticket." })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "That ticket is no longer available to claim." })).toBeVisible();
     await expect(page.getByRole("button", { name: new RegExp(`^Claim #${lost.number}:`) })).toHaveCount(0);
   } finally {
     await db.from("tickets").delete().in("id", [won.id, lost.id]);
