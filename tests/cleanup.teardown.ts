@@ -30,9 +30,10 @@ teardown("delete tickets created by this test run", async () => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const emails = [process.env.TEST_USER_EMAIL, process.env.TEST_USER_B_EMAIL].filter(
-    (e): e is string => Boolean(e)
-  );
+  // Supabase Auth stores emails lowercase.
+  const emails = [process.env.TEST_USER_EMAIL, process.env.TEST_USER_B_EMAIL]
+    .filter((e): e is string => Boolean(e))
+    .map((e) => e.toLowerCase());
   // Only customer accounts: if a test email were ever pointed at a staff
   // account, its tickets are left alone.
   const { data: customers, error } = await db
@@ -41,14 +42,25 @@ teardown("delete tickets created by this test run", async () => {
     .in("email", emails)
     .eq("role", "customer");
   if (error) throw new Error(error.message);
-  if (!customers?.length) return;
+  if (!customers?.length) {
+    console.warn("No test customer account found for TEST_USER_EMAIL / TEST_USER_B_EMAIL -- skipping cleanup");
+    return;
+  }
+
+  // A ticket whose AI triage is still running (filed by the last specs)
+  // is left for the next run's cleanup: deleting it mid-triage makes the
+  // background job fail on the foreign key and wastes the model call. The
+  // age limit keeps a stuck "processing" ticket from surviving forever.
+  const settled = (t: { created_at: string; triage_state: { triage_status: string } | null }) =>
+    !["pending", "processing"].includes(t.triage_state?.triage_status ?? "") ||
+    Date.now() - new Date(t.created_at).getTime() > 5 * 60_000;
 
   // Paged: PostgREST caps a single response at 1,000 rows.
   const probes: { id: string; subject: string }[] = [];
   for (let from = 0; ; from += 1000) {
     const { data, error: listError } = await db
       .from("tickets")
-      .select("id, subject")
+      .select("id, subject, created_at, triage_state:ticket_triage_state(triage_status)")
       .in(
         "customer_id",
         customers.map((c) => c.id)
@@ -56,7 +68,13 @@ teardown("delete tickets created by this test run", async () => {
       .order("created_at")
       .range(from, from + 999);
     if (listError) throw new Error(listError.message);
-    probes.push(...(data ?? []).filter((t) => PROBE_SUBJECT.test(t.subject)));
+    const rows = (data ?? []) as unknown as {
+      id: string;
+      subject: string;
+      created_at: string;
+      triage_state: { triage_status: string } | null;
+    }[];
+    probes.push(...rows.filter((t) => PROBE_SUBJECT.test(t.subject) && settled(t)));
     if (!data || data.length < 1000) break;
   }
 
