@@ -7,6 +7,7 @@ import { requireRole } from "@/app/lib/auth/session";
 import { listMyTickets } from "@/app/lib/db/tickets";
 import { Badge } from "@/app/components/Badge";
 import { statusBadgeClasses, statusLabel } from "@/app/lib/badges";
+import { formatTicketNumber } from "@/app/lib/format";
 import { primaryButtonClass } from "@/app/lib/styles";
 
 export default async function TicketsPage() {
@@ -40,7 +41,12 @@ export default async function TicketsPage() {
                 href={`/tickets/${ticket.id}`}
                 className="flex items-center justify-between rounded-lg border border-black/[.08] px-4 py-3 transition-colors hover:border-indigo-200 hover:bg-indigo-50/40 dark:border-white/[.145] dark:hover:border-indigo-900 dark:hover:bg-indigo-950/20"
               >
-                <span className="font-medium text-black dark:text-zinc-50">{ticket.subject}</span>
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <span className="shrink-0 font-mono text-xs text-zinc-500 dark:text-zinc-500">
+                    {formatTicketNumber(ticket.number)}
+                  </span>
+                  <span className="truncate font-medium text-black dark:text-zinc-50">{ticket.subject}</span>
+                </span>
                 <Badge label={statusLabel(ticket.status)} colorClasses={statusBadgeClasses(ticket.status)} />
               </Link>
             </li>
