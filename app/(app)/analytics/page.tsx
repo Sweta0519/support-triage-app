@@ -356,7 +356,7 @@ export default async function AnalyticsPage() {
     open,
     recent,
     ratings,
-    staff: staff.map((s) => ({ id: s.id, label: s.email })),
+    staff: staff.map((s) => ({ id: s.id, label: s.full_name ?? s.email })),
     now,
   });
   const csat = computeCsat(ratings);

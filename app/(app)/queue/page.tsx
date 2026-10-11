@@ -1,6 +1,9 @@
 import Link from "next/link";
 
 import { requireStaff } from "@/app/lib/auth/session";
+import { getPersonCards } from "@/app/lib/db/people";
+import { personName, type PersonCard } from "@/app/lib/people";
+import { Avatar } from "@/app/components/Avatar";
 import { listQueueTickets, type QueueTicketSummary } from "@/app/lib/db/tickets";
 import { Badge } from "@/app/components/Badge";
 import { SlaBadge } from "@/app/components/SlaBadge";
@@ -101,12 +104,15 @@ function TicketCard({
   ticket,
   filter,
   currentUserId,
+  assignee,
   now,
   returnTo,
 }: {
   ticket: QueueTicketSummary;
   filter: QueueFilterKey;
   currentUserId: string;
+  // Someone else's name and picture (admins see others' tickets).
+  assignee: PersonCard | undefined;
   now: Date;
   // This queue view's URL, for a claim that loses the race to come back to.
   returnTo: string;
@@ -159,6 +165,16 @@ function TicketCard({
             />
           ) : ticket.assignee_id === currentUserId ? (
             <span>Assigned to you</span>
+          ) : ticket.assignee_id ? (
+            <span className="flex items-center gap-1.5">
+              <Avatar
+                id={ticket.assignee_id}
+                name={personName(assignee, "Assigned")}
+                avatarPath={assignee?.avatar_path ?? null}
+                size={18}
+              />
+              {assignee?.display_name ? `Assigned to ${assignee.display_name}` : "Assigned"}
+            </span>
           ) : null}
         </div>
       </Link>
@@ -187,6 +203,7 @@ export default async function QueuePage({
 }) {
   const profile = await requireStaff();
   const tickets = await listQueueTickets(profile.id, profile.role);
+  const people = await getPersonCards(tickets.map((t) => (t.assignee_id === profile.id ? null : t.assignee_id)));
 
   const params = await searchParams;
   const defaults: QueueDefaults = { filter: profile.queue_default_filter, sort: profile.queue_default_sort };
@@ -384,6 +401,7 @@ export default async function QueuePage({
               ticket={ticket}
               filter={filter}
               currentUserId={profile.id}
+              assignee={ticket.assignee_id ? people.get(ticket.assignee_id) : undefined}
               now={now}
               returnTo={returnTo}
             />

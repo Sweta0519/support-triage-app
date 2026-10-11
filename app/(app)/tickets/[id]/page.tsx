@@ -11,6 +11,9 @@ import { listComments, type Comment } from "@/app/lib/db/comments";
 import { getLatestTriageResult } from "@/app/lib/db/triage";
 import { getStaffEmail, listStaffProfiles, type StaffProfile } from "@/app/lib/db/profiles";
 import { getActiveShareForTicket } from "@/app/lib/db/shares";
+import { getPersonCards } from "@/app/lib/db/people";
+import { personName, type PersonCard } from "@/app/lib/people";
+import { Avatar } from "@/app/components/Avatar";
 import { Badge } from "@/app/components/Badge";
 import { SlaBanner } from "@/app/components/SlaBanner";
 import { isFrustrated } from "@/app/lib/queue";
@@ -32,19 +35,22 @@ import { Stars } from "@/app/components/Stars";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
-// Comments carry no display name, only author_id -- but combined with the
-// ticket's own customer_id and the viewer's id, that's enough to label every
-// comment without an extra query (RLS guarantees the only possible authors
-// are the customer and staff).
+// A comment's author by name where the viewer may see it (profile_cards,
+// RLS-scoped), else by role: the only possible authors are the ticket's
+// customer and staff. A customer sees staff as "<name> (Support)".
 function commentAuthorLabel(
   authorId: string | null,
   viewerId: string,
-  customerId: string
+  customerId: string,
+  viewerIsStaff: boolean,
+  people: Map<string, PersonCard>
 ): string {
   if (authorId === null) return "Deleted account";
   if (authorId === viewerId) return "You";
-  if (authorId === customerId) return "Customer";
-  return "Support team";
+  const card = people.get(authorId);
+  if (authorId === customerId) return personName(card, "Customer");
+  if (!card?.display_name) return "Support team";
+  return viewerIsStaff ? card.display_name : `${card.display_name} (Support)`;
 }
 
 const headerChip = chipClass;
@@ -112,6 +118,13 @@ export default async function TicketDetailPage({
     // RLS decides who sees it: the customer, an admin, or the credited agent.
     showRating ? getTicketRating(id) : Promise.resolve(null),
   ]);
+  // Names and pictures of everyone on the page that the viewer may see.
+  const people = await getPersonCards([
+    ticket.customer_id,
+    ticket.created_by,
+    ...comments.map((c: Comment) => c.author_id),
+  ]);
+  const customerCard = people.get(ticket.customer_id);
 
   const ticketBody = (
     <div className="flex flex-col gap-2">
@@ -134,18 +147,21 @@ export default async function TicketDetailPage({
       ) : (
         <ul className="flex flex-col gap-4">
           {comments.map((comment: Comment) => {
-            const label = commentAuthorLabel(comment.author_id, profile.id, ticket.customer_id);
+            const label = commentAuthorLabel(comment.author_id, profile.id, ticket.customer_id, isStaff, people);
+            const author = comment.author_id ? people.get(comment.author_id) : undefined;
             return (
               <li key={comment.id} className="flex gap-3">
-                <span
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                    comment.is_internal
-                      ? "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
-                      : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
-                  }`}
-                >
-                  {label[0]}
-                </span>
+                {comment.author_id ? (
+                  <Avatar
+                    id={comment.author_id}
+                    name={label === "You" ? (profile.full_name ?? profile.email) : label}
+                    avatarPath={comment.author_id === profile.id ? profile.avatar_path : (author?.avatar_path ?? null)}
+                  />
+                ) : (
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                    ?
+                  </span>
+                )}
                 <div
                   className={`flex flex-1 flex-col gap-1 rounded-lg border px-4 py-3 text-sm ${
                     comment.is_internal
@@ -198,7 +214,7 @@ export default async function TicketDetailPage({
       ? "Filed by our support team on your behalf"
       : ticket.created_by === profile.id
         ? "Filed by you on the customer's behalf"
-        : `Filed by ${filerEmail ?? "a former staff member"} on the customer's behalf`;
+        : `Filed by ${personName(people.get(ticket.created_by), filerEmail ?? "a former staff member")} on the customer's behalf`;
   // Staff only: the response target is an internal commitment.
   const sla = isStaff ? computeSla(ticket) : null;
 
@@ -211,6 +227,19 @@ export default async function TicketDetailPage({
             <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
               {ticket.subject}
             </h1>
+            {isStaff ? (
+              // Who this is from: their name and picture where they've set
+              // one (profile_cards -- staff never see a customer's email).
+              <p className="mt-2 flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                <Avatar
+                  id={ticket.customer_id}
+                  name={personName(customerCard, "Customer")}
+                  avatarPath={customerCard?.avatar_path ?? null}
+                  size={24}
+                />
+                <span>{personName(customerCard, "Customer")}</span>
+              </p>
+            ) : null}
             <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
               <span className="font-mono">{formatTicketNumber(ticket.number)}</span> · Opened{" "}
               {formatRelativeTime(ticket.created_at)}

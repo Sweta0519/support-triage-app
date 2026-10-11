@@ -39,17 +39,24 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"], storageState: "playwright/.auth/customerA.json" },
       dependencies: ["setup"],
-      testIgnore: [/\.(setup|teardown)\.ts$/, /account-settings\.spec\.ts$/],
+      testIgnore: [/\.(setup|teardown)\.ts$/, /(account-settings|people)\.spec\.ts$/],
     },
     {
-      // Changes the shared test accounts' theme and queue defaults, so it
-      // runs after the main suite rather than alongside it (if a main-suite
+      // Changes the shared test accounts' theme, queue defaults and display
+      // names, so it runs after the main suite rather than alongside it (if a main-suite
       // test fails, this shows as "did not run"). On its own:
       // npx playwright test --project=settings --no-deps
       name: "settings",
       use: { ...devices["Desktop Chrome"] },
       dependencies: ["chromium"],
       testMatch: /account-settings\.spec\.ts$/,
+    },
+    {
+      // Gives the agent a display name; after "settings", which resets it.
+      name: "people",
+      use: { ...devices["Desktop Chrome"] },
+      dependencies: ["settings"],
+      testMatch: /people\.spec\.ts$/,
     },
   ],
 

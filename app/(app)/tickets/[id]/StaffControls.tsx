@@ -30,7 +30,8 @@ export function StaffControls({
   // Only populated for admins; agents never see other staff listed here.
   staff: StaffProfile[];
 }) {
-  const assigneeEmail = staff.find((s) => s.id === assigneeId)?.email;
+  const assignee = staff.find((s) => s.id === assigneeId);
+  const assigneeName = assignee ? (assignee.full_name ?? assignee.email) : undefined;
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-black/[.08] p-4 dark:border-white/[.145]">
@@ -43,8 +44,8 @@ export function StaffControls({
           ? "Unassigned"
           : assigneeId === currentUserId
             ? "Assigned to you"
-            : assigneeEmail
-              ? `Assigned to ${assigneeEmail}`
+            : assigneeName
+              ? `Assigned to ${assigneeName}`
               : "Assigned"}
       </p>
 
@@ -91,7 +92,7 @@ export function StaffControls({
             <option value="">Unassigned</option>
             {staff.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.email} ({s.role})
+                {s.full_name ? `${s.full_name} · ${s.email}` : s.email} ({s.role})
               </option>
             ))}
           </select>
