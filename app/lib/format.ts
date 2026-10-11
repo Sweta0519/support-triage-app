@@ -34,3 +34,9 @@ export function formatRelativeTime(iso: string): string {
   }
   return relativeTimeFormatter.format(Math.round(diffMs / 1000), "second");
 }
+
+// "#1042": the short number staff and customers can quote; the UUID stays
+// in URLs.
+export function formatTicketNumber(number: number): string {
+  return `#${number}`;
+}

@@ -50,15 +50,26 @@ export type TriageState = {
 
 export type TicketSummary = {
   id: string;
+  // Short human-readable number (#1042); the UUID stays the key and URL id.
+  number: number;
   subject: string;
   status: TicketStatus;
   created_at: string;
+};
+
+// The AI signals a queue card shows, from the ticket's latest triage run.
+export type QueueTriageSignals = {
+  summary: string;
+  is_escalation_risk: boolean;
+  frustration: number | null;
+  needs_human_review: boolean;
 };
 
 export type QueueTicketSummary = TicketSummary & {
   assignee_id: string | null;
   first_response_at: string | null;
   triage_state: TriageState | null;
+  latest_triage: QueueTriageSignals | null;
 };
 
 export type TicketBase = TicketSummary & {
@@ -74,7 +85,7 @@ export type Ticket = TicketBase & { triage_state: TriageState | null };
 const TRIAGE_STATE_EMBED =
   "triage_state:ticket_triage_state(triage_status, priority, category, team, reviewed_by, reviewed_at, reviewed_result_id)";
 const TICKET_BASE_COLUMNS =
-  "id, subject, body, status, created_at, updated_at, customer_id, assignee_id, first_response_at";
+  "id, number, subject, body, status, created_at, updated_at, customer_id, assignee_id, first_response_at";
 const TICKET_COLUMNS = `${TICKET_BASE_COLUMNS}, ${TRIAGE_STATE_EMBED}`;
 
 // Every query here also filters by customer_id explicitly, even though RLS
@@ -85,7 +96,7 @@ export async function listMyTickets(userId: string): Promise<TicketSummary[]> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("tickets")
-    .select("id, subject, status, created_at")
+    .select("id, number, subject, status, created_at")
     .eq("customer_id", userId)
     .order("created_at", { ascending: false });
 
@@ -151,9 +162,16 @@ export async function listQueueTickets(
   const supabase = await createServerSupabaseClient();
   let query = supabase
     .from("tickets")
-    .select(`id, subject, status, created_at, assignee_id, first_response_at, ${TRIAGE_STATE_EMBED}`)
+    .select(
+      `id, number, subject, status, created_at, assignee_id, first_response_at, ${TRIAGE_STATE_EMBED},
+       latest_triage:triage_results!ticket_id(summary, is_escalation_risk, frustration, needs_human_review)`
+    )
     .neq("status", "closed")
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    // Only the newest run per ticket. The !ticket_id hint is needed because
+    // triage_results also references tickets through duplicate_of.
+    .order("created_at", { referencedTable: "triage_results", ascending: false })
+    .limit(1, { referencedTable: "triage_results" });
 
   if (role === "agent") {
     query = query.or(`assignee_id.eq.${userId},assignee_id.is.null`);
@@ -163,7 +181,9 @@ export async function listQueueTickets(
   if (error) {
     throw new Error(error.message);
   }
-  return data as unknown as QueueTicketSummary[];
+  // A to-many embed comes back as an array even with limit(1).
+  type Row = Omit<QueueTicketSummary, "latest_triage"> & { latest_triage: QueueTriageSignals[] };
+  return (data as unknown as Row[]).map((row) => ({ ...row, latest_triage: row.latest_triage[0] ?? null }));
 }
 
 export async function getTicketForStaff(ticketId: string): Promise<Ticket | null> {

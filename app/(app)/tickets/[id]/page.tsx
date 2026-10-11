@@ -13,7 +13,7 @@ import { listStaffProfiles, type StaffProfile } from "@/app/lib/db/profiles";
 import { getActiveShareForTicket } from "@/app/lib/db/shares";
 import { Badge } from "@/app/components/Badge";
 import { priorityBadgeClasses, statusBadgeClasses, statusLabel } from "@/app/lib/badges";
-import { formatRelativeTime } from "@/app/lib/format";
+import { formatRelativeTime, formatTicketNumber } from "@/app/lib/format";
 import { computeSla, slaBadgeClasses, slaBadgeLabel, slaDescription } from "@/app/lib/sla";
 import { CommentForm } from "./CommentForm";
 import { StaffControls } from "./StaffControls";
@@ -174,7 +174,8 @@ export default async function TicketDetailPage({
               {ticket.subject}
             </h1>
             <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
-              Opened {formatRelativeTime(ticket.created_at)}
+              <span className="font-mono">{formatTicketNumber(ticket.number)}</span> · Opened{" "}
+              {formatRelativeTime(ticket.created_at)}
             </p>
             {sla ? (
               <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
