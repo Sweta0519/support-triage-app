@@ -13,25 +13,8 @@ export function isUuid(value: string): boolean {
 export const SUBJECT_MAX_LENGTH = 200;
 export const BODY_MAX_LENGTH = 20_000;
 
-export type TicketStatus =
-  | "new"
-  | "triaged"
-  | "assigned"
-  | "in_progress"
-  | "resolved"
-  | "closed";
-
-// Mirrors ticketing.guard_ticket_update()'s transition map exactly -- this
-// is only used to decide which buttons to render. The trigger is the real
-// enforcement; keep the two in sync if the map ever changes.
-export const ALLOWED_STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
-  new: ["assigned", "in_progress"],
-  triaged: ["assigned", "in_progress"],
-  assigned: ["in_progress", "triaged"],
-  in_progress: ["resolved", "assigned"],
-  resolved: ["closed", "in_progress"],
-  closed: [],
-};
+export { ALLOWED_STATUS_TRANSITIONS, type TicketStatus } from "@/app/lib/ticket-status";
+import type { TicketStatus } from "@/app/lib/ticket-status";
 
 // AI-derived working state lives in ticketing.ticket_triage_state, a
 // staff-only table (RLS). It is embedded into staff reads and comes back as

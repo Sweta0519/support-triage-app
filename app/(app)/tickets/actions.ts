@@ -32,6 +32,7 @@ import { rerunTriage, runTriage } from "@/app/lib/ai/triage";
 import { getLatestTriageResult, reviewTriage, TriageReviewError } from "@/app/lib/db/triage";
 import { publishTicketSummary, revokeShare } from "@/app/lib/db/shares";
 import { parseQueueFilter, safeQueueReturn, ticketHref } from "@/app/lib/queue-filters";
+import { canMove, COLUMN_LABELS, moveClaimsTicket } from "@/app/lib/board";
 import { stripAllLinks } from "@/app/lib/ai/links";
 import { rateTicket, RatingError } from "@/app/lib/db/ratings";
 import { RATING_COMMENT_MAX_LENGTH } from "@/app/lib/ratings";
@@ -344,6 +345,48 @@ export async function updateStatusAction(formData: FormData) {
   await updateTicketStatus(ticketId, status as TicketStatus);
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/queue");
+}
+
+export type MoveResult = { ok: true } | { ok: false; error: string };
+
+// A drag (or "Move to...") on the staff board. Reads the ticket as the
+// caller first (RLS: agents only see their own and unassigned tickets),
+// checks the move against the same transition map the database guard
+// enforces, and claims an unassigned ticket when it's moved into Assigned
+// or In progress. The guard trigger still has the final say.
+export async function moveTicketAction(ticketId: string, to: string): Promise<MoveResult> {
+  const profile = await requireStaff();
+  if (!isUuid(ticketId) || !Object.hasOwn(ALLOWED_STATUS_TRANSITIONS, to)) {
+    return { ok: false, error: "That move isn't possible." };
+  }
+  const target = to as TicketStatus;
+  const ticket = await getTicketForStaff(ticketId);
+  if (!ticket) {
+    return { ok: false, error: "This ticket is no longer available to you." };
+  }
+  if (!canMove(ticket.status, target)) {
+    return { ok: false, error: `A ticket can't go from ${COLUMN_LABELS[ticket.status]} to ${COLUMN_LABELS[target]}.` };
+  }
+
+  let status = ticket.status;
+  if (moveClaimsTicket(ticket.assignee_id, target)) {
+    const claimed = await claimTicket(profile.id, ticketId);
+    if (!claimed) {
+      revalidatePath("/board");
+      return { ok: false, error: "Someone else claimed this ticket first." };
+    }
+    status = claimed.status;
+  }
+  if (status !== target) {
+    const updated = await updateTicketStatus(ticketId, target);
+    if (!updated) {
+      return { ok: false, error: "This ticket is no longer available to you." };
+    }
+  }
+  revalidatePath("/board");
+  revalidatePath("/queue");
+  revalidatePath(`/tickets/${ticketId}`);
+  return { ok: true };
 }
 
 // Publishes a snapshot of the ticket's subject/status/AI summary to a
