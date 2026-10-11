@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 
 import { signOutAction } from "@/app/lib/auth/actions";
 import { Avatar } from "@/app/components/Avatar";
+import { Logo } from "@/app/components/Logo";
 import { roleBadgeClasses } from "@/app/lib/badges";
 import type { AppRole } from "@/app/lib/db/profiles";
 
@@ -161,14 +162,8 @@ export function AppSidebar({
       }}
     >
       <div className="flex h-14 items-center justify-between px-4 lg:h-16 lg:px-5">
-        <Link
-          href="/"
-          className="flex items-center gap-2 text-sm font-semibold tracking-tight text-black dark:text-zinc-50"
-        >
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-xs font-bold text-white">
-            S
-          </span>
-          Support Triage
+        <Link href="/" aria-label="Support Triage home">
+          <Logo size={28} className="text-sm" />
         </Link>
         <button
           ref={menuButton}
