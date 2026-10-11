@@ -221,8 +221,8 @@ export default async function QueuePage({
   );
 
   return (
-    // Wider than other pages: the queue is a scanning surface, so wide
-    // screens get more card columns rather than more empty margin.
+    // Wide screens get more card columns (see the grid below) rather than
+    // more empty margin.
     <div className={widePageClass}>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>

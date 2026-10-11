@@ -165,9 +165,7 @@ export default async function TicketDetailPage({
   const sla = isStaff ? computeSla(ticket) : null;
 
   return (
-    <div
-      className={isStaff ? widePageClass : readablePageClass}
-    >
+    <div className={isStaff ? widePageClass : readablePageClass}>
       <div>
         <Breadcrumbs parents={parents} current={ticket.subject} />
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
@@ -199,7 +197,11 @@ export default async function TicketDetailPage({
       </div>
 
       {isStaff ? (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+        <div
+          // The reading column (ticket body, comments) stops at a readable
+          // line length on wide screens; the side panel sits beside it.
+          className="grid gap-6 lg:grid-cols-[minmax(0,48rem)_320px] lg:items-start"
+        >
           <div className="flex min-w-0 flex-col gap-6">
             {ticketBody}
             {commentsSection}

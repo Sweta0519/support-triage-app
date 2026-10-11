@@ -37,7 +37,9 @@ export default async function AdminUsersPage({
         </p>
       ) : null}
 
-      <div className="overflow-x-auto rounded-xl border border-black/[.08] dark:border-white/[.145]">
+      {/* Three short columns: kept compact so each role control stays next
+          to its email, while the page itself follows the wide layout. */}
+      <div className="max-w-3xl overflow-x-auto rounded-xl border border-black/[.08] dark:border-white/[.145]">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-black/[.08] bg-black/[.02] text-left text-xs text-zinc-500 dark:border-white/[.145] dark:bg-white/[.03] dark:text-zinc-500">
