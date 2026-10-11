@@ -242,9 +242,13 @@ export default async function QueuePage({
             defaultValue={view.q}
             placeholder="Search tickets"
             title="Search by number (#1042), subject, AI summary, category or team"
+            aria-describedby="queue-search-hint"
             aria-label="Search tickets"
             className="w-full rounded-lg border border-black/[.08] bg-white px-3 py-1.5 text-sm text-black placeholder:text-zinc-400 sm:w-72 dark:border-white/[.145] dark:bg-black dark:text-zinc-50"
           />
+          <span id="queue-search-hint" className="sr-only">
+            Search by ticket number (for example #1042), subject, AI summary, category or team.
+          </span>
         </form>
       </div>
 
