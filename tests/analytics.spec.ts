@@ -1,6 +1,12 @@
 import { test, expect } from "@playwright/test";
 
-import { computeAnalytics, formatRate, type AnalyticsTicketRow } from "../app/lib/analytics";
+import {
+  computeAnalytics,
+  computeSentiment,
+  computeWorkload,
+  formatRate,
+  type AnalyticsTicketRow,
+} from "../app/lib/analytics";
 import { login, requireEnv } from "./helpers";
 
 // The admin analytics page. The numbers come from a pure function, tested
@@ -15,6 +21,8 @@ function row(overrides: Partial<AnalyticsTicketRow> = {}): AnalyticsTicketRow {
     status: "new",
     created_at: hoursAgo(1),
     first_response_at: null,
+    assignee_id: null,
+    latest_triage: null,
     triage_state: null,
     ...overrides,
   };
@@ -96,6 +104,60 @@ test.describe("computeAnalytics", () => {
       { field: "team", agreed: 2, compared: 3 },
     ]);
     expect(a.triage.priorityMatrix.high).toEqual({ low: 0, normal: 0, high: 2, urgent: 1 });
+  });
+
+  test("workload counts open tickets per assignee with at-risk and overdue, unassigned last", () => {
+    const staff = [
+      { id: "a", label: "alice@x.test" },
+      { id: "b", label: "bob@x.test" },
+      { id: "c", label: "carol@x.test" },
+    ];
+    const rows = computeWorkload(
+      [
+        row({ assignee_id: "a", created_at: hoursAgo(9) }), // normal 8h: overdue
+        row({ assignee_id: "a", created_at: hoursAgo(7) }), // 1h left: at risk
+        row({ assignee_id: "a", created_at: hoursAgo(1), first_response_at: hoursAgo(0.5), status: "in_progress" }),
+        row({ assignee_id: "b", created_at: hoursAgo(1) }),
+        row({ assignee_id: "b", status: "resolved" }), // not open
+        row({ assignee_id: "gone", created_at: hoursAgo(1) }), // no longer staff
+        row({ assignee_id: null, created_at: hoursAgo(30) }),
+      ],
+      staff,
+      NOW
+    );
+    expect(rows).toEqual([
+      { assigneeId: "a", label: "alice@x.test", open: 3, atRisk: 1, overdue: 1 },
+      { assigneeId: "b", label: "bob@x.test", open: 1, atRisk: 0, overdue: 0 },
+      { assigneeId: "gone", label: "Former staff member", open: 1, atRisk: 0, overdue: 0 },
+      { assigneeId: "c", label: "carol@x.test", open: 0, atRisk: 0, overdue: 0 },
+      { assigneeId: null, label: "Unassigned", open: 1, atRisk: 0, overdue: 1 },
+    ]);
+  });
+
+  test("sentiment buckets the AI frustration score and counts what needs action", () => {
+    const ai = (frustration: number | null, is_escalation_risk = false) => ({ frustration, is_escalation_risk });
+    const recent = [
+      row({ latest_triage: ai(1) }),
+      row({ latest_triage: ai(2) }),
+      row({ latest_triage: ai(3) }),
+      row({ latest_triage: ai(4) }),
+      row({ latest_triage: ai(5, true) }),
+      row({ latest_triage: ai(null) }),
+      row(), // not triaged
+    ];
+    const open = [
+      row({ latest_triage: ai(5, true) }), // frustrated, waiting, escalation risk
+      row({ latest_triage: ai(4), first_response_at: hoursAgo(0.5) }), // answered
+      row({ latest_triage: ai(4, true), status: "resolved" }), // not open
+    ];
+    expect(computeSentiment(recent, open)).toEqual({
+      calm: 2,
+      neutral: 1,
+      frustrated: 2,
+      unscored: 2,
+      frustratedWaiting: 1,
+      openEscalationRisk: 1,
+    });
   });
 
   test("rates show a dash, not 0%, when there is nothing to divide by", () => {

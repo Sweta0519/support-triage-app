@@ -1,7 +1,17 @@
 import { requireAdmin } from "@/app/lib/auth/session";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
-import { computeAnalytics, formatRate, VOLUME_DAYS, type Analytics } from "@/app/lib/analytics";
+import {
+  computeAnalytics,
+  computeSentiment,
+  computeWorkload,
+  formatRate,
+  VOLUME_DAYS,
+  type Analytics,
+  type Sentiment,
+  type WorkloadRow,
+} from "@/app/lib/analytics";
 import { listAnalyticsTickets } from "@/app/lib/db/analytics";
+import { listStaffProfiles } from "@/app/lib/db/profiles";
 import { MAX_ROWS } from "@/app/lib/db/admin";
 import { formatDuration, SLA_TARGET_MS } from "@/app/lib/sla";
 import { TRIAGE_PRIORITIES } from "@/app/lib/triage-fields";
@@ -173,10 +183,118 @@ function PriorityMatrix({ matrix }: { matrix: Analytics["triage"]["priorityMatri
   );
 }
 
+function WorkloadTable({ rows }: { rows: WorkloadRow[] }) {
+  const max = Math.max(1, ...rows.map((r) => r.open));
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="text-left text-xs text-zinc-500 dark:text-zinc-500">
+          <th className="w-1/2 pb-2 font-medium">Assignee</th>
+          <th className="w-1/4 pb-2 font-medium">Open</th>
+          <th className="pb-2 text-right font-medium">At risk</th>
+          <th className="pb-2 text-right font-medium">Overdue</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-black/[.06] dark:divide-white/[.08]">
+        {rows.map((r) => (
+          <tr key={r.assigneeId ?? "unassigned"}>
+            <td
+              className={`max-w-0 truncate py-2 pr-3 ${
+                r.assigneeId === null ? "italic text-zinc-500 dark:text-zinc-400" : "text-zinc-700 dark:text-zinc-300"
+              }`}
+              title={r.label}
+            >
+              {r.label}
+            </td>
+            <td className="py-2">
+              <div className="flex items-center gap-2">
+                <RateBar part={r.open} whole={max} />
+                <span className="w-8 shrink-0 text-right text-xs tabular-nums text-zinc-600 dark:text-zinc-400">
+                  {r.open}
+                </span>
+              </div>
+            </td>
+            <td className="py-2 text-right tabular-nums text-zinc-700 dark:text-zinc-300">{r.atRisk}</td>
+            <td
+              className={`py-2 text-right tabular-nums ${
+                r.overdue > 0 ? "font-semibold text-red-700 dark:text-red-400" : "text-zinc-700 dark:text-zinc-300"
+              }`}
+            >
+              {r.overdue}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+// Three buckets as one stacked bar plus a labelled legend, so colour is
+// never the only cue; the counts underneath are what's worth acting on.
+function SentimentBreakdown({ sentiment: s }: { sentiment: Sentiment }) {
+  const scored = s.calm + s.neutral + s.frustrated;
+  const buckets = [
+    { key: "calm", label: "Calm (1-2)", value: s.calm, bar: "bg-emerald-500" },
+    { key: "neutral", label: "Neutral (3)", value: s.neutral, bar: "bg-zinc-400 dark:bg-zinc-500" },
+    { key: "frustrated", label: "Frustrated (4-5)", value: s.frustrated, bar: "bg-orange-500" },
+  ];
+  return (
+    <div className="flex flex-col gap-4">
+      {scored === 0 ? (
+        <p className={mutedClasses}>No triaged tickets yet.</p>
+      ) : (
+        <>
+          <div className="flex h-2.5 gap-0.5 overflow-hidden rounded-full" role="img" aria-label={buckets.map((b) => `${b.label}: ${b.value}`).join(", ")}>
+            {buckets
+              .filter((b) => b.value > 0)
+              .map((b) => (
+                <div key={b.key} className={b.bar} style={{ width: `${(b.value / scored) * 100}%` }} title={`${b.label}: ${b.value}`} />
+              ))}
+          </div>
+          <ul className="grid grid-cols-3 gap-2">
+            {buckets.map((b) => (
+              <li key={b.key} className="flex flex-col">
+                <span className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                  <span className={`h-2 w-2 rounded-full ${b.bar}`} />
+                  {b.label}
+                </span>
+                <span className="text-xl font-semibold tabular-nums text-black dark:text-zinc-50">{b.value}</span>
+                <span className={mutedClasses}>{formatRate(b.value, scored)} of scored</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <div className="grid grid-cols-2 gap-2 border-t border-black/[.06] pt-3 dark:border-white/[.08]">
+        <div>
+          <p className={`text-lg font-semibold tabular-nums ${s.frustratedWaiting > 0 ? "text-orange-700 dark:text-orange-400" : "text-black dark:text-zinc-50"}`}>
+            {s.frustratedWaiting}
+          </p>
+          <p className={mutedClasses}>Frustrated customers still waiting for a first reply</p>
+        </div>
+        <div>
+          <p className={`text-lg font-semibold tabular-nums ${s.openEscalationRisk > 0 ? "text-red-700 dark:text-red-400" : "text-black dark:text-zinc-50"}`}>
+            {s.openEscalationRisk}
+          </p>
+          <p className={mutedClasses}>Open tickets flagged as an escalation risk</p>
+        </div>
+      </div>
+      {s.unscored > 0 ? <p className={mutedClasses}>{s.unscored} recent tickets have no score yet (not triaged).</p> : null}
+    </div>
+  );
+}
+
 export default async function AnalyticsPage() {
   await requireAdmin();
-  const { recent, waiting, sampled } = await listAnalyticsTickets();
-  const a = computeAnalytics(recent, new Date(), waiting);
+  const [{ recent, open, sampled }, staff] = await Promise.all([listAnalyticsTickets(), listStaffProfiles()]);
+  const now = new Date();
+  const a = computeAnalytics(recent, now, open);
+  const workload = computeWorkload(
+    open,
+    staff.map((s) => ({ id: s.id, label: s.email })),
+    now
+  );
+  const sentiment = computeSentiment(recent, open);
 
   const openAtRisk = a.sla.byPriority.reduce((sum, r) => sum + r.openAtRisk, 0);
   const openBreached = a.sla.byPriority.reduce((sum, r) => sum + r.openBreached, 0);
@@ -281,6 +399,28 @@ export default async function AnalyticsPage() {
             </div>
           </div>
         )}
+      </section>
+
+      <section className="grid gap-3 lg:grid-cols-2">
+        <div className={`${cardClasses} flex flex-col gap-3`}>
+          <div>
+            <h2 className={sectionTitleClasses}>Agent workload</h2>
+            <p className={`mt-1 ${mutedClasses}`}>
+              Open tickets per person, and how many are at risk of or past their first-reply target.
+            </p>
+          </div>
+          <WorkloadTable rows={workload} />
+        </div>
+        <div className={`${cardClasses} flex flex-col gap-3`}>
+          <div>
+            <h2 className={sectionTitleClasses}>Customer sentiment</h2>
+            <p className={`mt-1 ${mutedClasses}`}>
+              AI-estimated from the frustration score (1-5) in each ticket&apos;s latest triage. A
+              signal for prioritising, not a measurement.
+            </p>
+          </div>
+          <SentimentBreakdown sentiment={sentiment} />
+        </div>
       </section>
 
       {sampled ? (
