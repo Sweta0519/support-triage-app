@@ -3,12 +3,13 @@ import { NOTES_CRUMB } from "@/app/lib/crumbs";
 
 import { requireStaff } from "@/app/lib/auth/session";
 import { NoteForm } from "../NoteForm";
+import { readablePageClass } from "@/app/lib/styles";
 
 export default async function NewNotePage() {
   await requireStaff();
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-8">
+    <div className={readablePageClass}>
       <div>
         <Breadcrumbs parents={[NOTES_CRUMB]} current="New note" />
         <h1 className="mt-2 text-2xl font-semibold text-black dark:text-zinc-50">New note</h1>

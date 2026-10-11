@@ -15,6 +15,7 @@ import { listStaffProfiles } from "@/app/lib/db/profiles";
 import { MAX_ROWS } from "@/app/lib/db/admin";
 import { formatDuration, SLA_TARGET_MS } from "@/app/lib/sla";
 import { TRIAGE_PRIORITIES } from "@/app/lib/triage-fields";
+import { widePageClass } from "@/app/lib/styles";
 
 // Admin-only: under RLS an agent would aggregate just their own and the
 // unassigned tickets, which would read as the whole picture and isn't.
@@ -301,7 +302,7 @@ export default async function AnalyticsPage() {
   const aiReviewed = a.triage.confirmed + a.triage.corrected;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 p-8">
+    <div className={widePageClass}>
       <div>
         <Breadcrumbs current="Analytics" />
         <h1 className="mt-2 text-2xl font-semibold text-black dark:text-zinc-50">Analytics</h1>

@@ -8,14 +8,14 @@ import { listMyTickets } from "@/app/lib/db/tickets";
 import { Badge } from "@/app/components/Badge";
 import { statusBadgeClasses, statusLabel } from "@/app/lib/badges";
 import { formatTicketNumber } from "@/app/lib/format";
-import { primaryButtonClass } from "@/app/lib/styles";
+import { primaryButtonClass, readablePageClass } from "@/app/lib/styles";
 
 export default async function TicketsPage() {
   const profile = await requireRole("customer");
   const tickets = await listMyTickets(profile.id);
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-8">
+    <div className={readablePageClass}>
       <div className="flex items-center justify-between">
         <div>
           <Breadcrumbs current={MY_TICKETS_CRUMB.label} />

@@ -2,6 +2,13 @@
 // the same, instead of each component re-typing (and slowly drifting from)
 // its own copy.
 
+// Page containers under the sidebar. Every page starts at the same left
+// edge with the same padding (never centred), so titles and breadcrumbs
+// line up from tab to tab. Dashboards and lists use the wide width; forms
+// and reading pages stop at a readable line length.
+export const widePageClass = "flex w-full max-w-screen-2xl flex-1 flex-col gap-6 p-8";
+export const readablePageClass = "flex w-full max-w-3xl flex-1 flex-col gap-6 p-8";
+
 export const inputClass =
   "rounded-lg border border-black/[.08] bg-white px-4 py-2 text-sm text-black outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:border-white/[.145] dark:bg-black dark:text-zinc-50 dark:focus:border-indigo-500 dark:focus:ring-indigo-950";
 

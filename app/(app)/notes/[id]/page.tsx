@@ -6,7 +6,7 @@ import { requireStaff } from "@/app/lib/auth/session";
 import { getNote } from "@/app/lib/db/notes";
 import { isUuid } from "@/app/lib/db/tickets";
 import { formatRelativeTime } from "@/app/lib/format";
-import { secondaryButtonClass } from "@/app/lib/styles";
+import { secondaryButtonClass, readablePageClass } from "@/app/lib/styles";
 import { NoteForm } from "../NoteForm";
 import { deleteNoteAction } from "../actions";
 
@@ -25,7 +25,7 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-8">
+    <div className={readablePageClass}>
       <div className="flex items-end justify-between gap-4">
         <div>
           <Breadcrumbs parents={[NOTES_CRUMB]} current={note.title} />

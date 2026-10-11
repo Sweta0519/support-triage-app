@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { requireProfile } from "@/app/lib/auth/session";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
-import { linkClass, secondaryButtonClass } from "@/app/lib/styles";
+import { linkClass, secondaryButtonClass, readablePageClass } from "@/app/lib/styles";
 import { DeleteAccountForm } from "./DeleteAccountForm";
 
 const card =
@@ -13,7 +13,7 @@ export default async function AccountPage() {
   const profile = await requireProfile();
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-8">
+    <div className={readablePageClass}>
       <Breadcrumbs current="Account" />
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold text-black dark:text-zinc-50">Your account</h1>

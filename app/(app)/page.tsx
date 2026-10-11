@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { requireProfile } from "@/app/lib/auth/session";
 import { listMyTickets, listQueueTickets } from "@/app/lib/db/tickets";
+import { widePageClass } from "@/app/lib/styles";
 
 function DashboardCard({
   href,
@@ -43,7 +44,7 @@ export default async function HomePage() {
   const unassignedCount = queue.filter((t) => t.assignee_id === null).length;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 p-8">
+    <div className={widePageClass}>
       <div>
         <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
           {isStaff ? "Dashboard" : "Welcome back"}

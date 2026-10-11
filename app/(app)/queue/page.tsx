@@ -27,6 +27,7 @@ import {
   type QueueView,
 } from "@/app/lib/queue";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
+import { widePageClass } from "@/app/lib/styles";
 
 const chipClasses = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium";
 
@@ -220,9 +221,9 @@ export default async function QueuePage({
   );
 
   return (
-    // Wider than other pages: the queue is a scanning surface, so wide
-    // screens get more card columns rather than more empty margin.
-    <div className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col gap-6 p-8">
+    // Wide screens get more card columns (see the grid below) rather than
+    // more empty margin.
+    <div className={widePageClass}>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <Breadcrumbs current="Queue" />

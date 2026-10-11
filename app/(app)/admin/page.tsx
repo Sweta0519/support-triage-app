@@ -1,5 +1,6 @@
 import { requireAdmin } from "@/app/lib/auth/session";
 import { getAdminStats, MAX_ROWS } from "@/app/lib/db/admin";
+import { statusLabel } from "@/app/lib/badges";
 import { formatCostUsd } from "@/app/lib/format";
 
 function Stat({ label, value }: { label: string; value: string | number }) {
@@ -24,7 +25,7 @@ function Breakdown({ title, data }: { title: string; data: Record<string, number
           {entries.map(([key, count]) => (
             <li key={key} className="flex flex-col gap-1">
               <div className="flex items-center justify-between text-sm">
-                <span className="capitalize text-zinc-700 dark:text-zinc-300">{key}</span>
+                <span className="capitalize text-zinc-700 dark:text-zinc-300">{statusLabel(key)}</span>
                 <span className="font-medium text-black dark:text-zinc-50">{count}</span>
               </div>
               <div className="h-1 overflow-hidden rounded-full bg-black/[.05] dark:bg-white/[.08]">
