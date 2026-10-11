@@ -117,8 +117,18 @@ test("an overdue ticket shows as overdue in the queue and on the ticket page", a
 
     await row.click();
     await expect(
-      page.getByText(/First reply overdue by 1h( \d+m)? \(4h target for high priority\)\./)
+      page.getByRole("alert").filter({ hasText: /First reply overdue\. Overdue by 1h( \d+m)? · 4h target for high priority\./ })
     ).toBeVisible();
+
+    // The customer who owns it never sees the internal SLA.
+    const customerContext = await page.context().browser()!.newContext({ storageState: { cookies: [], origins: [] } });
+    const customerPage = await customerContext.newPage();
+    await login(customerPage, requireEnv("TEST_USER_EMAIL"), requireEnv("TEST_USER_PASSWORD"));
+    await customerPage.goto(`/tickets/${ticket.id}`);
+    await expect(customerPage.getByRole("heading", { name: subject })).toBeVisible();
+    await expect(customerPage.getByText(/First reply|Overdue by/)).toHaveCount(0);
+    await expect(customerPage.getByLabel("AI-estimated customer sentiment")).toHaveCount(0);
+    await customerContext.close();
   } finally {
     await db.from("tickets").delete().eq("id", ticket.id);
   }

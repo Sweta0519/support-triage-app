@@ -27,9 +27,9 @@ import {
   type QueueView,
 } from "@/app/lib/queue";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
-import { widePageClass } from "@/app/lib/styles";
+import { widePageClass, chipClass } from "@/app/lib/styles";
 
-const chipClasses = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium";
+const chipClasses = chipClass;
 
 // Every link on the page keeps the rest of the view (tab, status, sort,
 // search) and changes only what it's for. Defaults are left off the URL.

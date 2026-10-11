@@ -8,6 +8,11 @@ import { login, requireEnv } from "./helpers";
 
 const dbOpts = { db: { schema: "ticketing" }, auth: { persistSession: false, autoRefreshToken: false } };
 
+// The tests share the agent's staff_create_ticket rate-limit bucket, and
+// one of them deliberately spends all 30; run them one at a time so they
+// can't trip each other's limit.
+test.describe.configure({ mode: "serial" });
+
 test("an agent files a ticket for a customer, who then sees it as theirs", async ({ page, browser }) => {
   const subject = `Staff filed probe ${Date.now()}`;
 

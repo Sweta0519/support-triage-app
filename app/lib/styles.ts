@@ -21,3 +21,7 @@ export const secondaryButtonClass =
 // Inline text links (breadcrumbs, "already have an account?", etc.).
 export const linkClass =
   "font-medium text-indigo-600 hover:underline dark:text-indigo-400";
+
+// Small rounded label (AI flags, category, team) on queue cards and the
+// ticket header; colours are added per use.
+export const chipClass = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium";
