@@ -12,9 +12,10 @@ import { getLatestTriageResult } from "@/app/lib/db/triage";
 import { listStaffProfiles, type StaffProfile } from "@/app/lib/db/profiles";
 import { getActiveShareForTicket } from "@/app/lib/db/shares";
 import { Badge } from "@/app/components/Badge";
+import { SlaBadge } from "@/app/components/SlaBadge";
 import { priorityBadgeClasses, statusBadgeClasses, statusLabel } from "@/app/lib/badges";
 import { formatRelativeTime, formatTicketNumber } from "@/app/lib/format";
-import { computeSla, slaBadgeClasses, slaBadgeLabel, slaDescription } from "@/app/lib/sla";
+import { computeSla, slaDescription } from "@/app/lib/sla";
 import { CommentForm } from "./CommentForm";
 import { StaffControls } from "./StaffControls";
 import { TriagePanel } from "./TriagePanel";
@@ -179,7 +180,7 @@ export default async function TicketDetailPage({
             </p>
             {sla ? (
               <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
-                <Badge label={slaBadgeLabel(sla)} colorClasses={slaBadgeClasses(sla.state)} />
+                <SlaBadge sla={sla} />
                 {slaDescription(sla)}
               </p>
             ) : null}

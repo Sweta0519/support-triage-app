@@ -3,9 +3,10 @@ import Link from "next/link";
 import { requireStaff } from "@/app/lib/auth/session";
 import { listQueueTickets, type QueueTicketSummary } from "@/app/lib/db/tickets";
 import { Badge } from "@/app/components/Badge";
+import { SlaBadge } from "@/app/components/SlaBadge";
 import { priorityBadgeClasses, statusBadgeClasses, statusLabel } from "@/app/lib/badges";
 import { formatRelativeTime, formatTicketNumber } from "@/app/lib/format";
-import { computeSla, slaBadgeClasses, slaBadgeLabel } from "@/app/lib/sla";
+import { computeSla } from "@/app/lib/sla";
 import { fieldLabel } from "@/app/lib/triage-fields";
 import { primaryButtonClass } from "@/app/lib/styles";
 import { claimTicketAction } from "../tickets/actions";
@@ -120,7 +121,7 @@ function TicketCard({
           <Badge label={statusLabel(ticket.status)} colorClasses={statusBadgeClasses(ticket.status)} />
           {sla ? (
             <span className="ml-auto">
-              <Badge label={slaBadgeLabel(sla)} colorClasses={slaBadgeClasses(sla.state)} />
+              <SlaBadge sla={sla} />
             </span>
           ) : null}
         </div>
@@ -220,7 +221,9 @@ export default async function QueuePage({
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 p-8">
+    // Wider than other pages: the queue is a scanning surface, so wide
+    // screens get more card columns rather than more empty margin.
+    <div className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col gap-6 p-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <Breadcrumbs current="Queue" />
@@ -238,10 +241,15 @@ export default async function QueuePage({
             type="search"
             name="q"
             defaultValue={view.q}
-            placeholder="Search number, subject, summary, category"
+            placeholder="Search tickets"
+            title="Search by number (#1042), subject, AI summary, category or team"
+            aria-describedby="queue-search-hint"
             aria-label="Search tickets"
             className="w-full rounded-lg border border-black/[.08] bg-white px-3 py-1.5 text-sm text-black placeholder:text-zinc-400 sm:w-72 dark:border-white/[.145] dark:bg-black dark:text-zinc-50"
           />
+          <span id="queue-search-hint" className="sr-only">
+            Search by ticket number (for example #1042), subject, AI summary, category or team.
+          </span>
         </form>
       </div>
 
@@ -360,7 +368,7 @@ export default async function QueuePage({
           </p>
         </div>
       ) : (
-        <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {visible.map((ticket) => (
             <TicketCard key={ticket.id} ticket={ticket} filter={filter} currentUserId={profile.id} now={now} />
           ))}
