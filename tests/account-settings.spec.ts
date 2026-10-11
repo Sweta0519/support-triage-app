@@ -43,7 +43,7 @@ test.describe("account settings", () => {
       await page.getByLabel("Display name").fill(`  ${name}  `);
       await page.getByLabel("Theme").selectOption("dark");
       await page.getByRole("button", { name: "Save settings" }).click();
-      await expect(page.getByRole("status")).toHaveText("Settings saved.");
+      await expect(page.getByRole("status").filter({ hasText: "Settings saved." })).toBeVisible();
 
       await page.reload();
       await expect(page.getByLabel("Display name")).toHaveValue(name);
@@ -60,7 +60,7 @@ test.describe("account settings", () => {
       await page.emulateMedia({ colorScheme: "dark" });
       await page.getByLabel("Theme").selectOption("light");
       await page.getByRole("button", { name: "Save settings" }).click();
-      await expect(page.getByRole("status")).toHaveText("Settings saved.");
+      await expect(page.getByRole("status").filter({ hasText: "Settings saved." })).toBeVisible();
       await page.reload();
       await expect(page.locator("[data-theme=light]")).toHaveCount(1);
       await expect(page.locator("body")).toHaveCSS("background-color", "rgb(255, 255, 255)");
@@ -70,7 +70,7 @@ test.describe("account settings", () => {
       await page.getByLabel("Display name").evaluate((el) => el.removeAttribute("maxlength"));
       await page.getByLabel("Display name").fill("x".repeat(81));
       await page.getByRole("button", { name: "Save settings" }).click();
-      await expect(page.getByRole("status")).toHaveText(/80 characters or fewer/);
+      await expect(page.getByRole("status").filter({ hasText: /80 characters or fewer/ })).toBeVisible();
       // The refused input stays in the field to be corrected.
       await expect(page.getByLabel("Display name")).toHaveValue("x".repeat(81));
       await page.reload();
@@ -94,7 +94,7 @@ test.describe("account settings", () => {
       await page.getByLabel("Queue opens on").selectOption("mine");
       await page.getByLabel("Queue sorted by").selectOption("newest");
       await page.getByRole("button", { name: "Save settings" }).click();
-      await expect(page.getByRole("status")).toHaveText("Settings saved.");
+      await expect(page.getByRole("status").filter({ hasText: "Settings saved." })).toBeVisible();
 
       await page.goto("/queue");
       const tabs = page.getByRole("navigation", { name: "Assignment" });

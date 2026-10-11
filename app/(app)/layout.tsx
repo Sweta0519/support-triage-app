@@ -21,7 +21,15 @@ export default async function AppLayout({
       data-theme={profile.theme === "system" ? undefined : profile.theme}
       className="flex flex-1 flex-col lg:flex-row"
     >
-      <AppSidebar profile={{ email: profile.email, fullName: profile.full_name, role: profile.role }} />
+      <AppSidebar
+        profile={{
+          id: profile.id,
+          email: profile.email,
+          fullName: profile.full_name,
+          avatarPath: profile.avatar_path,
+          role: profile.role,
+        }}
+      />
       <div className="flex min-w-0 flex-1 flex-col">
         <main className="flex flex-1 flex-col">{children}</main>
         <footer className="border-t border-black/[.08] dark:border-white/[.145]">

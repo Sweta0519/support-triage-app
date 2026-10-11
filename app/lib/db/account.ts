@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
+import { AVATAR_BUCKET } from "@/app/lib/avatars";
 import { createServiceSupabaseClient } from "@/app/lib/supabase/service";
 
 // GDPR Art. 15/20: everything the caller can see about themselves, in one
@@ -26,7 +27,8 @@ export class LastAdminError extends Error {
 
 // GDPR Art. 17: a real deletion, not a flag. Removing the auth.users row
 // cascades through profiles, tickets, comments, notes, documents and
-// assistant chats (see supabase/migrations/20260915000000_*). Only the
+// assistant chats (see supabase/migrations/20260915000000_*); profile
+// pictures in Storage are removed afterwards. Only the
 // service role may call auth.admin.deleteUser(), so this is one of the few
 // permitted importers of the service client -- and the caller must already
 // have proven `userId` is the signed-in user (app/(app)/account/actions.ts
@@ -41,5 +43,21 @@ export async function deleteOwnAccount(userId: string): Promise<void> {
       throw new LastAdminError();
     }
     throw new Error(error.message);
+  }
+
+  // Storage objects don't cascade from auth.users, so the profile pictures
+  // in the user's folder go explicitly -- after the deletion went through,
+  // so a refused deletion (last admin) keeps them. Best effort: the account
+  // is already gone, so a Storage error is logged, not shown to the user.
+  try {
+    const folder = service.storage.from(AVATAR_BUCKET);
+    const { data: objects, error: listError } = await folder.list(userId, { limit: 1000 });
+    if (listError) throw listError;
+    if (objects.length > 0) {
+      const { error: removeError } = await folder.remove(objects.map((o) => `${userId}/${o.name}`));
+      if (removeError) throw removeError;
+    }
+  } catch (err) {
+    console.error(`Couldn't remove profile pictures of deleted user ${userId}:`, err);
   }
 }

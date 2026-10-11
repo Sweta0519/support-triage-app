@@ -8,7 +8,9 @@ import { createClient } from "@supabase/supabase-js";
 // purpose. Only app/lib/ai/, the service-role functions in
 // app/lib/db/triage.ts, the public-token lookup in app/lib/db/shares.ts, and
 // the self-deletion in app/lib/db/account.ts (auth.admin.deleteUser needs it)
-// may import it. Never pass a client-supplied ticket id into a service-role
+// and the profile-picture storage in app/lib/db/avatars.ts (the bucket has no
+// client policies; paths come from the session, never the request) may
+// import it. Never pass a client-supplied ticket id into a service-role
 // read without the caller having already proven it may see that ticket --
 // the one exception is shares.ts's token-based public read, where an
 // unguessable 128-bit token is itself the proof of authorization, the same
