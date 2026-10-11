@@ -16,11 +16,11 @@ export default async function AppLayout({
     // Sidebar on the left from lg up, a top bar on phones; the page and
     // footer take the remaining width.
     <div className="flex flex-1 flex-col lg:flex-row">
-      <AppSidebar profile={profile} />
+      <AppSidebar profile={{ email: profile.email, role: profile.role }} />
       <div className="flex min-w-0 flex-1 flex-col">
         <main className="flex flex-1 flex-col">{children}</main>
         <footer className="border-t border-black/[.08] dark:border-white/[.145]">
-          <div className="flex w-full items-center justify-end px-8 py-3">
+          <div className="mx-auto flex w-full max-w-5xl items-center justify-end px-8 py-3">
             <Link href="/privacy" className={`text-xs ${linkClass}`}>
               Privacy policy
             </Link>

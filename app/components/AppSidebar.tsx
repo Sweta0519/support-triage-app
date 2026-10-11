@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { signOutAction } from "@/app/lib/auth/actions";
 import { roleBadgeClasses } from "@/app/lib/badges";
-import type { Profile } from "@/app/lib/db/profiles";
+import type { AppRole } from "@/app/lib/db/profiles";
 
 // The app's navigation, the same shape for every role: a left sidebar on
 // wide screens, a top bar with a menu button on phones. Which links show
@@ -74,7 +74,10 @@ const icons = {
   ),
 };
 
-function navItems(role: Profile["role"]): NavItem[] {
+// A link is active on its own page and anything below it.
+const under = (href: string) => (p: string) => p === href || p.startsWith(`${href}/`);
+
+function navItems(role: AppRole): NavItem[] {
   if (role === "customer") {
     return [
       {
@@ -89,12 +92,12 @@ function navItems(role: Profile["role"]): NavItem[] {
   const staff: NavItem[] = [
     // A ticket page is opened from the queue, so it highlights Queue.
     { href: "/queue", label: "Queue", icon: icons.inbox, isActive: (p) => p === "/queue" || p.startsWith("/tickets/") },
-    { href: "/notes", label: "Notes", icon: icons.note, isActive: (p) => p === "/notes" || p.startsWith("/notes/") },
+    { href: "/notes", label: "Notes", icon: icons.note, isActive: under("/notes") },
   ];
   if (role === "admin") {
     staff.push(
-      { href: "/analytics", label: "Analytics", icon: icons.chart, isActive: (p) => p === "/analytics" },
-      { href: "/admin", label: "Admin", icon: icons.shield, isActive: (p) => p === "/admin" || p.startsWith("/admin/") }
+      { href: "/analytics", label: "Analytics", icon: icons.chart, isActive: under("/analytics") },
+      { href: "/admin", label: "Admin", icon: icons.shield, isActive: under("/admin") }
     );
   }
   return staff;
@@ -106,17 +109,37 @@ const linkIdle =
   "text-zinc-600 hover:bg-black/[.04] hover:text-black dark:text-zinc-400 dark:hover:bg-white/[.06] dark:hover:text-zinc-50";
 const linkActive = "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300";
 
-export function AppSidebar({ profile }: { profile: Profile }) {
+// Only what the sidebar shows, not the whole profile row.
+export function AppSidebar({ profile }: { profile: { email: string; role: AppRole } }) {
   const pathname = usePathname();
-  // The phone menu is open for the page it was opened on, so navigating
-  // closes it without an effect.
-  const [openOn, setOpenOn] = useState<string | null>(null);
-  const open = openOn === pathname;
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  // Close the phone menu whenever the page changes (adjusting state during
+  // render rather than in an effect). Tapping the current page's link
+  // doesn't change the path, so links also close it on click.
+  const [shownPath, setShownPath] = useState(pathname);
+  if (pathname !== shownPath) {
+    setShownPath(pathname);
+    setOpen(false);
+  }
+  const close = () => setOpen(false);
 
   const items = navItems(profile.role);
 
   return (
-    <aside className="sticky top-0 z-20 flex flex-col border-b border-black/[.08] bg-[var(--background)] lg:h-screen lg:w-60 lg:shrink-0 lg:border-b-0 lg:border-r dark:border-white/[.145]">
+    <aside
+      // Above the Sage button (z-50) while the phone menu is open; scrolls
+      // instead of clipping Account / Sign out on short screens.
+      className={`sticky top-0 flex max-h-dvh flex-col overflow-y-auto border-b border-black/[.08] bg-[var(--background)] lg:h-dvh lg:w-60 lg:shrink-0 lg:border-b-0 lg:border-r dark:border-white/[.145] ${
+        open ? "z-[60]" : "z-20"
+      }`}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && open) {
+          close();
+          menuButton.current?.focus();
+        }
+      }}
+    >
       <div className="flex h-14 items-center justify-between px-4 lg:h-16 lg:px-5">
         <Link
           href="/"
@@ -128,8 +151,9 @@ export function AppSidebar({ profile }: { profile: Profile }) {
           Support Triage
         </Link>
         <button
+          ref={menuButton}
           type="button"
-          onClick={() => setOpenOn(open ? null : pathname)}
+          onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
           aria-controls="app-nav"
           aria-label={open ? "Close menu" : "Open menu"}
@@ -152,6 +176,7 @@ export function AppSidebar({ profile }: { profile: Profile }) {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
+                onClick={close}
                 className={`${linkBase} ${active ? linkActive : linkIdle}`}
               >
                 {item.icon}
@@ -181,6 +206,7 @@ export function AppSidebar({ profile }: { profile: Profile }) {
             <Link
               href="/account"
               aria-current={pathname === "/account" ? "page" : undefined}
+              onClick={close}
               className={`flex-1 rounded-lg px-3 py-1.5 text-center text-xs font-medium ${
                 pathname === "/account" ? linkActive : `border border-black/[.08] dark:border-white/[.145] ${linkIdle}`
               }`}
