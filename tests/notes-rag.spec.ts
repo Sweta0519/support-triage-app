@@ -1,26 +1,15 @@
+import { randomUUID } from "node:crypto";
+
 import { test, expect, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
-import { login, requireEnv } from "./helpers";
+import { askSage, login, openSage, requireEnv } from "./helpers";
 
 // Sage's "chat with your own notes" feature: a staff member's private notes
 // are chunked + embedded on save, and Sage can call a search_notes tool to
 // answer from them. Hits the real OpenRouter API (embeddings + chat), so
 // these are slow and run serially -- they also share the one Sage
 // conversation per staff member, like tests/ai-chat.spec.ts.
-
-async function openSage(page: Page) {
-  await page.getByRole("button", { name: "Open Sage" }).click();
-  await expect(page.getByPlaceholder("Message Sage...")).toBeEnabled({ timeout: 15_000 });
-}
-
-async function askSage(page: Page, question: string) {
-  await page.getByPlaceholder("Message Sage...").fill(question);
-  await page.getByRole("button", { name: "Send" }).click();
-  // A retrieval turn is up to three completions plus embedding calls.
-  await expect(page.getByPlaceholder("Message Sage...")).toBeEnabled({ timeout: 120_000 });
-  return page.getByTestId("assistant-widget-message").last();
-}
 
 async function saveNote(page: Page, title: string, body: string) {
   await page.goto("/notes/new");
@@ -29,7 +18,11 @@ async function saveNote(page: Page, title: string, body: string) {
   await page.getByRole("button", { name: "Save note" }).click();
   // Redirects to the list on success, where the new note is visible.
   await expect(page).toHaveURL(/\/notes$/);
-  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  // .first(): with --repeat-each every repeat saves this note again and the
+  // reset setup only clears notes once per invocation, so copies pile up.
+  // The list is newest first; the URL check above already proves the save
+  // succeeded (the redirect only happens on success).
+  await expect(page.getByRole("heading", { name: title }).first()).toBeVisible();
 }
 
 test.describe("Sage: chat with your own notes", () => {
@@ -126,7 +119,7 @@ test.describe("Sage: chat with your own notes", () => {
     const adminPassword = requireEnv("TEST_ADMIN_PASSWORD");
 
     // User A (the agent) writes down something distinctive.
-    const marker = `SECRET_MARKER-${Date.now()}`;
+    const marker = `SECRET_MARKER-${randomUUID()}`;
     const secretTitle = "Vendor access codes";
     const contextA = await browser.newContext();
     const pageA = await contextA.newPage();
