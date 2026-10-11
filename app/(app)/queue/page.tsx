@@ -9,6 +9,7 @@ import { formatRelativeTime, formatTicketNumber } from "@/app/lib/format";
 import { computeSla } from "@/app/lib/sla";
 import { fieldLabel } from "@/app/lib/triage-fields";
 import { ClaimButton } from "./ClaimButton";
+import { ClaimNotice } from "./ClaimNotice";
 import {
   QUEUE_FILTERS,
   parseQueueFilter,
@@ -251,14 +252,7 @@ export default async function QueuePage({
         </form>
       </div>
 
-      {claimTaken ? (
-        <p
-          role="status"
-          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"
-        >
-          That ticket is no longer available to claim. Someone else may have claimed it. The queue below is up to date.
-        </p>
-      ) : null}
+      {claimTaken ? <ClaimNotice /> : null}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile

@@ -12,7 +12,7 @@ function SubmitButton({ label }: { label: string }) {
     <button
       type="submit"
       disabled={pending}
-      aria-label={pending ? `Claiming: ${label}` : label}
+      aria-label={label}
       className={`${primaryButtonClass} !px-3 !py-1 !text-xs disabled:opacity-60`}
     >
       {pending ? "Claiming…" : "Claim"}

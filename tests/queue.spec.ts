@@ -211,6 +211,11 @@ test("Claim on a card opens the ticket; a lost race says so instead of doing not
   };
   const won = await seed(`Claim probe ${Date.now()}`);
   const lost = await seed(`Lost claim probe ${Date.now()}`);
+  // Work had started, then an admin unassigned it: claiming must not move
+  // it back to "assigned".
+  const started = await seed(`Started claim probe ${Date.now()}`);
+  const { error: startError } = await db.from("tickets").update({ status: "in_progress" }).eq("id", started.id);
+  if (startError) throw new Error(startError.message);
 
   try {
     await login(page, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
@@ -221,6 +226,14 @@ test("Claim on a card opens the ticket; a lost race says so instead of doing not
     await expect(page).toHaveURL(new RegExp(`/tickets/${won.id}\\?from=unassigned$`));
     await expect(page.getByText("Assigned to you")).toBeVisible();
 
+    // An in-progress ticket keeps its status when claimed.
+    await page.goto(`/queue?q=${encodeURIComponent(`#${started.number}`)}`);
+    await page.getByRole("button", { name: new RegExp(`^Claim #${started.number}:`) }).click();
+    await expect(page).toHaveURL(new RegExp(`/tickets/${started.id}$`));
+    await expect(page.getByText("Assigned to you")).toBeVisible();
+    const { data: startedNow } = await db.from("tickets").select("status, assignee_id").eq("id", started.id).single();
+    expect(startedNow?.status).toBe("in_progress");
+
     // Lost race: someone else claims it after the queue rendered.
     await page.goto(`/queue?q=${encodeURIComponent(`#${lost.number}`)}`);
     const claim = page.getByRole("button", { name: new RegExp(`^Claim #${lost.number}:`) });
@@ -230,10 +243,13 @@ test("Claim on a card opens the ticket; a lost race says so instead of doing not
     await claim.click();
     // Back on the same queue view (search kept), with a notice, and the
     // card gone: the ticket now belongs to someone else.
-    await expect(page).toHaveURL(new RegExp(`/queue\\?q=%23${lost.number}&notice=claim-taken$`));
     await expect(page.getByRole("status").filter({ hasText: "That ticket is no longer available to claim." })).toBeVisible();
     await expect(page.getByRole("button", { name: new RegExp(`^Claim #${lost.number}:`) })).toHaveCount(0);
+    // The notice is dropped from the URL once shown, so a reload doesn't repeat it.
+    await expect(page).not.toHaveURL(/notice=/);
+    await page.reload();
+    await expect(page.getByText("That ticket is no longer available to claim.")).toHaveCount(0);
   } finally {
-    await db.from("tickets").delete().in("id", [won.id, lost.id]);
+    await db.from("tickets").delete().in("id", [won.id, lost.id, started.id]);
   }
 });

@@ -212,20 +212,40 @@ export async function claimTicket(
   ticketId: string
 ): Promise<TicketBase | null> {
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
+  // Only a ticket nobody has started on moves to "assigned". One that's
+  // already in progress or resolved (e.g. unassigned again by an admin)
+  // keeps its status: moving it back would lose progress, and the
+  // transition map rejects resolved -> assigned outright. Both updates are
+  // conditional on assignee_id IS NULL, so the claim stays atomic.
+  const fresh = await supabase
     .from("tickets")
     .update({ assignee_id: agentId, status: "assigned" })
     .eq("id", ticketId)
     .is("assignee_id", null)
+    .in("status", ["new", "triaged"])
     .select(TICKET_BASE_COLUMNS)
     .maybeSingle();
-
-  if (error) {
-    throw new Error(error.message);
+  if (fresh.error) {
+    throw new Error(fresh.error.message);
   }
-  // null here means the WHERE clause matched zero rows -- someone else
-  // already claimed it (or it doesn't exist/isn't visible), not an error.
-  return data;
+  if (fresh.data) {
+    return fresh.data;
+  }
+
+  const started = await supabase
+    .from("tickets")
+    .update({ assignee_id: agentId })
+    .eq("id", ticketId)
+    .is("assignee_id", null)
+    .not("status", "in", "(new,triaged)")
+    .select(TICKET_BASE_COLUMNS)
+    .maybeSingle();
+  if (started.error) {
+    throw new Error(started.error.message);
+  }
+  // null here means neither WHERE clause matched -- someone else already
+  // claimed it (or it doesn't exist/isn't visible), not an error.
+  return started.data;
 }
 
 // Admin reassignment (RLS: only is_admin() may set assignee_id to someone
