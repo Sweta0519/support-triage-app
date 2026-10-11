@@ -30,13 +30,16 @@ export function isAppRole(value: unknown): value is AppRole {
 // RLS decides what comes back: admins get every profile, agents only staff
 // rows, a customer only their own. Only the admin-gated /admin/users page
 // calls this.
-export type ProfileSummary = Pick<Profile, "id" | "email" | "full_name" | "role" | "created_at" | "updated_at">;
+export type ProfileSummary = Pick<
+  Profile,
+  "id" | "email" | "full_name" | "avatar_path" | "role" | "created_at" | "updated_at"
+>;
 
 export async function listProfiles(): Promise<ProfileSummary[]> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, full_name, role, created_at, updated_at")
+    .select("id, email, full_name, avatar_path, role, created_at, updated_at")
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -45,20 +48,21 @@ export async function listProfiles(): Promise<ProfileSummary[]> {
   return data;
 }
 
-export type StaffProfile = Pick<Profile, "id" | "email" | "role">;
+export type StaffProfile = Pick<Profile, "id" | "email" | "role" | "full_name" | "avatar_path">;
 
 export async function listStaffProfiles(): Promise<StaffProfile[]> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, role")
-    .in("role", ["agent", "admin"])
-    .order("email", { ascending: true });
+    .select("id, email, role, full_name, avatar_path")
+    .in("role", ["agent", "admin"]);
 
   if (error) {
     throw new Error(error.message);
   }
-  return data;
+  // By the name people see (display name, else email), not by email.
+  const shown = (p: { full_name: string | null; email: string }) => (p.full_name ?? p.email).toLowerCase();
+  return data.sort((a, b) => shown(a).localeCompare(shown(b)));
 }
 
 // A staff member's email, e.g. for "Filed by …" on a ticket. RLS lets

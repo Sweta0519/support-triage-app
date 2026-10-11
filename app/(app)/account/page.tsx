@@ -5,6 +5,7 @@ import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { linkClass, secondaryButtonClass, readablePageClass } from "@/app/lib/styles";
 import { DeleteAccountForm } from "./DeleteAccountForm";
 import { SettingsForm } from "./SettingsForm";
+import { profileName } from "@/app/lib/people";
 import { AvatarForm } from "./AvatarForm";
 
 const card =
@@ -26,7 +27,7 @@ export default async function AccountPage() {
       </div>
 
       <section className={card}>
-        <AvatarForm id={profile.id} name={profile.full_name ?? profile.email} avatarPath={profile.avatar_path} />
+        <AvatarForm id={profile.id} name={profileName(profile)} avatarPath={profile.avatar_path} />
       </section>
 
       <section className={card} aria-label="Profile and preferences">
