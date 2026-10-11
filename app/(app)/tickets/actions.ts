@@ -29,6 +29,7 @@ import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { rerunTriage, runTriage } from "@/app/lib/ai/triage";
 import { getLatestTriageResult, reviewTriage, TriageReviewError } from "@/app/lib/db/triage";
 import { publishTicketSummary, revokeShare } from "@/app/lib/db/shares";
+import { stripAllLinks } from "@/app/lib/ai/links";
 import {
   isOneOf,
   TRIAGE_CATEGORIES,
@@ -216,7 +217,7 @@ export async function updateStatusAction(formData: FormData) {
   const status = String(formData.get("status") ?? "");
   // The enum and trigger reject bad values anyway; validating here turns a
   // generic 500 into a no-op for tampered forms.
-  if (!isUuid(ticketId) || !(status in ALLOWED_STATUS_TRANSITIONS)) {
+  if (!isUuid(ticketId) || !Object.hasOwn(ALLOWED_STATUS_TRANSITIONS, status)) {
     return;
   }
   await updateTicketStatus(ticketId, status as TicketStatus);
@@ -251,7 +252,16 @@ export async function publishSummaryAction(
     return { error: "Nothing to publish yet -- wait for AI triage to complete." };
   }
 
-  await publishTicketSummary(ticketId, profile.id, ticket.subject, ticket.status, triage.summary);
+  // Stripped again here, not only when triage runs: summaries stored before
+  // the triage-side stripping existed, and the customer-written subject,
+  // must not put a link on the public page under the app's domain.
+  await publishTicketSummary(
+    ticketId,
+    profile.id,
+    stripAllLinks(ticket.subject),
+    ticket.status,
+    stripAllLinks(triage.summary)
+  );
   revalidatePath(`/tickets/${ticketId}`);
   return undefined;
 }

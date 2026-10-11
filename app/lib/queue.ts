@@ -33,7 +33,7 @@ export function parseQueueView(params: {
   const sort = first(params.sort);
   return {
     status: (QUEUE_STATUSES as readonly string[]).includes(status ?? "") ? (status as QueueStatus) : "all",
-    sort: sort !== undefined && sort in QUEUE_SORTS ? (sort as QueueSort) : "sla",
+    sort: sort !== undefined && Object.hasOwn(QUEUE_SORTS, sort) ? (sort as QueueSort) : "sla",
     q: (first(params.q) ?? "").trim().slice(0, 200),
   };
 }

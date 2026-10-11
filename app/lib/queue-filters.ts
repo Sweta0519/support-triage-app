@@ -21,7 +21,8 @@ export const QUEUE_FILTERS = (Object.keys(FILTER_LABELS) as QueueFilterKey[]).ma
 // than erroring.
 export function parseQueueFilter(raw: string | string[] | undefined): QueueFilterKey {
   const value = Array.isArray(raw) ? raw[0] : raw;
-  return value !== undefined && value in FILTER_LABELS ? (value as QueueFilterKey) : "all";
+  // Object.hasOwn, not `in`: "?from=toString" must not count as a tab.
+  return value !== undefined && Object.hasOwn(FILTER_LABELS, value) ? (value as QueueFilterKey) : "all";
 }
 
 export function queueHref(filter: QueueFilterKey): string {

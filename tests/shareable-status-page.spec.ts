@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 
+import { createClient } from "@supabase/supabase-js";
+
 import { login, requireEnv } from "./helpers";
 
 // Hard-tier optional task: shareable AI outputs. Hits the real OpenRouter
@@ -68,4 +70,55 @@ test("staff can publish a public status page; an anonymous visitor sees only the
 
   await publicContext.close();
   await agentContext.close();
+});
+
+test("staff can't choose a share's token or expiry through the Data API", async () => {
+  // Security scan 2026-10-11, M-1: INSERT is granted on the five columns
+  // the app writes; token / expires_at / created_at always take defaults.
+  const admin = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
+    db: { schema: "ticketing" },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const agent = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
+    db: { schema: "ticketing" },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: signIn, error: signInError } = await agent.auth.signInWithPassword({
+    email: requireEnv("TEST_AGENT_EMAIL"),
+    password: requireEnv("TEST_AGENT_PASSWORD"),
+  });
+  expect(signInError).toBeNull();
+
+  const { data: customer } = await admin.from("profiles").select("id").eq("email", requireEnv("TEST_USER_EMAIL")).single();
+  const { data: ticket, error } = await admin
+    .from("tickets")
+    .insert({ customer_id: customer!.id, subject: `Share grant probe ${Date.now()}`, body: "Probe." })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+
+  try {
+    const forged = await agent.from("shared_ticket_summaries").insert({
+      ticket_id: ticket.id,
+      published_by: signIn.user!.id,
+      subject: "Probe",
+      status: "new",
+      summary: "Probe",
+      token: "0".repeat(32),
+      expires_at: "9999-12-31T00:00:00Z",
+    });
+    expect(forged.error?.message).toContain("permission denied");
+
+    // The same insert without those columns is still allowed.
+    const legit = await agent
+      .from("shared_ticket_summaries")
+      .insert({ ticket_id: ticket.id, published_by: signIn.user!.id, subject: "Probe", status: "new", summary: "Probe" })
+      .select("token, expires_at")
+      .single();
+    expect(legit.error).toBeNull();
+    expect(legit.data!.token).toMatch(/^[0-9a-f]{32}$/);
+    expect(new Date(legit.data!.expires_at).getTime()).toBeLessThan(Date.now() + 31 * 24 * 60 * 60 * 1000);
+  } finally {
+    await admin.from("tickets").delete().eq("id", ticket.id);
+  }
 });
