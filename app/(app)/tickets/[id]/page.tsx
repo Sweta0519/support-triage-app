@@ -78,12 +78,14 @@ export default async function TicketDetailPage({
   // Triage output is staff-only (RLS enforces it too); customers never even
   // issue the query.
   const isAdmin = profile.role === "admin";
-  const [comments, triage, staff, share] = await Promise.all([
+  const filedByOther = isStaff && ticket.created_by !== null && ticket.created_by !== profile.id;
+  const [comments, triage, staff, share, filerEmail] = await Promise.all([
     listComments(id, isStaff),
     isStaff ? getLatestTriageResult(id) : Promise.resolve(null),
     // Only admins reassign, so only admins get the staff list.
     isAdmin ? listStaffProfiles() : Promise.resolve([] as StaffProfile[]),
     isStaff ? getActiveShareForTicket(id) : Promise.resolve(null),
+    filedByOther ? getStaffEmail(ticket.created_by as string) : Promise.resolve(null),
   ]);
 
   const ticketBody = (
@@ -162,15 +164,16 @@ export default async function TicketDetailPage({
   // through their own list. The ticket itself is the current page.
   const parents = isStaff ? queueBreadcrumb(fromFilter) : [MY_TICKETS_CRUMB];
   // A ticket staff logged for the customer (phone, chat, email) says so.
-  // Customers aren't shown which staff member: they can't read staff
-  // profiles, and "our support team" is what they need to know.
+  // The customer's page names "our support team" rather than the person:
+  // that's a UI choice (created_by is an opaque id they could still read,
+  // like assignee_id), and it's what a customer needs to know.
   const filedBy = !ticket.created_by
     ? null
     : !isStaff
       ? "Filed by our support team on your behalf"
       : ticket.created_by === profile.id
         ? "Filed by you on the customer's behalf"
-        : `Filed by ${(await getStaffEmail(ticket.created_by)) ?? "a former staff member"} on the customer's behalf`;
+        : `Filed by ${filerEmail ?? "a former staff member"} on the customer's behalf`;
   // Staff only: the response target is an internal commitment.
   const sla = isStaff ? computeSla(ticket) : null;
 

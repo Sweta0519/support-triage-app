@@ -163,9 +163,10 @@ export class StaffTicketError extends Error {
 
 // Staff filing a ticket for a customer (phone, chat, forwarded email).
 // ticketing.staff_create_ticket() does every check itself -- staff role,
-// that the email is an existing *customer* account, the table's length
-// limits, the staff rate limit -- and records who filed it. It returns
-// only the new ticket's id, never anything about the customer.
+// the staff rate limit (charged on every call, hit or miss), that the
+// email is an existing *customer* account, the table's length limits --
+// and records who filed it. It returns only the new ticket's id (or null
+// for an unknown email), never anything about the customer.
 export async function staffCreateTicket(
   customerEmail: string,
   subject: string,
@@ -180,11 +181,13 @@ export async function staffCreateTicket(
     p_assign_to_me: assignToMe,
   });
   if (error) {
-    if (error.code === "P0002") throw new StaffTicketError("customer_not_found");
     if (error.code === "42501") throw new StaffTicketError("not_allowed");
     if (error.message.includes("rate_limited")) throw new RateLimitError("staff_create_ticket");
     throw new Error(error.message);
   }
+  // null = no customer account with that email. Returned rather than
+  // raised so the database keeps the rate-limit charge for the lookup.
+  if (data === null) throw new StaffTicketError("customer_not_found");
   return { id: data as string };
 }
 

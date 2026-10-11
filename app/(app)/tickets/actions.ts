@@ -42,6 +42,18 @@ import {
 
 export type TicketFormState = { error: string } | undefined;
 
+// Shared by the customer's and the staff form. Mirrors the database check
+// constraints so the user gets a friendly message instead of a
+// constraint-violation error.
+function ticketFieldsError(subject: string, body: string): string | null {
+  if (!subject || !body) return "Subject and description are both required.";
+  if (subject.length > SUBJECT_MAX_LENGTH) return `Subject must be at most ${SUBJECT_MAX_LENGTH} characters.`;
+  if (body.length > BODY_MAX_LENGTH) {
+    return `Description must be at most ${BODY_MAX_LENGTH.toLocaleString()} characters.`;
+  }
+  return null;
+}
+
 // Staff filing a ticket on a customer's behalf. Same validation and the
 // same after-response triage as a customer's own ticket; the database
 // function resolves the customer from the email and records who filed it.
@@ -55,17 +67,12 @@ export async function staffCreateTicketAction(
   const body = String(formData.get("body") ?? "").trim();
   const assignToMe = formData.get("assignToMe") === "on";
 
-  if (!customerEmail || !subject || !body) {
-    return { error: "Customer email, subject and description are all required." };
-  }
-  if (customerEmail.length > 320 || !customerEmail.includes("@")) {
+  if (!customerEmail || customerEmail.length > 320 || !customerEmail.includes("@")) {
     return { error: "Enter the customer's email address." };
   }
-  if (subject.length > SUBJECT_MAX_LENGTH) {
-    return { error: `Subject must be at most ${SUBJECT_MAX_LENGTH} characters.` };
-  }
-  if (body.length > BODY_MAX_LENGTH) {
-    return { error: `Description must be at most ${BODY_MAX_LENGTH.toLocaleString()} characters.` };
+  const invalid = ticketFieldsError(subject, body);
+  if (invalid) {
+    return { error: invalid };
   }
 
   let ticketId: string;
@@ -101,16 +108,9 @@ export async function createTicketAction(
   const subject = String(formData.get("subject") ?? "").trim();
   const body = String(formData.get("body") ?? "").trim();
 
-  if (!subject || !body) {
-    return { error: "Subject and description are both required." };
-  }
-  // Mirrors the database check constraints so the user gets a friendly
-  // message instead of a constraint-violation error.
-  if (subject.length > SUBJECT_MAX_LENGTH) {
-    return { error: `Subject must be at most ${SUBJECT_MAX_LENGTH} characters.` };
-  }
-  if (body.length > BODY_MAX_LENGTH) {
-    return { error: `Description must be at most ${BODY_MAX_LENGTH.toLocaleString()} characters.` };
+  const invalid = ticketFieldsError(subject, body);
+  if (invalid) {
+    return { error: invalid };
   }
 
   let ticketId: string;

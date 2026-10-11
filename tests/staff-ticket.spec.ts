@@ -27,6 +27,16 @@ test("an agent files a ticket for a customer, who then sees it as theirs", async
   await expect(agent.getByText("Assigned to you")).toBeVisible();
   await agentContext.close();
 
+  // The history records the filing and the assignment.
+  const admin = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), dbOpts);
+  const { data: ticket } = await admin.from("tickets").select("id").eq("subject", subject).single();
+  const { data: events } = await admin
+    .from("ticket_events")
+    .select("event_type, to_value")
+    .eq("ticket_id", ticket!.id)
+    .in("event_type", ["filed_by_staff", "status_changed", "assignee_changed"]);
+  expect(events?.map((e) => e.event_type).sort()).toEqual(["assignee_changed", "filed_by_staff", "status_changed"]);
+
   // Customer A (default storageState) owns it.
   await page.goto("/tickets");
   await page.getByRole("link", { name: new RegExp(subject) }).click();
@@ -79,4 +89,36 @@ test("customers can't use the staff path or set who filed a ticket", async ({ pa
     created_by: signIn.user!.id,
   });
   expect(forged.error?.message).toContain("permission denied");
+});
+
+test("probing customer emails is rate limited, misses included", async () => {
+  // Every staff_create_ticket() call is charged before the lookup, so an
+  // agent can't enumerate customer emails for free (30/hour, hit or miss).
+  const admin = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), dbOpts);
+  const agent = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"), dbOpts);
+  const { data: signIn } = await agent.auth.signInWithPassword({
+    email: requireEnv("TEST_AGENT_EMAIL"),
+    password: requireEnv("TEST_AGENT_PASSWORD"),
+  });
+  const bucket = `${signIn.user!.id}:staff_create_ticket`;
+  const reset = () => admin.from("rate_limits").delete().eq("key", bucket);
+  await reset();
+  try {
+    const probe = (i: number) =>
+      agent.rpc("staff_create_ticket", {
+        p_customer_email: `probe-${Date.now()}-${i}@example.com`,
+        p_subject: "x",
+        p_body: "x",
+        p_assign_to_me: false,
+      });
+    for (let i = 0; i < 30; i++) {
+      const r = await probe(i);
+      expect(r.error).toBeNull();
+      expect(r.data).toBeNull(); // no such customer
+    }
+    expect((await probe(30)).error?.message).toContain("rate_limited");
+  } finally {
+    // Don't leave the agent's bucket spent for the rest of the suite.
+    await reset();
+  }
 });
