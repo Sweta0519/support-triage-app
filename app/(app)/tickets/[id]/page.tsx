@@ -179,7 +179,7 @@ export default async function TicketDetailPage({
             </p>
             {sla ? (
               <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
-                <Badge label={slaBadgeLabel(sla)} colorClasses={slaBadgeClasses(sla.state)} />
+                <Badge label={slaBadgeLabel(sla)} colorClasses={slaBadgeClasses(sla.state)} capitalize={false} />
                 {slaDescription(sla)}
               </p>
             ) : null}
