@@ -3,7 +3,7 @@ import Link from "next/link";
 import { requireStaff } from "@/app/lib/auth/session";
 import { listNotes } from "@/app/lib/db/notes";
 import { formatRelativeTime } from "@/app/lib/format";
-import { primaryButtonClass } from "@/app/lib/styles";
+import { primaryButtonClass, widePageClass } from "@/app/lib/styles";
 import { ASSISTANT_NAME } from "@/app/components/assistant/constants";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { NOTES_CRUMB } from "@/app/lib/crumbs";
@@ -13,7 +13,7 @@ export default async function NotesPage() {
   const notes = await listNotes();
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-8">
+    <div className={widePageClass}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <Breadcrumbs current={NOTES_CRUMB.label} />

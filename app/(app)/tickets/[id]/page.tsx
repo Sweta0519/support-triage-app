@@ -23,6 +23,7 @@ import { SharePanel } from "./SharePanel";
 import { parseQueueFilter, queueBreadcrumb } from "@/app/lib/queue-filters";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { MY_TICKETS_CRUMB } from "@/app/lib/crumbs";
+import { readablePageClass, widePageClass } from "@/app/lib/styles";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -165,7 +166,7 @@ export default async function TicketDetailPage({
 
   return (
     <div
-      className={`mx-auto flex w-full flex-1 flex-col gap-6 p-8 ${isStaff ? "max-w-5xl" : "max-w-2xl"}`}
+      className={isStaff ? widePageClass : readablePageClass}
     >
       <div>
         <Breadcrumbs parents={parents} current={ticket.subject} />

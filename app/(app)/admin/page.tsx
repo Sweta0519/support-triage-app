@@ -24,7 +24,7 @@ function Breakdown({ title, data }: { title: string; data: Record<string, number
           {entries.map(([key, count]) => (
             <li key={key} className="flex flex-col gap-1">
               <div className="flex items-center justify-between text-sm">
-                <span className="capitalize text-zinc-700 dark:text-zinc-300">{key}</span>
+                <span className="capitalize text-zinc-700 dark:text-zinc-300">{key.replace(/_/g, " ")}</span>
                 <span className="font-medium text-black dark:text-zinc-50">{count}</span>
               </div>
               <div className="h-1 overflow-hidden rounded-full bg-black/[.05] dark:bg-white/[.08]">
