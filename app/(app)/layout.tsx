@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { requireProfile } from "@/app/lib/auth/session";
 import { linkClass } from "@/app/lib/styles";
-import { AppHeader } from "@/app/components/AppHeader";
+import { AppSidebar } from "@/app/components/AppSidebar";
 import { AssistantWidget } from "@/app/components/assistant/AssistantWidget";
 
 export default async function AppLayout({
@@ -13,16 +13,20 @@ export default async function AppLayout({
   const profile = await requireProfile();
 
   return (
-    <div className="flex flex-1 flex-col">
-      <AppHeader profile={profile} />
-      <main className="flex flex-1 flex-col">{children}</main>
-      <footer className="border-t border-black/[.08] dark:border-white/[.145]">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-end px-6 py-3">
-          <Link href="/privacy" className={`text-xs ${linkClass}`}>
-            Privacy policy
-          </Link>
-        </div>
-      </footer>
+    // Sidebar on the left from lg up, a top bar on phones; the page and
+    // footer take the remaining width.
+    <div className="flex flex-1 flex-col lg:flex-row">
+      <AppSidebar profile={{ email: profile.email, role: profile.role }} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <main className="flex flex-1 flex-col">{children}</main>
+        <footer className="border-t border-black/[.08] dark:border-white/[.145]">
+          <div className="mx-auto flex w-full max-w-5xl items-center justify-end px-8 py-3">
+            <Link href="/privacy" className={`text-xs ${linkClass}`}>
+              Privacy policy
+            </Link>
+          </div>
+        </footer>
+      </div>
       {profile.role !== "customer" ? <AssistantWidget /> : null}
     </div>
   );
