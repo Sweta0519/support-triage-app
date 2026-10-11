@@ -78,7 +78,7 @@ test.describe("Sage, the AI assistant widget", () => {
 
     // exact: true -- the model sometimes quotes the probe back in its reply,
     // and a bare text match would then resolve to two elements.
-    // randomUUID, not Date.now(): parallel repeats (--repeat-each) share the
+    // randomUUID, not Date.now(): repeats on different workers share the
     // agent's one conversation and can send in the same millisecond.
     const first = `Persistence probe one ${randomUUID()}`;
     await page.getByPlaceholder("Message Sage...").fill(first);

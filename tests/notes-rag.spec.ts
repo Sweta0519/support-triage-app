@@ -34,8 +34,10 @@ async function saveNote(page: Page, title: string, body: string) {
   await page.getByRole("button", { name: "Save note" }).click();
   // Redirects to the list on success, where the new note is visible.
   await expect(page).toHaveURL(/\/notes$/);
-  // .first(): a repeated run (--repeat-each) saves the same note again
-  // before the reset setup clears it; the newest note is listed first.
+  // .first(): with --repeat-each every repeat saves this note again and the
+  // reset setup only clears notes once per invocation, so copies pile up.
+  // The list is newest first; the URL check above already proves the save
+  // succeeded (the redirect only happens on success).
   await expect(page.getByRole("heading", { name: title }).first()).toBeVisible();
 }
 
