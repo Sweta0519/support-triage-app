@@ -8,7 +8,8 @@ export type RateLimitedAction =
   | "add_comment"
   | "rerun_triage"
   | "assistant_message"
-  | "save_note";
+  | "save_note"
+  | "rate_ticket";
 
 // The one user-facing wording for a tripped limit, shared by every action.
 export const RATE_LIMITED_MESSAGE =

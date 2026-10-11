@@ -1,21 +1,29 @@
+import Link from "next/link";
+
 import { requireAdmin } from "@/app/lib/auth/session";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import {
   computeAnalytics,
   computeSentiment,
-  computeWorkload,
+  computeCsat,
+  computeTeamPerformance,
+  formatCsat,
   formatRate,
   VOLUME_DAYS,
   type Analytics,
   type Sentiment,
-  type WorkloadRow,
+  type CsatRating,
+  type TeamRow,
 } from "@/app/lib/analytics";
 import { listAnalyticsTickets } from "@/app/lib/db/analytics";
+import { listRatingsForAnalytics } from "@/app/lib/db/ratings";
+import { MIN_RATINGS_FOR_CSAT } from "@/app/lib/ratings";
 import { listStaffProfiles } from "@/app/lib/db/profiles";
 import { MAX_ROWS } from "@/app/lib/db/admin";
 import { formatDuration, SLA_TARGET_MS } from "@/app/lib/sla";
 import { TRIAGE_PRIORITIES } from "@/app/lib/triage-fields";
-import { widePageClass } from "@/app/lib/styles";
+import { linkClass, widePageClass } from "@/app/lib/styles";
+import { formatTicketNumber } from "@/app/lib/format";
 
 // Admin-only: under RLS an agent would aggregate just their own and the
 // unassigned tickets, which would read as the whole picture and isn't.
@@ -184,49 +192,100 @@ function PriorityMatrix({ matrix }: { matrix: Analytics["triage"]["priorityMatri
   );
 }
 
-function WorkloadTable({ rows }: { rows: WorkloadRow[] }) {
+function TeamTable({ rows }: { rows: TeamRow[] }) {
   const max = Math.max(1, ...rows.map((r) => r.open));
+  const num = "py-2 text-right tabular-nums text-zinc-700 dark:text-zinc-300";
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="text-left text-xs text-zinc-500 dark:text-zinc-500">
-          <th scope="col" className="w-1/2 pb-2 font-medium">Assignee</th>
-          <th scope="col" className="w-1/4 pb-2 font-medium">Open</th>
-          <th scope="col" className="pb-2 text-right font-medium">At risk</th>
-          <th scope="col" className="pb-2 text-right font-medium">Overdue</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-black/[.06] dark:divide-white/[.08]">
-        {rows.map((r) => (
-          <tr key={r.assigneeId ?? "unassigned"}>
-            <td
-              className={`max-w-0 truncate py-2 pr-3 ${
-                r.assigneeId === null ? "italic text-zinc-500 dark:text-zinc-400" : "text-zinc-700 dark:text-zinc-300"
-              }`}
-              title={r.label}
-            >
-              {r.label}
-            </td>
-            <td className="py-2">
-              <div className="flex items-center gap-2">
-                <RateBar part={r.open} whole={max} />
-                <span className="w-8 shrink-0 text-right text-xs tabular-nums text-zinc-600 dark:text-zinc-400">
-                  {r.open}
-                </span>
-              </div>
-            </td>
-            <td className="py-2 text-right tabular-nums text-zinc-700 dark:text-zinc-300">{r.atRisk}</td>
-            <td
-              className={`py-2 text-right tabular-nums ${
-                r.overdue > 0 ? "font-semibold text-red-700 dark:text-red-400" : "text-zinc-700 dark:text-zinc-300"
-              }`}
-            >
-              {r.overdue}
-            </td>
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[40rem] text-sm">
+        <thead>
+          <tr className="text-left text-xs text-zinc-500 dark:text-zinc-500">
+            <th scope="col" className="w-1/4 pb-2 font-medium">Person</th>
+            <th scope="col" className="w-1/5 pb-2 font-medium">Open</th>
+            <th scope="col" className="pb-2 text-right font-medium">At risk</th>
+            <th scope="col" className="pb-2 text-right font-medium">Overdue</th>
+            <th scope="col" className="pb-2 text-right font-medium">Resolved</th>
+            <th scope="col" className="pb-2 text-right font-medium">Replies on time</th>
+            <th scope="col" className="pb-2 text-right font-medium">CSAT</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody className="divide-y divide-black/[.06] dark:divide-white/[.08]">
+          {rows.map((r) => {
+            const csat = formatCsat(r.csatSum, r.csatCount, MIN_RATINGS_FOR_CSAT);
+            return (
+              <tr key={r.assigneeId ?? "unassigned"}>
+                <td
+                  className={`max-w-0 truncate py-2 pr-3 ${
+                    r.assigneeId === null ? "italic text-zinc-500 dark:text-zinc-400" : "text-zinc-700 dark:text-zinc-300"
+                  }`}
+                  title={r.label}
+                >
+                  {r.label}
+                </td>
+                <td className="py-2">
+                  <div className="flex items-center gap-2">
+                    <RateBar part={r.open} whole={max} />
+                    <span className="w-8 shrink-0 text-right text-xs tabular-nums text-zinc-600 dark:text-zinc-400">
+                      {r.open}
+                    </span>
+                  </div>
+                </td>
+                <td className={num}>{r.atRisk}</td>
+                <td
+                  className={`py-2 text-right tabular-nums ${
+                    r.overdue > 0 ? "font-semibold text-red-700 dark:text-red-400" : "text-zinc-700 dark:text-zinc-300"
+                  }`}
+                >
+                  {r.overdue}
+                </td>
+                <td className={num}>{r.assigneeId === null ? "" : r.resolved}</td>
+                <td className={num}>{r.assigneeId === null ? "" : formatRate(r.repliesOnTime, r.repliesAnswered)}</td>
+                <td
+                  className={num}
+                  title={
+                    r.csatCount > 0 && !csat
+                      ? `Shown from ${MIN_RATINGS_FOR_CSAT} ratings (has ${r.csatCount})`
+                      : undefined
+                  }
+                >
+                  {r.assigneeId === null ? "" : csat ? (
+                    <>
+                      {csat} <span className="text-xs text-zinc-500 dark:text-zinc-400">({r.csatCount})</span>
+                    </>
+                  ) : (
+                    "-"
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function LowRatings({ ratings }: { ratings: CsatRating[] }) {
+  if (ratings.length === 0) {
+    return <p className={mutedClasses}>No ratings of 1-2 stars. Nothing to follow up.</p>;
+  }
+  return (
+    <ul className="flex flex-col divide-y divide-black/[.06] dark:divide-white/[.08]">
+      {ratings.map((r) => (
+        <li key={r.ticket_id} className="flex flex-col gap-0.5 py-2 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <Link href={`/tickets/${r.ticket_id}`} className={`truncate ${linkClass}`}>
+              {r.ticket ? `${formatTicketNumber(r.ticket.number)} ${r.ticket.subject}` : "Ticket"}
+            </Link>
+            <span className="shrink-0 text-amber-500" aria-label={`${r.score} of 5 stars`}>
+              {"★".repeat(r.score)}
+              <span className="text-zinc-300 dark:text-zinc-700">{"★".repeat(5 - r.score)}</span>
+            </span>
+          </div>
+          {r.comment ? <p className="text-zinc-600 dark:text-zinc-400">“{r.comment}”</p> : null}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -287,14 +346,22 @@ function SentimentBreakdown({ sentiment: s }: { sentiment: Sentiment }) {
 
 export default async function AnalyticsPage() {
   await requireAdmin();
-  const [{ recent, open, sampled }, staff] = await Promise.all([listAnalyticsTickets(), listStaffProfiles()]);
+  const [{ recent, open, sampled: ticketsSampled }, staff, { ratings, sampled: ratingsSampled }] = await Promise.all([
+    listAnalyticsTickets(),
+    listStaffProfiles(),
+    listRatingsForAnalytics(),
+  ]);
+  const sampled = ticketsSampled || ratingsSampled;
   const now = new Date();
   const a = computeAnalytics(recent, now, open);
-  const workload = computeWorkload(
+  const team = computeTeamPerformance({
     open,
-    staff.map((s) => ({ id: s.id, label: s.email })),
-    now
-  );
+    recent,
+    ratings,
+    staff: staff.map((s) => ({ id: s.id, label: s.email })),
+    now,
+  });
+  const csat = computeCsat(ratings);
   const sentiment = computeSentiment(open);
 
   const openAtRisk = a.sla.byPriority.reduce((sum, r) => sum + r.openAtRisk, 0);
@@ -311,7 +378,7 @@ export default async function AnalyticsPage() {
         </p>
       </div>
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Stat
           label={sampled ? `Tickets (most recent ${MAX_ROWS.toLocaleString()})` : "Tickets"}
           value={a.ticketCount.toLocaleString()}
@@ -326,6 +393,11 @@ export default async function AnalyticsPage() {
           label="Open and overdue"
           value={openBreached.toLocaleString()}
           detail={`${openAtRisk} more at risk`}
+        />
+        <Stat
+          label="Customer satisfaction"
+          value={csat.average ? `${csat.average} / 5` : "-"}
+          detail={csat.count ? `${csat.count} rating${csat.count === 1 ? "" : "s"} of resolved tickets` : "No ratings yet"}
         />
         <Stat
           label="AI triage accepted as-is"
@@ -402,15 +474,25 @@ export default async function AnalyticsPage() {
         )}
       </section>
 
+      <section className={`${cardClasses} flex flex-col gap-3`}>
+        <div>
+          <h2 className={sectionTitleClasses}>Team performance</h2>
+          <p className={`mt-1 ${mutedClasses}`}>
+            Open work now (and how much is at risk or overdue), tickets resolved, first replies within the
+            target, and customer satisfaction: the average rating credited to each person, shown from{" "}
+            {MIN_RATINGS_FOR_CSAT} ratings so a single one can&apos;t define anyone.
+          </p>
+        </div>
+        <TeamTable rows={team} />
+      </section>
+
       <section className="grid gap-3 lg:grid-cols-2">
         <div className={`${cardClasses} flex flex-col gap-3`}>
           <div>
-            <h2 className={sectionTitleClasses}>Agent workload</h2>
-            <p className={`mt-1 ${mutedClasses}`}>
-              Open tickets per person, and how many are at risk of or past their first-reply target.
-            </p>
+            <h2 className={sectionTitleClasses}>Recent low ratings</h2>
+            <p className={`mt-1 ${mutedClasses}`}>The latest 1-2 star ratings, to follow up with the customer.</p>
           </div>
-          <WorkloadTable rows={workload} />
+          <LowRatings ratings={csat.recentLow} />
         </div>
         <div className={`${cardClasses} flex flex-col gap-3`}>
           <div>

@@ -2,8 +2,10 @@ import { test, expect } from "@playwright/test";
 
 import {
   computeAnalytics,
+  computeCsat,
   computeSentiment,
-  computeWorkload,
+  computeTeamPerformance,
+  formatCsat,
   formatRate,
   type AnalyticsTicketRow,
 } from "../app/lib/analytics";
@@ -106,32 +108,57 @@ test.describe("computeAnalytics", () => {
     expect(a.triage.priorityMatrix.high).toEqual({ low: 0, normal: 0, high: 2, urgent: 1 });
   });
 
-  test("workload counts open tickets per assignee with at-risk and overdue, unassigned last", () => {
+  test("team performance: workload, recent output and CSAT per person, unassigned last", () => {
     const staff = [
       { id: "a", label: "alice@x.test" },
       { id: "b", label: "bob@x.test" },
       { id: "c", label: "carol@x.test" },
     ];
-    const rows = computeWorkload(
-      [
+    const rating = (agent_id: string | null, score: number) => ({
+      ticket_id: `${agent_id}-${score}-${Math.random()}`,
+      score,
+      comment: null,
+      agent_id,
+      created_at: hoursAgo(1),
+      ticket: null,
+    });
+    const rows = computeTeamPerformance({
+      open: [
         row({ assignee_id: "a", created_at: hoursAgo(9) }), // normal 8h: overdue
         row({ assignee_id: "a", created_at: hoursAgo(7) }), // 1h left: at risk
         row({ assignee_id: "a", created_at: hoursAgo(1), first_response_at: hoursAgo(0.5), status: "in_progress" }),
         row({ assignee_id: "b", created_at: hoursAgo(1) }),
-        row({ assignee_id: "b", status: "resolved" }), // not open
         row({ assignee_id: "gone", created_at: hoursAgo(1) }), // no longer staff
         row({ assignee_id: null, created_at: hoursAgo(30) }),
       ],
+      recent: [
+        // a: two answered (one in time, one late), one resolved
+        row({ assignee_id: "a", status: "resolved", created_at: hoursAgo(20), first_response_at: hoursAgo(19) }),
+        row({ assignee_id: "a", created_at: hoursAgo(20), first_response_at: hoursAgo(5) }),
+        row({ assignee_id: "b", status: "closed", created_at: hoursAgo(3) }),
+        row({ assignee_id: null, status: "resolved" }), // unassigned output isn't credited
+      ],
+      ratings: [rating("a", 5), rating("a", 4), rating("a", 3), rating("b", 1), rating(null, 2)],
       staff,
-      NOW
-    );
-    expect(rows).toEqual([
-      { assigneeId: "a", label: "alice@x.test", open: 3, atRisk: 1, overdue: 1 },
-      { assigneeId: "b", label: "bob@x.test", open: 1, atRisk: 0, overdue: 0 },
-      { assigneeId: "gone", label: "Former staff member (gone)", open: 1, atRisk: 0, overdue: 0 },
-      { assigneeId: "c", label: "carol@x.test", open: 0, atRisk: 0, overdue: 0 },
-      { assigneeId: null, label: "Unassigned", open: 1, atRisk: 0, overdue: 1 },
-    ]);
+      now: NOW,
+    });
+    const a = rows.find((r) => r.assigneeId === "a")!;
+    expect(a).toMatchObject({ open: 3, atRisk: 1, overdue: 1, resolved: 1, repliesOnTime: 1, repliesAnswered: 2, csatSum: 12, csatCount: 3 });
+    expect(rows.find((r) => r.assigneeId === "b")).toMatchObject({ open: 1, resolved: 1, csatSum: 1, csatCount: 1 });
+    expect(rows.find((r) => r.assigneeId === "gone")?.label).toBe("Former staff member (gone)");
+    expect(rows.find((r) => r.assigneeId === "c")).toMatchObject({ open: 0, csatCount: 0 });
+    expect(rows.at(-1)).toMatchObject({ assigneeId: null, label: "Unassigned", open: 1, overdue: 1, resolved: 0 });
+    // CSAT shows only from the minimum number of ratings.
+    expect(formatCsat(a.csatSum, a.csatCount, 3)).toBe("4.0");
+    expect(formatCsat(1, 1, 3)).toBeNull();
+  });
+
+  test("CSAT summary: team average and the latest low ratings", () => {
+    const r = (score: number, created_at: string) => ({ ticket_id: created_at, score, comment: null, agent_id: "a", created_at, ticket: null });
+    const csat = computeCsat([r(5, "2026-10-01"), r(1, "2026-10-03"), r(2, "2026-10-05"), r(4, "2026-10-06")]);
+    expect(csat).toMatchObject({ average: "3.0", count: 4 });
+    expect(csat.recentLow.map((x) => x.score)).toEqual([2, 1]);
+    expect(computeCsat([])).toMatchObject({ average: null, count: 0, recentLow: [] });
   });
 
   test("sentiment buckets the AI frustration score of open tickets and counts what needs action", () => {
