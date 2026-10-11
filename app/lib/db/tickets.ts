@@ -59,6 +59,7 @@ export type TicketSummary = {
 
 // The AI signals a queue card shows, from the ticket's latest triage run.
 export type QueueTriageSignals = {
+  id: string;
   summary: string;
   is_escalation_risk: boolean;
   frustration: number | null;
@@ -164,7 +165,7 @@ export async function listQueueTickets(
     .from("tickets")
     .select(
       `id, number, subject, status, created_at, assignee_id, first_response_at, ${TRIAGE_STATE_EMBED},
-       latest_triage:triage_results!ticket_id(summary, is_escalation_risk, frustration, needs_human_review)`
+       latest_triage:triage_results!ticket_id(id, summary, is_escalation_risk, frustration, needs_human_review)`
     )
     .neq("status", "closed")
     .order("created_at", { ascending: true })

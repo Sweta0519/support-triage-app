@@ -55,7 +55,9 @@ function StatTile({ label, value, detail, tone }: { label: string; value: number
 function AiChips({ ticket }: { ticket: QueueTicketSummary }) {
   const ai = ticket.latest_triage;
   if (!ai) return null;
-  const reviewed = Boolean(ticket.triage_state?.reviewed_at);
+  // Reviewed means this run was reviewed: after a re-run the newer run's
+  // flags are on the card and nobody has checked them yet.
+  const reviewed = ticket.triage_state?.reviewed_result_id === ai.id;
   return (
     <>
       {ai.is_escalation_risk ? (
@@ -125,7 +127,7 @@ function TicketCard({
         <span className="line-clamp-1 font-medium text-black dark:text-zinc-50">{ticket.subject}</span>
         <p className="line-clamp-2 text-sm text-zinc-600 dark:text-zinc-400">
           {ticket.latest_triage?.summary ?? (
-            <span className="italic text-zinc-400 dark:text-zinc-600">Awaiting AI triage</span>
+            <span className="italic text-zinc-500 dark:text-zinc-400">Awaiting AI triage</span>
           )}
         </p>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -155,7 +157,11 @@ function TicketCard({
           className="flex justify-end border-t border-black/[.08] px-4 py-2 dark:border-white/[.145]"
         >
           <input type="hidden" name="ticketId" value={ticket.id} />
-          <button type="submit" className={`${primaryButtonClass} !px-3 !py-1 !text-xs`}>
+          <button
+            type="submit"
+            aria-label={`Claim ${formatTicketNumber(ticket.number)}: ${ticket.subject}`}
+            className={`${primaryButtonClass} !px-3 !py-1 !text-xs`}
+          >
             Claim
           </button>
         </form>
@@ -243,7 +249,7 @@ export default async function QueuePage({
         <StatTile
           label="Open"
           value={open}
-          detail={`${inTab.filter((t) => t.assignee_id === null).length} unassigned`}
+          detail={`${inTab.filter((t) => t.status !== "resolved" && t.assignee_id === null).length} unassigned`}
         />
         <StatTile
           label="SLA at risk"
@@ -261,13 +267,14 @@ export default async function QueuePage({
       </section>
 
       <div className="flex flex-col gap-3">
-        <div className="flex gap-1 border-b border-black/[.08] dark:border-white/[.145]">
+        <nav aria-label="Assignment" className="flex gap-1 border-b border-black/[.08] dark:border-white/[.145]">
           {QUEUE_FILTERS.map(({ key, label }) => {
             const active = key === filter;
             return (
               <Link
                 key={key}
                 href={viewHref(key, view)}
+                aria-current={active ? "page" : undefined}
                 className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
                   active
                     ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400"
@@ -287,7 +294,7 @@ export default async function QueuePage({
               </Link>
             );
           })}
-        </div>
+        </nav>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <nav aria-label="Filter by status" className="flex flex-wrap gap-1.5">
@@ -342,7 +349,7 @@ export default async function QueuePage({
                   ? "Nothing assigned to you"
                   : "Nothing in the queue"}
           </p>
-          <p className="text-xs text-zinc-400 dark:text-zinc-600">
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
             {view.q !== "" || view.status !== "all" ? (
               <Link href={viewHref(filter, { status: "all", sort: view.sort, q: "" })} className="underline">
                 Clear search and status filter

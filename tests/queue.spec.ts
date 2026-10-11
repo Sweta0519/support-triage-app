@@ -56,7 +56,7 @@ test.describe("queue view logic", () => {
         reviewed_at: null,
         reviewed_result_id: null,
       },
-      latest_triage: { summary: "Customer was double charged", is_escalation_risk: false, frustration: 2, needs_human_review: false },
+      latest_triage: { id: "run-1", summary: "Customer was double charged", is_escalation_risk: false, frustration: 2, needs_human_review: false },
     });
     for (const q of ["", "1042", "#1042", "invoice", "DOUBLE CHARGED", "feature request", "billing"]) {
       expect(matchesSearch(t, q), q).toBe(true);
@@ -114,20 +114,28 @@ test("a triaged ticket's card shows its number, AI summary and AI flags, and sea
   if (error) throw new Error(error.message);
 
   try {
-    const { error: runError } = await db.from("triage_results").insert({
-      ticket_id: created.id,
-      model: "test/seeded",
-      prompt_version: "test",
-      summary: "Export fails before the customer's deadline.",
-      priority: "urgent",
-      category: "bug",
-      team: "engineering",
-      frustration: 5,
-      is_escalation_risk: true,
-      needs_human_review: true,
-      confidence: 0.4,
-    });
-    if (runError) throw new Error(runError.message);
+    const seedRun = async (summary: string) => {
+      const { data, error: runError } = await db
+        .from("triage_results")
+        .insert({
+          ticket_id: created.id,
+          model: "test/seeded",
+          prompt_version: "test",
+          summary,
+          priority: "urgent",
+          category: "bug",
+          team: "engineering",
+          frustration: 5,
+          is_escalation_risk: true,
+          needs_human_review: true,
+          confidence: 0.4,
+        })
+        .select("id")
+        .single();
+      if (runError) throw new Error(runError.message);
+      return data.id as string;
+    };
+    const firstRun = await seedRun("Export fails before the customer's deadline.");
     const { error: stateError } = await db
       .from("ticket_triage_state")
       .update({ priority: "urgent", category: "bug", team: "engineering", triage_status: "completed" })
@@ -153,6 +161,23 @@ test("a triaged ticket's card shows its number, AI summary and AI flags, and sea
     await expect(page).toHaveURL(/status=assigned/);
     await expect(page).toHaveURL(/q=%23/);
     await expect(page.getByRole("link", { name: new RegExp(subject) })).toHaveCount(0);
+
+    // Once staff review that run, the review chip goes away...
+    const { error: reviewError } = await db
+      .from("ticket_triage_state")
+      .update({ reviewed_at: new Date().toISOString(), reviewed_result_id: firstRun })
+      .eq("ticket_id", created.id);
+    if (reviewError) throw new Error(reviewError.message);
+    await page.goto(`/queue?q=${encodeURIComponent(`#${created.number}`)}`);
+    await expect(card.getByText("Escalation risk", { exact: true })).toBeVisible();
+    await expect(card.getByText(/^AI (unsure|unreviewed)$/)).toHaveCount(0);
+
+    // ...and comes back when a newer run lands that nobody has checked.
+    await new Promise((resolve) => setTimeout(resolve, 10)); // a later created_at than the first run
+    await seedRun("Re-run: export still failing.");
+    await page.reload();
+    await expect(card.getByText("Re-run: export still failing.")).toBeVisible();
+    await expect(card.getByText("AI unsure", { exact: true })).toBeVisible();
   } finally {
     await db.from("tickets").delete().eq("id", created.id);
   }

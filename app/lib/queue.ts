@@ -8,7 +8,7 @@ import { computeSla } from "@/app/lib/sla";
 
 // The queue never lists closed tickets (listQueueTickets filters them out).
 export const QUEUE_STATUSES = ["new", "triaged", "assigned", "in_progress", "resolved"] as const satisfies readonly TicketStatus[];
-export type QueueStatus = (typeof QUEUE_STATUSES)[number];
+type QueueStatus = (typeof QUEUE_STATUSES)[number];
 
 export const QUEUE_SORTS = {
   sla: "Most urgent",
@@ -44,7 +44,8 @@ export function parseQueueView(params: {
 export function matchesSearch(ticket: QueueTicketSummary, q: string): boolean {
   if (q === "") return true;
   if (q.startsWith("#")) return String(ticket.number) === q.slice(1).trim();
-  const needle = q.toLowerCase();
+  // Stored categories are snake_case ("feature_request"); accept either form.
+  const needle = q.toLowerCase().replace(/_/g, " ");
   return (
     String(ticket.number) === needle ||
     ticket.subject.toLowerCase().includes(needle) ||
