@@ -120,6 +120,7 @@ test.describe("computeAnalytics", () => {
       comment: null,
       agent_id,
       created_at: hoursAgo(1),
+      updated_at: hoursAgo(1),
       ticket: null,
     });
     const rows = computeTeamPerformance({
@@ -138,7 +139,7 @@ test.describe("computeAnalytics", () => {
         row({ assignee_id: "b", status: "closed", created_at: hoursAgo(3) }),
         row({ assignee_id: null, status: "resolved" }), // unassigned output isn't credited
       ],
-      ratings: [rating("a", 5), rating("a", 4), rating("a", 3), rating("b", 1), rating(null, 2)],
+      ratings: [rating("a", 5), rating("a", 4), rating("a", 3), rating("b", 1), rating(null, 2), rating("left", 1)],
       staff,
       now: NOW,
     });
@@ -147,6 +148,8 @@ test.describe("computeAnalytics", () => {
     expect(rows.find((r) => r.assigneeId === "b")).toMatchObject({ open: 1, resolved: 1, csatSum: 1, csatCount: 1 });
     expect(rows.find((r) => r.assigneeId === "gone")?.label).toBe("Former staff member (gone)");
     expect(rows.find((r) => r.assigneeId === "c")).toMatchObject({ open: 0, csatCount: 0 });
+    // Former staff with no open tickets get no row of their own.
+    expect(rows.find((r) => r.assigneeId === "left")).toBeUndefined();
     expect(rows.at(-1)).toMatchObject({ assigneeId: null, label: "Unassigned", open: 1, overdue: 1, resolved: 0 });
     // CSAT shows only from the minimum number of ratings.
     expect(formatCsat(a.csatSum, a.csatCount, 3)).toBe("4.0");
@@ -154,10 +157,30 @@ test.describe("computeAnalytics", () => {
   });
 
   test("CSAT summary: team average and the latest low ratings", () => {
-    const r = (score: number, created_at: string) => ({ ticket_id: created_at, score, comment: null, agent_id: "a", created_at, ticket: null });
-    const csat = computeCsat([r(5, "2026-10-01"), r(1, "2026-10-03"), r(2, "2026-10-05"), r(4, "2026-10-06")]);
-    expect(csat).toMatchObject({ average: "3.0", count: 4 });
-    expect(csat.recentLow.map((x) => x.score)).toEqual([2, 1]);
+    const r = (
+      score: number,
+      updated_at: string,
+      status: "resolved" | "closed" | "in_progress" = "closed",
+      agent_id: string | null = "a"
+    ) => ({
+      ticket_id: updated_at,
+      score,
+      comment: null,
+      agent_id,
+      created_at: "2026-10-01",
+      updated_at,
+      ticket: { number: 1, subject: "s", status },
+    });
+    const csat = computeCsat([
+      r(5, "2026-10-01"),
+      r(1, "2026-10-03"),
+      r(2, "2026-10-05", "resolved", null),
+      r(4, "2026-10-06"),
+      r(1, "2026-10-09", "in_progress"), // reopened: not counted until rated again
+    ]);
+    expect(csat).toMatchObject({ average: "3.0", count: 4, unassigned: 1 });
+    // Newest change first.
+    expect(csat.recentLow.map((x) => x.updated_at)).toEqual(["2026-10-05", "2026-10-03"]);
     expect(computeCsat([])).toMatchObject({ average: null, count: 0, recentLow: [] });
   });
 

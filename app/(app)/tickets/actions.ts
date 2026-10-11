@@ -33,7 +33,8 @@ import { getLatestTriageResult, reviewTriage, TriageReviewError } from "@/app/li
 import { publishTicketSummary, revokeShare } from "@/app/lib/db/shares";
 import { parseQueueFilter, safeQueueReturn, ticketHref } from "@/app/lib/queue-filters";
 import { stripAllLinks } from "@/app/lib/ai/links";
-import { rateTicket, RatingError, RATING_COMMENT_MAX_LENGTH } from "@/app/lib/db/ratings";
+import { rateTicket, RatingError } from "@/app/lib/db/ratings";
+import { RATING_COMMENT_MAX_LENGTH } from "@/app/lib/ratings";
 import {
   isOneOf,
   TRIAGE_CATEGORIES,

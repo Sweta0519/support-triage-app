@@ -26,6 +26,7 @@ import { parseQueueFilter, queueBreadcrumb } from "@/app/lib/queue-filters";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { MY_TICKETS_CRUMB } from "@/app/lib/crumbs";
 import { readablePageClass, widePageClass } from "@/app/lib/styles";
+import { Stars } from "@/app/components/Stars";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -241,11 +242,8 @@ export default async function TicketDetailPage({
                   Customer rating
                 </h2>
                 <p className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300">
-                  <span aria-hidden className="tracking-wide text-amber-500">
-                    {"★".repeat(rating.score)}
-                    <span className="text-zinc-300 dark:text-zinc-700">{"★".repeat(5 - rating.score)}</span>
-                  </span>
-                  <span>{rating.score} of 5</span>
+                  <Stars score={rating.score} />
+                  <span aria-hidden>{rating.score} of 5</span>
                 </p>
                 {rating.comment ? (
                   <p className="text-zinc-600 dark:text-zinc-400">“{rating.comment}”</p>

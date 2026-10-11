@@ -3,23 +3,12 @@
 import { useActionState, useState } from "react";
 
 import { rateTicketAction } from "../actions";
+import { Stars } from "@/app/components/Stars";
 import { RATING_COMMENT_MAX_LENGTH } from "@/app/lib/ratings";
 import { inputClass, primaryButtonClass } from "@/app/lib/styles";
 
 const STARS = [1, 2, 3, 4, 5] as const;
 const WORDS = ["", "Very poor", "Poor", "Okay", "Good", "Excellent"];
-
-function StarRow({ score }: { score: number }) {
-  return (
-    <span aria-hidden className="text-lg tracking-wide">
-      {STARS.map((n) => (
-        <span key={n} className={n <= score ? "text-amber-500" : "text-zinc-300 dark:text-zinc-700"}>
-          ★
-        </span>
-      ))}
-    </span>
-  );
-}
 
 // The customer's CSAT prompt on a resolved ticket. While the ticket is
 // resolved the rating can be given or changed; once it's closed it's shown
@@ -42,8 +31,8 @@ export function RatingPanel({
       <section className="flex flex-col gap-1 rounded-xl border border-black/[.08] p-4 dark:border-white/[.145]">
         <h2 className="text-sm font-semibold text-black dark:text-zinc-50">Your rating</h2>
         <p className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
-          <StarRow score={rating.score} />
-          <span>{rating.score} of 5 · {WORDS[rating.score]}</span>
+          <Stars score={rating.score} className="text-lg" />
+          <span aria-hidden>{rating.score} of 5 · {WORDS[rating.score]}</span>
         </p>
         {rating.comment ? <p className="text-sm text-zinc-600 dark:text-zinc-400">“{rating.comment}”</p> : null}
       </section>
@@ -100,15 +89,17 @@ export function RatingPanel({
           <button type="submit" disabled={pending || score === 0} className={`${primaryButtonClass} !px-4 !py-1.5 !text-xs`}>
             {pending ? "Sending…" : rating ? "Update rating" : "Send rating"}
           </button>
-          {state && "ok" in state ? (
-            <p role="status" className="text-xs text-emerald-700 dark:text-emerald-400">
-              {state.ok}
-            </p>
-          ) : state && "error" in state ? (
-            <p role="alert" className="text-xs text-red-700 dark:text-red-400">
-              {state.error}
-            </p>
-          ) : null}
+          {/* Always rendered, so screen readers announce the message when it
+              appears (a live region inserted already filled often isn't). */}
+          <p
+            role="status"
+            aria-live="polite"
+            className={`text-xs ${
+              state && "error" in state ? "text-red-700 dark:text-red-400" : "text-emerald-700 dark:text-emerald-400"
+            }`}
+          >
+            {state && "ok" in state ? state.ok : state && "error" in state ? state.error : ""}
+          </p>
         </div>
       </form>
     </section>

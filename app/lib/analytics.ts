@@ -178,7 +178,9 @@ export type CsatRating = {
   // The assignee credited when the rating was given; null if unassigned.
   agent_id: string | null;
   created_at: string;
-  ticket: { number: number; subject: string } | null;
+  // Last change: a re-rating counts as recent.
+  updated_at: string;
+  ticket: { number: number; subject: string; status: TicketStatus } | null;
 };
 
 export type TeamRow = {
@@ -231,9 +233,11 @@ export function computeTeamPerformance({
   });
   const rows = new Map<string | null, TeamRow>(staff.map((s) => [s.id, empty(s.id, s.label)]));
   rows.set(null, empty(null, "Unassigned"));
-  const rowFor = (id: string | null) => {
+  // Someone no longer on staff only gets a row while they still hold open
+  // tickets; their past output and ratings don't add rows of their own.
+  const rowFor = (id: string | null, create: boolean) => {
     let row = rows.get(id);
-    if (!row) {
+    if (!row && create) {
       row = empty(id, `Former staff member (${(id ?? "").slice(0, 8)})`);
       rows.set(id, row);
     }
@@ -242,7 +246,7 @@ export function computeTeamPerformance({
 
   for (const ticket of open) {
     if (ticket.status === "resolved" || ticket.status === "closed") continue;
-    const row = rowFor(ticket.assignee_id);
+    const row = rowFor(ticket.assignee_id, true)!;
     row.open += 1;
     const state = computeSla(ticket, now)?.state;
     if (state === "at_risk") row.atRisk += 1;
@@ -250,7 +254,8 @@ export function computeTeamPerformance({
   }
   for (const ticket of recent) {
     if (ticket.assignee_id === null) continue;
-    const row = rowFor(ticket.assignee_id);
+    const row = rowFor(ticket.assignee_id, false);
+    if (!row) continue;
     if (ticket.status === "resolved" || ticket.status === "closed") row.resolved += 1;
     const state = computeSla(ticket, now)?.state;
     if (state === "met" || state === "missed") {
@@ -258,9 +263,10 @@ export function computeTeamPerformance({
       if (state === "met") row.repliesOnTime += 1;
     }
   }
-  for (const rating of ratings) {
+  for (const rating of countableRatings(ratings)) {
     if (rating.agent_id === null) continue;
-    const row = rowFor(rating.agent_id);
+    const row = rowFor(rating.agent_id, false);
+    if (!row) continue;
     row.csatSum += rating.score;
     row.csatCount += 1;
   }
@@ -278,18 +284,30 @@ export function formatCsat(sum: number, count: number, minimum: number): string 
 export type CsatSummary = {
   average: string | null;
   count: number;
+  // Ratings of tickets nobody was assigned to when rated: in the team
+  // average, but in no person's row.
+  unassigned: number;
   // Ratings of 1-2 stars, newest first, for an admin to follow up.
   recentLow: CsatRating[];
 };
 
+// A rating counts while its ticket is resolved or closed: if the ticket
+// was reopened it's being worked again, and the old rating waits until the
+// customer rates the new resolution.
+function countableRatings(ratings: CsatRating[]): CsatRating[] {
+  return ratings.filter((r) => !r.ticket || r.ticket.status === "resolved" || r.ticket.status === "closed");
+}
+
 export function computeCsat(ratings: CsatRating[], lowLimit = 5): CsatSummary {
-  const sum = ratings.reduce((total, r) => total + r.score, 0);
+  const counted = countableRatings(ratings);
+  const sum = counted.reduce((total, r) => total + r.score, 0);
   return {
-    average: formatCsat(sum, ratings.length, 1),
-    count: ratings.length,
-    recentLow: [...ratings]
+    average: formatCsat(sum, counted.length, 1),
+    count: counted.length,
+    unassigned: counted.filter((r) => r.agent_id === null).length,
+    recentLow: counted
       .filter((r) => r.score <= 2)
-      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
       .slice(0, lowLimit),
   };
 }

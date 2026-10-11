@@ -2,27 +2,21 @@ import "server-only";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import { MAX_ROWS } from "@/app/lib/db/admin";
+import type { CsatRating } from "@/app/lib/analytics";
 import { RateLimitError } from "@/app/lib/db/rate-limit";
-export { RATING_COMMENT_MAX_LENGTH } from "@/app/lib/ratings";
 
 // Customer satisfaction (CSAT): one 1-5 rating per resolved ticket, given
 // by its customer. Writes go only through ticketing.rate_ticket(); reads
 // are RLS-scoped (the customer sees their own, an admin all, an agent the
 // ratings credited to them).
 
-export type TicketRating = {
-  score: number;
-  comment: string | null;
-  agent_id: string | null;
-  created_at: string;
-  updated_at: string;
-};
+export type TicketRating = { score: number; comment: string | null };
 
 export async function getTicketRating(ticketId: string): Promise<TicketRating | null> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("ticket_ratings")
-    .select("score, comment, agent_id, created_at, updated_at")
+    .select("score, comment")
     .eq("ticket_id", ticketId)
     .maybeSingle();
   if (error) {
@@ -52,27 +46,20 @@ export async function rateTicket(ticketId: string, score: number, comment: strin
   throw new Error(error.message);
 }
 
-export type AnalyticsRating = {
-  ticket_id: string;
-  score: number;
-  comment: string | null;
-  agent_id: string | null;
-  created_at: string;
-  ticket: { number: number; subject: string } | null;
-};
-
 // For the admin analytics page (RLS gives an admin every rating). Newest
 // first, bounded like the other analytics queries.
-export async function listRatingsForAnalytics(): Promise<{ ratings: AnalyticsRating[]; sampled: boolean }> {
+export async function listRatingsForAnalytics(): Promise<{ ratings: CsatRating[]; sampled: boolean }> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("ticket_ratings")
-    .select("ticket_id, score, comment, agent_id, created_at, ticket:tickets(number, subject)")
-    .order("created_at", { ascending: false })
+    .select("ticket_id, score, comment, agent_id, created_at, updated_at, ticket:tickets(number, subject, status)")
+    // Last changed first, so if the row cap is ever hit a fresh re-rating
+    // isn't the one left out.
+    .order("updated_at", { ascending: false })
     .limit(MAX_ROWS);
   if (error) {
     throw new Error(error.message);
   }
-  const ratings = data as unknown as AnalyticsRating[];
+  const ratings = data as unknown as CsatRating[];
   return { ratings, sampled: ratings.length >= MAX_ROWS };
 }

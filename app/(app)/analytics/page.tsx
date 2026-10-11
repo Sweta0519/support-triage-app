@@ -24,6 +24,7 @@ import { formatDuration, SLA_TARGET_MS } from "@/app/lib/sla";
 import { TRIAGE_PRIORITIES } from "@/app/lib/triage-fields";
 import { linkClass, widePageClass } from "@/app/lib/styles";
 import { formatTicketNumber } from "@/app/lib/format";
+import { Stars } from "@/app/components/Stars";
 
 // Admin-only: under RLS an agent would aggregate just their own and the
 // unassigned tickets, which would read as the whole picture and isn't.
@@ -277,10 +278,7 @@ function LowRatings({ ratings }: { ratings: CsatRating[] }) {
             <Link href={`/tickets/${r.ticket_id}`} className={`truncate ${linkClass}`}>
               {r.ticket ? `${formatTicketNumber(r.ticket.number)} ${r.ticket.subject}` : "Ticket"}
             </Link>
-            <span className="shrink-0 text-amber-500" aria-label={`${r.score} of 5 stars`}>
-              {"★".repeat(r.score)}
-              <span className="text-zinc-300 dark:text-zinc-700">{"★".repeat(5 - r.score)}</span>
-            </span>
+            <Stars score={r.score} className="shrink-0" />
           </div>
           {r.comment ? <p className="text-zinc-600 dark:text-zinc-400">“{r.comment}”</p> : null}
         </li>
@@ -380,7 +378,7 @@ export default async function AnalyticsPage() {
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Stat
-          label={sampled ? `Tickets (most recent ${MAX_ROWS.toLocaleString()})` : "Tickets"}
+          label={ticketsSampled ? `Tickets (most recent ${MAX_ROWS.toLocaleString()})` : "Tickets"}
           value={a.ticketCount.toLocaleString()}
           detail={`${a.volume.reduce((sum, d) => sum + d.count, 0)} in the last ${VOLUME_DAYS} days`}
         />
@@ -397,7 +395,12 @@ export default async function AnalyticsPage() {
         <Stat
           label="Customer satisfaction"
           value={csat.average ? `${csat.average} / 5` : "-"}
-          detail={csat.count ? `${csat.count} rating${csat.count === 1 ? "" : "s"} of resolved tickets` : "No ratings yet"}
+          detail={
+            csat.count
+              ? `${csat.count} rating${csat.count === 1 ? "" : "s"}` +
+                (csat.unassigned ? `, ${csat.unassigned} for unassigned tickets` : " of resolved tickets")
+              : "No ratings yet"
+          }
         />
         <Stat
           label="AI triage accepted as-is"
@@ -510,7 +513,8 @@ export default async function AnalyticsPage() {
         <p className={mutedClasses}>
           The data is capped at {MAX_ROWS.toLocaleString()} rows per query: volume, on-time and triage-quality
           figures use the most recent {MAX_ROWS.toLocaleString()} tickets, and workload, sentiment and the
-          overdue counts the oldest {MAX_ROWS.toLocaleString()} open ones.
+          overdue counts the oldest {MAX_ROWS.toLocaleString()} open ones
+          {ratingsSampled ? `, and customer satisfaction the ${MAX_ROWS.toLocaleString()} most recently changed ratings` : ""}.
         </p>
       ) : null}
     </div>

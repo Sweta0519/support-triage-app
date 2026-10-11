@@ -141,3 +141,25 @@ test("admins see team CSAT and low ratings on Analytics", async ({ browser }) =>
   await expect(low.getByText("Nobody called me back.")).toBeVisible();
   await ctx.close();
 });
+
+test("a rating given after the ticket is reopened and resolved again credits the new resolver", async () => {
+  const db = service();
+  const customer = await signedIn(requireEnv("TEST_USER_EMAIL"), requireEnv("TEST_USER_PASSWORD"));
+  const agent = await signedIn(requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
+  const admin = await signedIn(requireEnv("TEST_ADMIN_EMAIL"), requireEnv("TEST_ADMIN_PASSWORD"));
+  const ticket = await resolvedTicket(db, agent.id, "CSAT reopen probe");
+  const rate = (score: number) => customer.client.rpc("rate_ticket", { p_ticket_id: ticket.id, p_score: score, p_comment: "" });
+  const credit = async () =>
+    (await db.from("ticket_ratings").select("agent_id").eq("ticket_id", ticket.id).single()).data?.agent_id;
+
+  expect((await rate(5)).error).toBeNull();
+  expect(await credit()).toBe(agent.id);
+
+  // Reopened, taken over by the admin and resolved again.
+  for (const patch of [{ status: "in_progress" }, { assignee_id: admin.id }, { status: "resolved" }]) {
+    const { error } = await db.from("tickets").update(patch).eq("id", ticket.id);
+    if (error) throw new Error(error.message);
+  }
+  expect((await rate(2)).error).toBeNull();
+  expect(await credit()).toBe(admin.id);
+});
