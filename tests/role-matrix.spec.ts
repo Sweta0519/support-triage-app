@@ -11,14 +11,18 @@ test("a customer is bounced from the staff queue", async ({ page }) => {
   await expect(page).toHaveURL(/\/403$/);
 });
 
-test("staff are bounced from the customer ticket pages", async ({ browser }) => {
+test("staff are bounced from the customer's ticket list, and get the staff form on /tickets/new", async ({
+  browser,
+}) => {
   const agentContext = await browser.newContext();
   const agentPage = await agentContext.newPage();
   await login(agentPage, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
   await agentPage.goto("/tickets");
   await expect(agentPage).toHaveURL(/\/403$/);
+  // Since SUP-25 staff can file a ticket on a customer's behalf: the page
+  // shows the staff form (with a customer email field), not the customer's.
   await agentPage.goto("/tickets/new");
-  await expect(agentPage).toHaveURL(/\/403$/);
+  await expect(agentPage.getByLabel("Customer email")).toBeVisible();
   await agentContext.close();
 });
 

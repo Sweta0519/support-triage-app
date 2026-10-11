@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 
 export type RateLimitedAction =
   | "create_ticket"
+  | "staff_create_ticket"
   | "add_comment"
   | "rerun_triage"
   | "assistant_message"

@@ -51,6 +51,23 @@ export async function listStaffProfiles(): Promise<StaffProfile[]> {
   return data;
 }
 
+// A staff member's email, e.g. for "Filed by …" on a ticket. RLS lets
+// staff read other staff profiles (and admins everyone); for anyone else,
+// or a non-staff id, this is null.
+export async function getStaffEmail(id: string): Promise<string | null> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("email")
+    .eq("id", id)
+    .in("role", ["agent", "admin"])
+    .maybeSingle();
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data?.email ?? null;
+}
+
 // The only way a role changes. admin_set_role() re-checks is_admin() itself
 // and refuses self-changes and demoting the last admin -- so the guarantees
 // hold even if this is ever called from somewhere other than the admin UI.

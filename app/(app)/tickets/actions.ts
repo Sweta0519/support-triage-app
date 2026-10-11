@@ -16,6 +16,8 @@ import {
   claimTicket,
   getTicketForStaff,
   isUuid,
+  staffCreateTicket,
+  StaffTicketError,
   updateTicketStatus,
   ALLOWED_STATUS_TRANSITIONS,
   BODY_MAX_LENGTH,
@@ -39,6 +41,56 @@ import {
 } from "@/app/lib/triage-fields";
 
 export type TicketFormState = { error: string } | undefined;
+
+// Staff filing a ticket on a customer's behalf. Same validation and the
+// same after-response triage as a customer's own ticket; the database
+// function resolves the customer from the email and records who filed it.
+export async function staffCreateTicketAction(
+  _prevState: TicketFormState,
+  formData: FormData
+): Promise<TicketFormState> {
+  await requireStaff();
+  const customerEmail = String(formData.get("customerEmail") ?? "").trim();
+  const subject = String(formData.get("subject") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+  const assignToMe = formData.get("assignToMe") === "on";
+
+  if (!customerEmail || !subject || !body) {
+    return { error: "Customer email, subject and description are all required." };
+  }
+  if (customerEmail.length > 320 || !customerEmail.includes("@")) {
+    return { error: "Enter the customer's email address." };
+  }
+  if (subject.length > SUBJECT_MAX_LENGTH) {
+    return { error: `Subject must be at most ${SUBJECT_MAX_LENGTH} characters.` };
+  }
+  if (body.length > BODY_MAX_LENGTH) {
+    return { error: `Description must be at most ${BODY_MAX_LENGTH.toLocaleString()} characters.` };
+  }
+
+  let ticketId: string;
+  try {
+    ticketId = (await staffCreateTicket(customerEmail, subject, body, assignToMe)).id;
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return { error: RATE_LIMITED_MESSAGE };
+    }
+    if (err instanceof StaffTicketError) {
+      return {
+        error:
+          err.reason === "customer_not_found"
+            ? "No customer account with that email. The customer needs to sign up first."
+            : "You no longer have permission to create tickets.",
+      };
+    }
+    throw err;
+  }
+
+  if (isAiConfigured()) {
+    after(() => runTriage(ticketId));
+  }
+  redirect(`/tickets/${ticketId}`);
+}
 
 export async function createTicketAction(
   _prevState: TicketFormState,

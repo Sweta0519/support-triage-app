@@ -91,7 +91,14 @@ function navItems(role: AppRole): NavItem[] {
   }
   const staff: NavItem[] = [
     // A ticket page is opened from the queue, so it highlights Queue.
-    { href: "/queue", label: "Queue", icon: icons.inbox, isActive: (p) => p === "/queue" || p.startsWith("/tickets/") },
+    {
+      href: "/queue",
+      label: "Queue",
+      icon: icons.inbox,
+      isActive: (p) => p === "/queue" || (p.startsWith("/tickets/") && p !== "/tickets/new"),
+    },
+    // Logging a ticket for a customer who called or emailed.
+    { href: "/tickets/new", label: "New ticket", icon: icons.plus, isActive: (p) => p === "/tickets/new" },
     { href: "/notes", label: "Notes", icon: icons.note, isActive: under("/notes") },
   ];
   if (role === "admin") {

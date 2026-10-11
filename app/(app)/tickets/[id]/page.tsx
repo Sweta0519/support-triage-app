@@ -9,7 +9,7 @@ import {
 } from "@/app/lib/db/tickets";
 import { listComments, type Comment } from "@/app/lib/db/comments";
 import { getLatestTriageResult } from "@/app/lib/db/triage";
-import { listStaffProfiles, type StaffProfile } from "@/app/lib/db/profiles";
+import { getStaffEmail, listStaffProfiles, type StaffProfile } from "@/app/lib/db/profiles";
 import { getActiveShareForTicket } from "@/app/lib/db/shares";
 import { Badge } from "@/app/components/Badge";
 import { SlaBadge } from "@/app/components/SlaBadge";
@@ -161,6 +161,16 @@ export default async function TicketDetailPage({
   // Staff trace back through the queue tab they came from; customers
   // through their own list. The ticket itself is the current page.
   const parents = isStaff ? queueBreadcrumb(fromFilter) : [MY_TICKETS_CRUMB];
+  // A ticket staff logged for the customer (phone, chat, email) says so.
+  // Customers aren't shown which staff member: they can't read staff
+  // profiles, and "our support team" is what they need to know.
+  const filedBy = !ticket.created_by
+    ? null
+    : !isStaff
+      ? "Filed by our support team on your behalf"
+      : ticket.created_by === profile.id
+        ? "Filed by you on the customer's behalf"
+        : `Filed by ${(await getStaffEmail(ticket.created_by)) ?? "a former staff member"} on the customer's behalf`;
   // Staff only: the response target is an internal commitment.
   const sla = isStaff ? computeSla(ticket) : null;
 
@@ -176,6 +186,7 @@ export default async function TicketDetailPage({
             <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
               <span className="font-mono">{formatTicketNumber(ticket.number)}</span> · Opened{" "}
               {formatRelativeTime(ticket.created_at)}
+              {filedBy ? <> · {filedBy}</> : null}
             </p>
             {sla ? (
               <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
