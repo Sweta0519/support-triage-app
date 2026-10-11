@@ -31,13 +31,19 @@ import { widePageClass, chipClass } from "@/app/lib/styles";
 
 const chipClasses = chipClass;
 
+// The tab and sort a bare /queue opens on: the user's own defaults from
+// account settings.
+type QueueDefaults = { filter: QueueFilterKey; sort: QueueSort };
+
 // Every link on the page keeps the rest of the view (tab, status, sort,
-// search) and changes only what it's for. Defaults are left off the URL.
-function viewHref(filter: QueueFilterKey, view: QueueView): string {
+// search) and changes only what it's for. Defaults are left off the URL --
+// the user's own, so "All" is spelled out for someone whose queue opens on
+// "Mine".
+function viewHref(filter: QueueFilterKey, view: QueueView, defaults: QueueDefaults): string {
   const params = new URLSearchParams();
-  if (filter !== "all") params.set("filter", filter);
+  if (filter !== defaults.filter) params.set("filter", filter);
   if (view.status !== "all") params.set("status", view.status);
-  if (view.sort !== "sla") params.set("sort", view.sort);
+  if (view.sort !== defaults.sort) params.set("sort", view.sort);
   if (view.q !== "") params.set("q", view.q);
   const query = params.toString();
   return query ? `/queue?${query}` : "/queue";
@@ -183,9 +189,10 @@ export default async function QueuePage({
   const tickets = await listQueueTickets(profile.id, profile.role);
 
   const params = await searchParams;
-  const filter = parseQueueFilter(params.filter);
-  const view = parseQueueView(params);
-  const returnTo = viewHref(filter, view);
+  const defaults: QueueDefaults = { filter: profile.queue_default_filter, sort: profile.queue_default_sort };
+  const filter = parseQueueFilter(params.filter, defaults.filter);
+  const view = parseQueueView(params, defaults.sort);
+  const returnTo = viewHref(filter, view, defaults);
   const claimTaken = params.notice === "claim-taken";
   const now = new Date();
 
@@ -234,9 +241,9 @@ export default async function QueuePage({
         </div>
         {/* A plain GET form: works without JavaScript and keeps the view in the URL. */}
         <form action="/queue" className="flex w-full items-center gap-2 sm:w-auto">
-          {filter !== "all" ? <input type="hidden" name="filter" value={filter} /> : null}
+          {filter !== defaults.filter ? <input type="hidden" name="filter" value={filter} /> : null}
           {view.status !== "all" ? <input type="hidden" name="status" value={view.status} /> : null}
-          {view.sort !== "sla" ? <input type="hidden" name="sort" value={view.sort} /> : null}
+          {view.sort !== defaults.sort ? <input type="hidden" name="sort" value={view.sort} /> : null}
           <input
             type="search"
             name="q"
@@ -283,7 +290,7 @@ export default async function QueuePage({
             return (
               <Link
                 key={key}
-                href={viewHref(key, view)}
+                href={viewHref(key, view, defaults)}
                 aria-current={active ? "page" : undefined}
                 className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
                   active
@@ -314,7 +321,7 @@ export default async function QueuePage({
               return (
                 <Link
                   key={s}
-                  href={viewHref(filter, { ...view, status: s })}
+                  href={viewHref(filter, { ...view, status: s }, defaults)}
                   aria-current={active ? "page" : undefined}
                   className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium capitalize transition-colors ${
                     active
@@ -333,7 +340,7 @@ export default async function QueuePage({
             {(Object.keys(QUEUE_SORTS) as QueueSort[]).map((s) => (
               <Link
                 key={s}
-                href={viewHref(filter, { ...view, sort: s })}
+                href={viewHref(filter, { ...view, sort: s }, defaults)}
                 aria-current={view.sort === s ? "page" : undefined}
                 className={`rounded-md px-2 py-1 transition-colors ${
                   view.sort === s
@@ -361,7 +368,7 @@ export default async function QueuePage({
           </p>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
             {view.q !== "" || view.status !== "all" ? (
-              <Link href={viewHref(filter, { status: "all", sort: view.sort, q: "" })} className="underline">
+              <Link href={viewHref(filter, { status: "all", sort: view.sort, q: "" }, defaults)} className="underline">
                 Clear search and status filter
               </Link>
             ) : (

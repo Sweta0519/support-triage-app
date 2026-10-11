@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { requireProfile } from "@/app/lib/auth/session";
 import { listMyTickets, listQueueTickets } from "@/app/lib/db/tickets";
+import { queueHref } from "@/app/lib/queue-filters";
 import { widePageClass } from "@/app/lib/styles";
 
 function DashboardCard({
@@ -84,7 +85,7 @@ export default async function HomePage() {
               stat={String(queue.length)}
             />
             <DashboardCard
-              href="/queue"
+              href={queueHref("unassigned")}
               title="Unassigned"
               description="Nobody has claimed these yet."
               stat={String(unassignedCount)}

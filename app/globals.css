@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* dark: follows the system setting unless the signed-in user picked a theme
+   on the account page, which the app layout writes as data-theme on its
+   root element ("light" or "dark"; absent means "system"). */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:not([data-theme="light"], [data-theme="light"] *)) {
+      @slot;
+    }
+  }
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -17,6 +31,23 @@
     --background: #0a0a0a;
     --foreground: #ededed;
   }
+}
+
+/* An explicit choice wins over the system setting. :root:has() carries it up
+   to the page itself, so the body background, scrollbars and overscroll
+   follow it too, not just the app layout's element. */
+:root:has([data-theme="light"]),
+[data-theme="light"] {
+  --background: #ffffff;
+  --foreground: #171717;
+  color-scheme: light;
+}
+
+:root:has([data-theme="dark"]),
+[data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  color-scheme: dark;
 }
 
 body {

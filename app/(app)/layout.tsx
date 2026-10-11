@@ -14,9 +14,14 @@ export default async function AppLayout({
 
   return (
     // Sidebar on the left from lg up, a top bar on phones; the page and
-    // footer take the remaining width.
-    <div className="flex flex-1 flex-col lg:flex-row">
-      <AppSidebar profile={{ email: profile.email, role: profile.role }} />
+    // footer take the remaining width. data-theme carries the theme picked
+    // on the account page (see the dark variant in globals.css); "system"
+    // leaves it off so the device setting decides.
+    <div
+      data-theme={profile.theme === "system" ? undefined : profile.theme}
+      className="flex flex-1 flex-col lg:flex-row"
+    >
+      <AppSidebar profile={{ email: profile.email, fullName: profile.full_name, role: profile.role }} />
       <div className="flex min-w-0 flex-1 flex-col">
         <main className="flex flex-1 flex-col">{children}</main>
         <footer className="border-t border-black/[.08] dark:border-white/[.145]">

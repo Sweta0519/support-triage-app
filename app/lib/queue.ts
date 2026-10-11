@@ -24,16 +24,21 @@ function first(raw: string | string[] | undefined): string | undefined {
 }
 
 // Anything unrecognised in the URL falls back to the default view.
-export function parseQueueView(params: {
-  status?: string | string[];
-  sort?: string | string[];
-  q?: string | string[];
-}): QueueView {
+// defaultSort: the user's saved default (account settings), used when the
+// URL doesn't name a sort.
+export function parseQueueView(
+  params: {
+    status?: string | string[];
+    sort?: string | string[];
+    q?: string | string[];
+  },
+  defaultSort: QueueSort = "sla"
+): QueueView {
   const status = first(params.status);
   const sort = first(params.sort);
   return {
     status: (QUEUE_STATUSES as readonly string[]).includes(status ?? "") ? (status as QueueStatus) : "all",
-    sort: sort !== undefined && Object.hasOwn(QUEUE_SORTS, sort) ? (sort as QueueSort) : "sla",
+    sort: sort !== undefined && Object.hasOwn(QUEUE_SORTS, sort) ? (sort as QueueSort) : defaultSort,
     q: (first(params.q) ?? "").trim().slice(0, 200),
   };
 }

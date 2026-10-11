@@ -37,7 +37,7 @@ test("agent can claim a ticket, move its status, and post an internal note the c
   // Arriving from "All" (no ?from): the trail is Home / Queue / <ticket>.
   const crumbs = agentPage.getByRole("navigation", { name: "Breadcrumb" });
   await expect(crumbs.getByRole("link")).toHaveText(["Home", "Queue"]);
-  await expect(crumbs.getByRole("link", { name: "Queue", exact: true })).toHaveAttribute("href", "/queue");
+  await expect(crumbs.getByRole("link", { name: "Queue", exact: true })).toHaveAttribute("href", "/queue?filter=all");
   await expect(crumbs.locator('[aria-current="page"]')).toHaveText(subject);
   await agentPage.getByRole("button", { name: "Claim ticket" }).click();
   await expect(agentPage.getByText("Assigned to you")).toBeVisible();

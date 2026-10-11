@@ -1,6 +1,10 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
+import { RateLimitError } from "@/app/lib/db/rate-limit";
+import type { Theme } from "@/app/lib/preferences";
+import type { QueueFilterKey } from "@/app/lib/queue-filters";
+import type { QueueSort } from "@/app/lib/queue";
 
 export type AppRole = "customer" | "agent" | "admin";
 
@@ -9,6 +13,9 @@ export type Profile = {
   email: string;
   full_name: string | null;
   role: AppRole;
+  theme: Theme;
+  queue_default_filter: QueueFilterKey;
+  queue_default_sort: QueueSort;
   created_at: string;
   updated_at: string;
 };
@@ -22,7 +29,9 @@ export function isAppRole(value: unknown): value is AppRole {
 // RLS decides what comes back: admins get every profile, agents only staff
 // rows, a customer only their own. Only the admin-gated /admin/users page
 // calls this.
-export async function listProfiles(): Promise<Profile[]> {
+export type ProfileSummary = Pick<Profile, "id" | "email" | "full_name" | "role" | "created_at" | "updated_at">;
+
+export async function listProfiles(): Promise<ProfileSummary[]> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("profiles")
@@ -96,4 +105,37 @@ export async function getOrCreateProfile(): Promise<Profile | null> {
   }
 
   return data as Profile;
+}
+
+export type ProfileSettings = {
+  fullName: string;
+  theme: Theme;
+  // Null keeps the stored value (customers' forms have no queue fields).
+  queueDefaultFilter: QueueFilterKey | null;
+  queueDefaultSort: QueueSort | null;
+};
+
+export class ProfileSettingsError extends Error {
+  constructor() {
+    super("update_own_profile refused the input");
+  }
+}
+
+// The only write path to a profile for its owner. update_own_profile()
+// always targets auth.uid() and names only these four columns, so it can't
+// touch role or email (authenticated has no UPDATE grant on profiles).
+export async function updateOwnProfile(settings: ProfileSettings): Promise<void> {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("update_own_profile", {
+    p_full_name: settings.fullName,
+    p_theme: settings.theme,
+    p_queue_default_filter: settings.queueDefaultFilter,
+    p_queue_default_sort: settings.queueDefaultSort,
+  });
+  if (!error) return;
+  if (error.message.includes("rate_limited")) throw new RateLimitError("update_profile");
+  // 22023 from the function's own checks, 23514 from a column constraint,
+  // 42501 / P0002 if the session or profile vanished since the page loaded.
+  if (["22023", "23514", "42501", "P0002"].includes(error.code)) throw new ProfileSettingsError();
+  throw new Error(error.message);
 }
