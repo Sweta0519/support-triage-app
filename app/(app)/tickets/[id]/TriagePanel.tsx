@@ -9,11 +9,15 @@ import { Badge } from "@/app/components/Badge";
 import { priorityBadgeClasses } from "@/app/lib/badges";
 import { secondaryButtonClass } from "@/app/lib/styles";
 import { ticketHref, type QueueFilterKey } from "@/app/lib/queue-filters";
+import { canRerunTriage, type EffectiveTriageStatus } from "@/app/lib/triage-status";
 
-const STATUS_COPY: Record<string, string> = {
+const STATUS_COPY: Record<EffectiveTriageStatus, string> = {
   pending: "Queued -- the assessment usually lands within a few seconds. Refresh to check.",
   processing: "Running...",
+  // Only if a completed run somehow left no result row.
+  completed: "No assessment yet.",
   failed: "Triage failed. You can re-run it.",
+  stalled: "Triage stalled -- the run stopped before it finished. Re-run it.",
 };
 
 function reviewStatusLine(
@@ -44,7 +48,8 @@ export function TriagePanel({
   fromFilter,
 }: {
   ticketId: string;
-  triageStatus: string;
+  // Effective: a run stuck in pending/processing shows as "stalled".
+  triageStatus: EffectiveTriageStatus;
   triage: TriageResult | null;
   // The ticket's working values (what the queue sorts by) and who reviewed them.
   triageState: TriageState | null;
@@ -53,14 +58,21 @@ export function TriagePanel({
   // links so hopping between tickets doesn't lose the way back.
   fromFilter: QueueFilterKey;
 }) {
-  const canRerun = triageStatus === "completed" || triageStatus === "failed";
+  const canRerun = canRerunTriage(triageStatus);
 
   return (
     <section className="flex flex-col gap-3 rounded-xl border border-black/[.08] p-4 dark:border-white/[.145]">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-black dark:text-zinc-50">AI triage</h2>
         <div className="flex items-center gap-2">
-          <Badge label={triageStatus} colorClasses="bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400" />
+          <Badge
+            label={triageStatus}
+            colorClasses={
+              triageStatus === "stalled" || triageStatus === "failed"
+                ? "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
+                : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+            }
+          />
           {canRerun ? (
             <form action={rerunTriageAction}>
               <input type="hidden" name="ticketId" value={ticketId} />
@@ -72,9 +84,12 @@ export function TriagePanel({
         </div>
       </div>
 
+      {triage && triageStatus === "stalled" ? (
+        <p className="text-xs text-amber-700 dark:text-amber-400">{STATUS_COPY.stalled}</p>
+      ) : null}
       {!triage ? (
         <p className="text-xs text-zinc-500 dark:text-zinc-500">
-          {STATUS_COPY[triageStatus] ?? "No assessment yet."}
+          {STATUS_COPY[triageStatus]}
         </p>
       ) : (
         <>

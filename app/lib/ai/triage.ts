@@ -13,6 +13,7 @@ import {
   insertTriageEvent,
   insertTriageResult,
   markTriageFailed,
+  ownsTriageClaim,
   matchTickets,
   resetTriageStatus,
   upsertTicketEmbedding,
@@ -305,10 +306,11 @@ export async function runTriage(ticketId: string): Promise<void> {
     return;
   }
 
-  const ticket = await claimTicketForTriage(ticketId);
-  if (!ticket) {
+  const claim = await claimTicketForTriage(ticketId);
+  if (!claim) {
     return;
   }
+  const { ticket, claimId } = claim;
 
   const startedAt = Date.now();
   try {
@@ -334,6 +336,10 @@ export async function runTriage(ticketId: string): Promise<void> {
       `${ticket.subject}\n${ticket.body}`
     );
 
+    // A run that took so long a re-run took over must not record anything.
+    if (!(await ownsTriageClaim(ticket.id, claimId))) {
+      return;
+    }
     await insertTriageResult({
       ticket_id: ticket.id,
       model,
@@ -358,17 +364,21 @@ export async function runTriage(ticketId: string): Promise<void> {
       cost_usd: embeddingCostUsd + usage.cost_usd,
     });
 
-    await applyTriageToTicket(ticket.id, {
+    const applied = await applyTriageToTicket(ticket.id, claimId, {
       priority: output.priority,
       category: output.category,
       team: output.team,
     });
-    await insertTriageEvent(ticket.id, "triage_completed", output.priority);
+    if (applied) {
+      await insertTriageEvent(ticket.id, "triage_completed", output.priority);
+    }
   } catch (err) {
     console.error(`[triage] ticket ${ticket.id} failed:`, err instanceof Error ? err.message : err);
     try {
-      await markTriageFailed(ticket.id);
-      await insertTriageEvent(ticket.id, "triage_failed", null);
+      if (await ownsTriageClaim(ticket.id, claimId)) {
+        await markTriageFailed(ticket.id, claimId);
+        await insertTriageEvent(ticket.id, "triage_failed", null);
+      }
     } catch (inner) {
       console.error(`[triage] could not mark ticket ${ticket.id} failed:`, inner);
     }

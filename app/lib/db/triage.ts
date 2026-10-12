@@ -1,8 +1,11 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import { createServiceSupabaseClient } from "@/app/lib/supabase/service";
 import type { TicketStatus } from "@/app/lib/db/tickets";
+import { STALE_TRIAGE_MS } from "@/app/lib/triage-status";
 import type { TriageReviewFields } from "@/app/lib/triage-fields";
 
 export type TriageResult = {
@@ -117,17 +120,23 @@ export type TriageTicket = {
   status: TicketStatus;
 };
 
-// Atomic claim: only one worker can flip pending -> processing. Zero rows
-// back means another invocation already owns this ticket (or it isn't
-// pending), so the caller must stop -- this is what prevents double
-// triage when e.g. a retry and the original both fire.
-export async function claimTicketForTriage(ticketId: string): Promise<TriageTicket | null> {
+// Atomic claim: only one worker can take a ticket's triage. It takes a
+// "pending" ticket, or one whose run has been "processing" for longer than
+// STALE_TRIAGE_MS (that run died -- or is so slow it has lost its claim).
+// Zero rows back means another invocation owns it, so the caller stops --
+// this is what prevents double triage. The returned claimId must accompany
+// the run's final writes, which only apply while the claim is still theirs.
+export async function claimTicketForTriage(
+  ticketId: string
+): Promise<{ ticket: TriageTicket; claimId: string } | null> {
   const supabase = createServiceSupabaseClient();
+  const claimId = randomUUID();
+  const staleBefore = new Date(Date.now() - STALE_TRIAGE_MS).toISOString();
   const { data: claimed, error: claimError } = await supabase
     .from("ticket_triage_state")
-    .update({ triage_status: "processing" })
+    .update({ triage_status: "processing", claim_id: claimId, claimed_at: new Date().toISOString() })
     .eq("ticket_id", ticketId)
-    .eq("triage_status", "pending")
+    .or(`triage_status.eq.pending,and(triage_status.eq.processing,claimed_at.lt.${staleBefore})`)
     .select("ticket_id")
     .maybeSingle();
 
@@ -147,26 +156,35 @@ export async function claimTicketForTriage(ticketId: string): Promise<TriageTick
   if (error) {
     throw new Error(error.message);
   }
-  return ticket;
+  return ticket ? { ticket, claimId } : null;
 }
 
-// Used by the manual "re-run triage" path: put a completed/failed ticket
-// back to pending so claimTicketForTriage() can pick it up again. A ticket
-// that is `processing` is only reset if it has been stuck there for more
-// than five minutes (updated_at is bumped by the claim) -- otherwise a
-// re-run could interrupt a live run and both would write results.
-const STALE_PROCESSING_MS = 5 * 60_000;
+// Whether claimId is still the ticket's current claim (a re-run may have
+// taken over a run that was too slow).
+export async function ownsTriageClaim(ticketId: string, claimId: string): Promise<boolean> {
+  const supabase = createServiceSupabaseClient();
+  const { data, error } = await supabase
+    .from("ticket_triage_state")
+    .select("ticket_id")
+    .eq("ticket_id", ticketId)
+    .eq("claim_id", claimId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data !== null;
+}
 
+// Used by the manual "re-run triage" path: put a completed or failed ticket
+// back to pending so claimTicketForTriage() can pick it up again. A stalled
+// "processing" run needs no reset -- the claim takes it over directly.
 export async function resetTriageStatus(ticketId: string): Promise<void> {
   const supabase = createServiceSupabaseClient();
-  const staleBefore = new Date(Date.now() - STALE_PROCESSING_MS).toISOString();
   const { error } = await supabase
     .from("ticket_triage_state")
     .update({ triage_status: "pending" })
     .eq("ticket_id", ticketId)
-    .or(
-      `triage_status.in.(completed,failed),and(triage_status.eq.processing,updated_at.lt.${staleBefore})`
-    );
+    .in("triage_status", ["completed", "failed"]);
 
   if (error) {
     throw new Error(error.message);
@@ -238,13 +256,15 @@ export async function insertTriageResult(row: NewTriageResult): Promise<void> {
 // never written over it.
 export async function applyTriageToTicket(
   ticketId: string,
+  claimId: string,
   fields: { priority: string | null; category: string | null; team: string | null }
-): Promise<void> {
+): Promise<boolean> {
   const supabase = createServiceSupabaseClient();
   const { data, error } = await supabase
     .from("ticket_triage_state")
     .update({ ...fields, triage_status: "completed" })
     .eq("ticket_id", ticketId)
+    .eq("claim_id", claimId)
     .is("reviewed_at", null)
     .select("ticket_id");
 
@@ -252,25 +272,32 @@ export async function applyTriageToTicket(
     throw new Error(error.message);
   }
   if (data.length > 0) {
-    return;
+    return true;
   }
 
-  const { error: statusError } = await supabase
+  const { data: statusData, error: statusError } = await supabase
     .from("ticket_triage_state")
     .update({ triage_status: "completed" })
-    .eq("ticket_id", ticketId);
+    .eq("ticket_id", ticketId)
+    .eq("claim_id", claimId)
+    .select("ticket_id");
 
   if (statusError) {
     throw new Error(statusError.message);
   }
+  // false: the claim was taken over; this run's result stays unapplied.
+  return statusData.length > 0;
 }
 
-export async function markTriageFailed(ticketId: string): Promise<void> {
+// Only while the claim is still this run's: a run that lost its claim to a
+// re-run must not mark the re-run's ticket failed.
+export async function markTriageFailed(ticketId: string, claimId: string): Promise<void> {
   const supabase = createServiceSupabaseClient();
   const { error } = await supabase
     .from("ticket_triage_state")
     .update({ triage_status: "failed" })
-    .eq("ticket_id", ticketId);
+    .eq("ticket_id", ticketId)
+    .eq("claim_id", claimId);
 
   if (error) {
     throw new Error(error.message);

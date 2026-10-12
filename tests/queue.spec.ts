@@ -56,6 +56,8 @@ test.describe("queue view logic", () => {
         reviewed_by: null,
         reviewed_at: null,
         reviewed_result_id: null,
+        updated_at: "2026-10-01T00:00:00Z",
+        claimed_at: null,
       },
       latest_triage: { id: "run-1", summary: "Customer was double charged", is_escalation_risk: false, frustration: 2, needs_human_review: false },
     });
