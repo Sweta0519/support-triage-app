@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 
 import { createServerSupabaseClient } from "./clients";
+import { AUTH_RATE_LIMITED_MESSAGE, consumeAuthRateLimit } from "@/app/lib/db/auth-rate-limit";
 
 export type AuthFormState = { error: string } | undefined;
 
@@ -19,6 +20,10 @@ export async function signUpAction(
   formData: FormData
 ): Promise<AuthFormState> {
   const { email, password } = parseCredentials(formData);
+  // Per IP and per email, before Supabase sends a confirmation email.
+  if (!(await consumeAuthRateLimit("sign_up", email))) {
+    return { error: AUTH_RATE_LIMITED_MESSAGE };
+  }
   const supabase = await createServerSupabaseClient();
 
   // No `options.data` role is ever passed here -- role is hard-coded to
@@ -42,6 +47,11 @@ export async function signInAction(
   formData: FormData
 ): Promise<AuthFormState> {
   const { email, password } = parseCredentials(formData);
+  // Per IP for every attempt; refused outright once this email has had too
+  // many failed attempts recently.
+  if (!(await consumeAuthRateLimit("sign_in", email))) {
+    return { error: AUTH_RATE_LIMITED_MESSAGE };
+  }
   const supabase = await createServerSupabaseClient();
 
   const { error } = await supabase.auth.signInWithPassword({
@@ -50,6 +60,11 @@ export async function signInAction(
   });
 
   if (error) {
+    // Only a wrong password counts against the email, so nobody can lock
+    // an account by trying it a couple of times.
+    if (error.code === "invalid_credentials") {
+      await consumeAuthRateLimit("sign_in_failed", email);
+    }
     return { error: error.message };
   }
 

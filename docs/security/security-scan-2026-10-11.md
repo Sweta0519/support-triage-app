@@ -18,7 +18,7 @@
 |---|---|---|---|
 | Critical | 0 | - | - |
 | High | 1 | 1 (H-1) | - |
-| Medium | 2 | 1 (M-1) | 1 (M-2, see below) |
+| Medium | 2 | 2 (M-1; M-2 on 2026-10-12) | 0 |
 | Low | 3 | 1 (L-2) | 2 (L-1, L-3) |
 | Info | 8 | 3 (I-2, I-4, I-6) | 5 |
 
@@ -40,7 +40,7 @@ There are no Critical findings in the app's own code. The one High was the Next.
 
 | Finding | Status |
 |---|---|
-| **M-2** no app-level throttling on sign-in / sign-up; this relies on Supabase Auth's built-in limits, which may see Vercel's IP rather than the visitor's (unverified) | **Open, Linear SUP-13:** an IP- and email-keyed limiter on the auth Server Actions, plus CAPTCHA on sign-up |
+| **M-2** no app-level throttling on sign-in / sign-up; this relies on Supabase Auth's built-in limits, which may see Vercel's IP rather than the visitor's (unverified) | **Fixed 2026-10-12, SUP-13:** `ticketing.consume_auth_rate_limit()` (service-role only) throttles sign-in to 20 attempts / 10 min per IP and refuses an email after 10 failed sign-ins in 15 min (only failures count, so nobody can lock an account by trying it once or twice); sign-up to 5 / hour per IP and 3 / hour per email. IP from Vercel's `x-forwarded-for`; emails stored only as md5 hashes, purged after a day. Still open: the Vercel WAF rule (dashboard-only, see I-7; recommended settings in `docs/security/vercel-waf.md`) and optional CAPTCHA on sign-up. |
 | **L-1** `alter default privileges in schema ticketing revoke execute ... from public` has no effect, because per-schema defaults only *add* to the global ones | **Accepted, documented.** No live exposure: every callable function revokes PUBLIC EXECUTE explicitly, and the rest are trigger functions. A global `alter default privileges for role postgres` would also affect `notes-collections`, which shares this database, so the rule stays: **every new function must revoke PUBLIC EXECUTE itself** |
 | **L-3** account deletion needs only the typed email, with no re-authentication | **Open, Linear SUP-14.** CSRF-protected, and the last-admin guard holds. The risk is a stolen or unattended session |
 | **I-1** CSP `script-src 'unsafe-inline'` | Accepted, as in audits 2-4. There's no `dangerouslySetInnerHTML`, `react-markdown` renders no raw HTML, and the `img-src` restriction blocks beacon exfiltration |
