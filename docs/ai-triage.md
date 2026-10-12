@@ -98,15 +98,23 @@ Three OpenRouter calls per ticket: the embedding, then two completions **in para
 SUP-31, prompt version `2026-10-12.1`):
 
 - **Assessment** (`max_tokens` 900): sees this ticket *and* the candidate tickets, and returns the
-  summary, category, priority and reason, team, frustration, escalation flag, `duplicate_of`,
-  `related_ticket_ids` and confidence. It writes nothing customer-facing.
-- **Reply** (`max_tokens` 600): sees **only this ticket** -- no candidates, and not even the
-  assessment's summary -- and returns `suggested_reply` and `missing_info`.
+  category, priority and reason, team, frustration, escalation flag, `duplicate_of`,
+  `related_ticket_ids` and confidence. Nothing it writes is customer-visible (`priority_reason`
+  is staff-only).
+- **Summary and reply** (`max_tokens` 600): sees **only this ticket** -- no candidates and
+  nothing from the assessment -- and returns the `summary` (which can be published on a public
+  share page), `suggested_reply` and `missing_info`.
+
+The ticket body is sent to both calls, so input tokens for a long ticket roughly double: that's
+the price of keeping the customer-visible text away from other customers' tickets. If either
+call fails, the run fails as a whole (a re-run is one click away), and what the other call
+already spent is logged, since a failed run stores no result row.
 
 Prompts, schemas and output clean-up live in `app/lib/ai/triage-prompts.ts` (no server-only
 import, so `tests/triage-prompts.spec.ts` checks exactly what each call is sent). Each call retries
-once on 429/5xx. Both responses are stored in `triage_results.raw` as `{ assessment, reply }`, and
-the tokens and cost are summed.
+once on 429/5xx. Both responses are stored in `triage_results.raw` as `{ assessment, reply }`, each with the
+model OpenRouter actually used. The tokens and cost are summed, and `model` names both models if
+they ever differ.
 
 ## Cost tracking (optional task)
 
@@ -145,7 +153,8 @@ urgent" is a given. Mitigations are structural, not just prompt wording:
   is replaced with `[link removed]` before storing. A link can only have come from the model or
   from another customer's text; neither belongs in a reply an agent might paste unreviewed.
 - Other customers' text (candidate subjects and summaries) reaches **only the assessment call**,
-  which writes nothing customer-facing. There it is flattened, length-capped, wrapped in
+  which writes nothing customer-visible: the summary, the draft reply and `missing_info` come from
+  the other call. There it is flattened, length-capped, wrapped in
   `<candidate_tickets>`, and named as untrusted. The draft reply comes from a separate call that
   never sees it (SUP-31, after the Turing College review), so one customer's ticket can't plant a
   line in the reply drafted for another. That's data minimisation rather than filtering the

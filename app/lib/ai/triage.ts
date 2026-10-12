@@ -18,24 +18,15 @@ import {
   upsertTicketEmbedding,
 } from "@/app/lib/db/triage";
 import {
-  ASSESSMENT_SYSTEM_PROMPT,
-  buildAssessmentPrompt,
-  buildAssessmentSchema,
-  buildReplyPrompt,
-  MAX_ASSESSMENT_TOKENS,
+  buildTriageRequests,
   MAX_BODY_CHARS,
   MAX_CANDIDATES,
-  MAX_REPLY_TOKENS,
   normalizeAssessment,
   normalizeReply,
   PROMPT_VERSION,
-  REPLY_SCHEMA,
-  REPLY_SYSTEM_PROMPT,
   type TriageAssessment,
   type TriageReply,
 } from "@/app/lib/ai/triage-prompts";
-
-export { PROMPT_VERSION };
 
 // Runs the full triage pipeline for one ticket. Safe to call more than
 // once: the pending -> processing claim guarantees exactly one run does the
@@ -64,23 +55,25 @@ export async function runTriage(ticketId: string): Promise<void> {
     const candidateIds = candidates.map((c) => c.ticket_id);
 
     // Two calls, in parallel: the assessment sees the candidate tickets to
-    // link duplicates; the reply sees only this ticket (SUP-31).
-    const [assessment, reply] = await Promise.all([
-      completeJson<TriageAssessment>({
-        system: ASSESSMENT_SYSTEM_PROMPT,
-        user: buildAssessmentPrompt(ticket, candidates),
-        schemaName: "ticket_triage_assessment",
-        schema: buildAssessmentSchema(candidateIds),
-        maxTokens: MAX_ASSESSMENT_TOKENS,
-      }),
-      completeJson<TriageReply>({
-        system: REPLY_SYSTEM_PROMPT,
-        user: buildReplyPrompt(ticket),
-        schemaName: "ticket_triage_reply",
-        schema: REPLY_SCHEMA,
-        maxTokens: MAX_REPLY_TOKENS,
-      }),
+    // link duplicates; the summary and reply come from a call that sees
+    // only this ticket (SUP-31).
+    const requests = buildTriageRequests(ticket, candidates);
+    const [assessmentResult, replyResult] = await Promise.allSettled([
+      completeJson<TriageAssessment>(requests.assessment),
+      completeJson<TriageReply>(requests.reply),
     ]);
+    if (assessmentResult.status === "rejected" || replyResult.status === "rejected") {
+      // The run fails as a whole; log what the call that did succeed (and
+      // the embedding) cost, since a failed run stores no result row.
+      const spent =
+        embeddingCostUsd +
+        (assessmentResult.status === "fulfilled" ? assessmentResult.value.usage.cost_usd : 0) +
+        (replyResult.status === "fulfilled" ? replyResult.value.usage.cost_usd : 0);
+      console.error(`[triage] ticket ${ticket.id}: a model call failed after spending $${spent.toFixed(6)}`);
+      throw assessmentResult.status === "rejected" ? assessmentResult.reason : (replyResult as PromiseRejectedResult).reason;
+    }
+    const assessment = assessmentResult.value;
+    const reply = replyResult.value;
 
     const { output: assessed, needsHumanReview } = normalizeAssessment(assessment.data, new Set(candidateIds));
     const drafted = normalizeReply(reply.data, `${ticket.subject}\n${ticket.body}`);
@@ -92,7 +85,9 @@ export async function runTriage(ticketId: string): Promise<void> {
     }
     await insertTriageResult({
       ticket_id: ticket.id,
-      model: assessment.model,
+      // Normally the same model; if OpenRouter routed the two calls
+      // differently, both are named (and raw keeps each one's).
+      model: assessment.model === reply.model ? assessment.model : `${assessment.model} + ${reply.model}`,
       prompt_version: PROMPT_VERSION,
       summary: output.summary,
       category: output.category,
@@ -107,7 +102,10 @@ export async function runTriage(ticketId: string): Promise<void> {
       missing_info: output.missing_info,
       confidence: output.confidence,
       needs_human_review: needsHumanReview,
-      raw: { assessment: assessment.data, reply: reply.data },
+      raw: {
+        assessment: { model: assessment.model, output: assessment.data },
+        reply: { model: reply.model, output: reply.data },
+      },
       prompt_tokens: assessment.usage.prompt_tokens + reply.usage.prompt_tokens,
       completion_tokens: assessment.usage.completion_tokens + reply.usage.completion_tokens,
       latency_ms: Date.now() - startedAt,
