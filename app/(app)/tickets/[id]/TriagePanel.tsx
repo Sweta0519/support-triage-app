@@ -14,6 +14,7 @@ import { canRerunTriage, type EffectiveTriageStatus } from "@/app/lib/triage-sta
 const STATUS_COPY: Record<EffectiveTriageStatus, string> = {
   pending: "Queued -- the assessment usually lands within a few seconds. Refresh to check.",
   processing: "Running...",
+  // Only if a completed run somehow left no result row.
   completed: "No assessment yet.",
   failed: "Triage failed. You can re-run it.",
   stalled: "Triage stalled -- the run stopped before it finished. Re-run it.",
@@ -64,7 +65,14 @@ export function TriagePanel({
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-black dark:text-zinc-50">AI triage</h2>
         <div className="flex items-center gap-2">
-          <Badge label={triageStatus} colorClasses="bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400" />
+          <Badge
+            label={triageStatus}
+            colorClasses={
+              triageStatus === "stalled" || triageStatus === "failed"
+                ? "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
+                : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+            }
+          />
           {canRerun ? (
             <form action={rerunTriageAction}>
               <input type="hidden" name="ticketId" value={ticketId} />

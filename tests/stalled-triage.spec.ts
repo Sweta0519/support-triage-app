@@ -9,15 +9,24 @@ import { login, requireEnv } from "./helpers";
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
-test("effective status: only a long-unchanged pending/processing run is stalled", () => {
+test("effective status: only a long-stuck run is stalled, and never with AI off", () => {
   const now = Date.parse("2026-10-12T12:00:00Z");
   const ago = (ms: number) => new Date(now - ms).toISOString();
-  expect(effectiveTriageStatus("processing", ago(STALE_TRIAGE_MS + 1000), now)).toBe("stalled");
-  expect(effectiveTriageStatus("pending", ago(STALE_TRIAGE_MS + 1000), now)).toBe("stalled");
-  expect(effectiveTriageStatus("processing", ago(60_000), now)).toBe("processing");
-  expect(effectiveTriageStatus("completed", ago(STALE_TRIAGE_MS * 10), now)).toBe("completed");
-  expect(effectiveTriageStatus("failed", ago(STALE_TRIAGE_MS * 10), now)).toBe("failed");
-  expect(effectiveTriageStatus(undefined, undefined, now)).toBe("pending");
+  const old = ago(STALE_TRIAGE_MS + 1000);
+  const recent = ago(60_000);
+  const at = { now };
+  // processing: judged by when the run took its claim.
+  expect(effectiveTriageStatus({ triage_status: "processing", claimed_at: old, updated_at: recent }, at)).toBe("stalled");
+  expect(effectiveTriageStatus({ triage_status: "processing", claimed_at: recent, updated_at: old }, at)).toBe("processing");
+  // pending: nothing claimed it; judged by updated_at.
+  expect(effectiveTriageStatus({ triage_status: "pending", updated_at: old }, at)).toBe("stalled");
+  expect(effectiveTriageStatus({ triage_status: "pending", updated_at: recent }, at)).toBe("pending");
+  // Finished runs are never stalled.
+  expect(effectiveTriageStatus({ triage_status: "completed", updated_at: old }, at)).toBe("completed");
+  expect(effectiveTriageStatus({ triage_status: "failed", updated_at: old }, at)).toBe("failed");
+  // With AI off, pending is expected: not stalled, nothing to re-run.
+  expect(effectiveTriageStatus({ triage_status: "pending", updated_at: old }, { now, aiConfigured: false })).toBe("pending");
+  expect(effectiveTriageStatus(null, at)).toBe("pending");
 });
 
 function service() {
@@ -27,23 +36,32 @@ function service() {
   });
 }
 
-// A ticket whose triage state says "processing" since `msAgo`. updated_at
-// can't be backdated by an update (a trigger sets it to now()), so the
-// state row is replaced by an insert.
+// A ticket whose triage run has been "processing" since `msAgo`. The
+// timestamps can't be backdated by an update (a trigger sets updated_at to
+// now()), so the state row is replaced by an insert.
 async function seedProcessing(subject: string, msAgo: number) {
   const db = service();
-  const { data: customer } = await db.from("profiles").select("id").eq("email", requireEnv("TEST_USER_EMAIL")).single();
+  const { data: customer, error: customerError } = await db
+    .from("profiles")
+    .select("id")
+    .eq("email", requireEnv("TEST_USER_EMAIL"))
+    .single();
+  if (customerError) throw new Error(customerError.message);
   const { data: ticket, error } = await db
     .from("tickets")
-    .insert({ customer_id: customer!.id, subject, body: "My invoice shows the wrong amount for September." })
+    .insert({ customer_id: customer.id, subject, body: "My invoice shows the wrong amount for September." })
     .select("id, number")
     .single();
   if (error) throw new Error(error.message);
-  await db.from("ticket_triage_state").delete().eq("ticket_id", ticket.id);
+  const { error: deleteError } = await db.from("ticket_triage_state").delete().eq("ticket_id", ticket.id);
+  if (deleteError) throw new Error(deleteError.message);
+  const since = new Date(Date.now() - msAgo).toISOString();
   const { error: stateError } = await db.from("ticket_triage_state").insert({
     ticket_id: ticket.id,
     triage_status: "processing",
-    updated_at: new Date(Date.now() - msAgo).toISOString(),
+    claim_id: crypto.randomUUID(),
+    claimed_at: since,
+    updated_at: since,
   });
   if (stateError) throw new Error(stateError.message);
   return ticket as { id: string; number: number };

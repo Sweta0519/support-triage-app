@@ -34,6 +34,7 @@ import {
 } from "@/app/lib/queue";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { effectiveTriageStatus } from "@/app/lib/triage-status";
+import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { widePageClass, chipClass } from "@/app/lib/styles";
 
 const chipClasses = chipClass;
@@ -107,11 +108,11 @@ function AiChips({ ticket }: { ticket: QueueTicketSummary }) {
 // The card's summary line before an AI assessment exists. A run that died
 // (stalled) or failed says so, rather than "Awaiting" forever.
 function NoTriageYet({ state, now }: { state: QueueTicketSummary["triage_state"]; now: Date }) {
-  const status = effectiveTriageStatus(state?.triage_status, state?.updated_at, now.getTime());
+  const status = effectiveTriageStatus(state, { now: now.getTime(), aiConfigured: isAiConfigured() });
   if (status === "stalled" || status === "failed") {
     return (
       <span className="italic text-amber-700 dark:text-amber-400">
-        AI triage {status} -- open the ticket to re-run it
+        AI triage {status} -- re-run it from the ⋯ menu or the ticket
       </span>
     );
   }

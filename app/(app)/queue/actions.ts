@@ -14,6 +14,8 @@ import { ALLOWED_STATUS_TRANSITIONS } from "@/app/lib/ticket-status";
 import { COLUMN_LABELS } from "@/app/lib/board";
 import { formatTicketNumber } from "@/app/lib/format";
 import { profileName } from "@/app/lib/people";
+import { canRerunTriage, effectiveTriageStatus } from "@/app/lib/triage-status";
+import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import {
   fieldLabel,
   isOneOf,
@@ -163,6 +165,15 @@ export async function queueCardAction(ticketId: string, input: CardActionInput):
       }
 
       case "rerun": {
+        // A run that's still going isn't reset (it would race the live
+        // one), so say so rather than reporting a re-run that didn't happen.
+        if (!isAiConfigured()) {
+          return { ok: false, error: "AI triage isn't configured, so it can't be re-run." };
+        }
+        const status = effectiveTriageStatus(ticket.triage_state);
+        if (!canRerunTriage(status)) {
+          return { ok: false, error: `AI triage for ${label} is already running.` };
+        }
         // Two paid model calls: the same per-staff limit as the ticket page.
         await checkRateLimit("rerun_triage");
         await rerunTriage(ticketId);

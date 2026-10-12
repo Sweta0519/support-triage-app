@@ -32,6 +32,7 @@ import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { MY_TICKETS_CRUMB } from "@/app/lib/crumbs";
 import { readablePageClass, widePageClass, chipClass } from "@/app/lib/styles";
 import { effectiveTriageStatus } from "@/app/lib/triage-status";
+import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { Stars } from "@/app/components/Stars";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
@@ -336,7 +337,7 @@ export default async function TicketDetailPage({
             ) : null}
             <TriagePanel
               ticketId={ticket.id}
-              triageStatus={effectiveTriageStatus(ticket.triage_state?.triage_status, ticket.triage_state?.updated_at)}
+              triageStatus={effectiveTriageStatus(ticket.triage_state, { aiConfigured: isAiConfigured() })}
               triage={triage}
               triageState={ticket.triage_state}
               currentUserId={profile.id}
