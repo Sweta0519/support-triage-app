@@ -2,7 +2,8 @@
 
 The app throttles sign-in and sign-up itself (SUP-13,
 `ticketing.consume_auth_rate_limit()`). A Vercel WAF rule in front of it
-is the coarse, network-level backstop that CLAUDE.md asks for. It stops a
+is the coarse, network-level backstop that CLAUDE.md asks for (not yet
+confirmed; see Status). It stops a
 flood before it costs a function call and a database round trip.
 
 The rule lives only in the Vercel dashboard, so it can't be checked from
@@ -27,8 +28,8 @@ attempts. Page loads are `GET` and aren't affected.
 
 The limit is deliberately looser than the app's own limits:
 
-- sign-in: 20 per 10 minutes per IP, and an email locked after 10 failures
-  in 15 minutes;
+- sign-in: 20 wrong passwords per 10 minutes per IP; 10 per email and IP
+  and 50 per email in 15 minutes;
 - sign-up: 5 per hour per IP and 3 per hour per email.
 
 So the WAF only catches floods, and the app gives real users the friendly

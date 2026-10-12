@@ -1,7 +1,7 @@
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
 import { getPublicSharedSummary, PublicShareRateLimitError } from "@/app/lib/db/shares";
+import { visitorIp } from "@/app/lib/request-ip";
 import { Badge } from "@/app/components/Badge";
 import { Logo } from "@/app/components/Logo";
 import { statusBadgeClasses, statusLabel } from "@/app/lib/badges";
@@ -16,11 +16,9 @@ export default async function SharedStatusPage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  // Vercel sets x-forwarded-for at the edge for every request reaching this
-  // function; it isn't attacker-overridable the way it would be on a
-  // self-hosted origin behind no proxy. Used only as a rate-limit bucket
-  // key, never for anything security-sensitive beyond that.
-  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  // Only a rate-limit bucket key; see visitorIp() for the trust rules. This
+  // limiter always needs a key, so local development (no IP) shares one.
+  const ip = (await visitorIp()) ?? "unknown";
 
   let share;
   try {
