@@ -65,7 +65,8 @@ test("a new ticket is triaged by the AI, visible to staff and never to the custo
   await agentPage.goto("/queue");
   const row = agentPage.getByRole("link", { name: new RegExp(subject) });
   await expect(row).toBeVisible();
-  await expect(row.getByText(/^(low|normal|high|urgent)$/)).toBeVisible();
+  // The card shows priority as an icon, named for screen readers (SUP-38).
+  await expect(row.getByText(/^(Low|Normal|High|Urgent) priority$/)).toBeAttached();
 
   await agentContext.close();
 

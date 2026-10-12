@@ -164,9 +164,13 @@ test("a triaged ticket's card shows its number, AI summary and AI flags, and sea
     await expect(card).toHaveCount(1);
     await expect(card.getByText(`#${created.number}`, { exact: true })).toBeVisible();
     await expect(card.getByText("Export fails before the customer's deadline.")).toBeVisible();
-    for (const chip of ["urgent", "bug", "Escalation risk", "Frustrated", "AI unsure"]) {
-      await expect(card.getByText(chip, { exact: true })).toBeVisible();
+    // Linear-style card (SUP-38): priority as an icon (named for screen
+    // readers), two labels, and the rest behind "+N".
+    await expect(card.getByText("Urgent priority", { exact: true })).toBeAttached();
+    for (const label of ["Bug", "Escalation risk"]) {
+      await expect(card.getByText(label, { exact: true })).toBeVisible();
     }
+    await expect(card.getByText("+2 more: Frustrated, AI unsure")).toBeVisible();
 
     // The ticket page header shows the same AI read, labelled as AI-estimated,
     // and the SLA as a banner.
@@ -192,14 +196,15 @@ test("a triaged ticket's card shows its number, AI summary and AI flags, and sea
     if (reviewError) throw new Error(reviewError.message);
     await page.goto(`/queue?q=${encodeURIComponent(`#${created.number}`)}`);
     await expect(card.getByText("Escalation risk", { exact: true })).toBeVisible();
-    await expect(card.getByText(/^AI (unsure|unreviewed)$/)).toHaveCount(0);
+    await expect(card.getByText(/AI (unsure|unreviewed)/)).toHaveCount(0);
+    await expect(card.getByText("+1 more: Frustrated")).toBeVisible();
 
     // ...and comes back when a newer run lands that nobody has checked.
     await new Promise((resolve) => setTimeout(resolve, 10)); // a later created_at than the first run
     await seedRun("Re-run: export still failing.");
     await page.reload();
     await expect(card.getByText("Re-run: export still failing.")).toBeVisible();
-    await expect(card.getByText("AI unsure", { exact: true })).toBeVisible();
+    await expect(card.getByText("+2 more: Frustrated, AI unsure")).toBeVisible();
   } finally {
     await db.from("tickets").delete().eq("id", created.id);
   }
@@ -264,4 +269,12 @@ test("Claim on a card opens the ticket; a lost race says so instead of doing not
   } finally {
     await db.from("tickets").delete().in("id", [won.id, lost.id, started.id]);
   }
+});
+
+test("card labels: at most two, most important first, the rest counted", async () => {
+  const { cardLabels } = await import("../app/components/CardBits");
+  const all = cardLabels({ category: "feature_request", escalation: true, frustrated: true, review: "unsure" });
+  expect(all.map((l) => l.text)).toEqual(["Feature request", "Escalation risk", "Frustrated", "AI unsure"]);
+  const calm = cardLabels({ category: "billing", escalation: false, frustrated: false, review: null });
+  expect(calm.map((l) => l.text)).toEqual(["Billing"]);
 });
