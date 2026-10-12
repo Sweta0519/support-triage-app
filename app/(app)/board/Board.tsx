@@ -8,6 +8,7 @@ import { moveTicketAction } from "../tickets/actions";
 import { Badge } from "@/app/components/Badge";
 import { priorityBadgeClasses } from "@/app/lib/badges";
 import { BOARD_COLUMNS, boardTargets, canMove, COLUMN_LABELS, moveClaimsTicket } from "@/app/lib/board";
+import { FlagIcon } from "@/app/components/FlagIcon";
 import type { TicketStatus } from "@/app/lib/ticket-status";
 
 export type BoardCard = {
@@ -23,6 +24,8 @@ export type BoardCard = {
   sla: { label: string; classes: string } | null;
   escalation: boolean;
   frustrated: boolean;
+  // The viewer's own follow-up flag.
+  flagged: boolean;
 };
 
 const chip = "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium";
@@ -146,6 +149,7 @@ export function Board({ cards: initial }: { cards: BoardCard[] }) {
                 >
                   <div className="flex items-center gap-2 text-xs">
                     <span className="font-mono text-zinc-500 dark:text-zinc-400">{card.number}</span>
+                    {card.flagged ? <FlagIcon size={12} /> : null}
                     {card.sla ? (
                       <span className="ml-auto">
                         <Badge label={card.sla.label} colorClasses={card.sla.classes} capitalize={false} />

@@ -35,6 +35,7 @@ import {
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { effectiveTriageStatus } from "@/app/lib/triage-status";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
+import { FlagIcon } from "@/app/components/FlagIcon";
 import { widePageClass, chipClass } from "@/app/lib/styles";
 
 const chipClasses = chipClass;
@@ -189,14 +190,7 @@ function TicketCard({
             {formatTicketNumber(ticket.number)}
           </span>
           <Badge label={statusLabel(ticket.status)} colorClasses={statusBadgeClasses(ticket.status)} />
-          {flagged ? (
-            // Your own follow-up flag (private: only you see it).
-            <span role="img" aria-label="Flagged to follow up" title="Flagged to follow up" className="text-amber-500 dark:text-amber-400">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                <path d="M5 21V4h11l-1.5 4L16 12H7v9z" />
-              </svg>
-            </span>
-          ) : null}
+          {flagged ? <FlagIcon /> : null}
           {sla ? (
             <span className="ml-auto">
               <SlaBadge sla={sla} />
