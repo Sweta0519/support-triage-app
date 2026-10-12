@@ -7,7 +7,9 @@ import { useState, useTransition } from "react";
 import { moveTicketAction } from "../tickets/actions";
 import { BOARD_COLUMNS, boardTargets, canMove, COLUMN_LABELS, moveClaimsTicket } from "@/app/lib/board";
 import { FlagIcon } from "@/app/components/FlagIcon";
-import { cardLabels, LabelRow, PriorityIcon, SlaText } from "@/app/components/CardBits";
+import { PriorityIcon, SlaText } from "@/app/components/CardBits";
+import { CardLabels } from "@/app/components/CardLabels";
+import type { TeamLabel } from "@/app/lib/labels";
 import type { TicketStatus } from "@/app/lib/ticket-status";
 
 export type BoardCard = {
@@ -21,7 +23,7 @@ export type BoardCard = {
   assigneeLabel: string | null;
   priority: string | null;
   category: string | null;
-  teamLabels: { name: string; color: string }[];
+  teamLabels: TeamLabel[];
   sla: { label: string; state: string } | null;
   escalation: boolean;
   frustrated: boolean;
@@ -29,7 +31,7 @@ export type BoardCard = {
   flagged: boolean;
 };
 
-export function Board({ cards: initial }: { cards: BoardCard[] }) {
+export function Board({ cards: initial, allLabels }: { cards: BoardCard[]; allLabels: TeamLabel[] }) {
   const router = useRouter();
   const [cards, setCards] = useState(initial);
   const [seenInitial, setSeenInitial] = useState(initial);
@@ -132,6 +134,7 @@ export function Board({ cards: initial }: { cards: BoardCard[] }) {
                 <article
                   key={card.id}
                   aria-labelledby={`card-${card.id}`}
+                  data-card
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.effectAllowed = "move";
@@ -142,7 +145,7 @@ export function Board({ cards: initial }: { cards: BoardCard[] }) {
                     setDragging(null);
                     setOverColumn(null);
                   }}
-                  className={`flex cursor-grab flex-col gap-1.5 rounded-lg border border-black/[.08] bg-[var(--background)] p-3 shadow-sm active:cursor-grabbing dark:border-white/[.145] ${
+                  className={`group flex cursor-grab flex-col gap-1.5 rounded-lg border border-black/[.08] bg-[var(--background)] p-3 shadow-sm active:cursor-grabbing dark:border-white/[.145] ${
                     dragging?.id === card.id ? "opacity-50" : ""
                   }`}
                 >
@@ -159,13 +162,12 @@ export function Board({ cards: initial }: { cards: BoardCard[] }) {
                   <Link id={`card-${card.id}`} href={`/tickets/${card.id}`} className="line-clamp-2 text-sm font-medium text-black hover:underline dark:text-zinc-50">
                     {card.subject}
                   </Link>
-                  <LabelRow
-                    labels={cardLabels({
-                      teamLabels: card.teamLabels,
-                      category: card.category,
-                      escalation: card.escalation,
-                      frustrated: card.frustrated,
-                    })}
+                  <CardLabels
+                    ticketId={card.id}
+                    ticketLabel={card.number}
+                    allLabels={allLabels}
+                    appliedIds={card.teamLabels.map((l) => l.id)}
+                    signals={{ category: card.category, escalation: card.escalation, frustrated: card.frustrated }}
                   />
                   <p className="truncate pt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
                     {card.assigneeId === null ? "Unassigned" : card.mine ? "Yours" : (card.assigneeLabel ?? "Assigned")}

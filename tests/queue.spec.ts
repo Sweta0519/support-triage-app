@@ -162,16 +162,18 @@ test("a triaged ticket's card shows its number, AI summary and AI flags, and sea
     await page.goto(`/queue?q=${encodeURIComponent(`#${created.number}`)}`);
     const card = page.getByRole("link", { name: new RegExp(subject) });
     await expect(card).toHaveCount(1);
+    // The labels sit on the card below the link, as their own button (SUP-40).
+    const cardArea = page.getByRole("listitem").filter({ has: card });
     await expect(card.getByText(`#${created.number}`, { exact: true })).toBeVisible();
     await expect(card.getByText("Export fails before the customer's deadline.")).toBeVisible();
     // Linear-style card (SUP-38): priority as an icon (named for screen
     // readers), two labels, and the rest behind "+N".
     await expect(card.getByText("Urgent priority", { exact: true })).toBeAttached();
     for (const label of ["Escalation risk", "AI unsure"]) {
-      await expect(card.getByText(label, { exact: true })).toBeVisible();
+      await expect(cardArea.getByText(label, { exact: true })).toBeVisible();
     }
     // The rest behind a visible "+2" whose tooltip names them.
-    await expect(card.locator('[title="Bug, Frustrated"]')).toHaveText(/^\+2/);
+    await expect(cardArea.locator('[title="Bug, Frustrated"]')).toHaveText(/^\+2/);
 
     // The ticket page header shows the same AI read, labelled as AI-estimated,
     // and the SLA as a banner.
@@ -196,17 +198,17 @@ test("a triaged ticket's card shows its number, AI summary and AI flags, and sea
       .eq("ticket_id", created.id);
     if (reviewError) throw new Error(reviewError.message);
     await page.goto(`/queue?q=${encodeURIComponent(`#${created.number}`)}`);
-    await expect(card.getByText("Escalation risk", { exact: true })).toBeVisible();
-    await expect(card.getByText(/AI (unsure|unreviewed)/)).toHaveCount(0);
-    await expect(card.getByText("Bug", { exact: true })).toBeVisible();
-    await expect(card.locator('[title="Frustrated"]')).toHaveText(/^\+1/);
+    await expect(cardArea.getByText("Escalation risk", { exact: true })).toBeVisible();
+    await expect(cardArea.getByText(/AI (unsure|unreviewed)/)).toHaveCount(0);
+    await expect(cardArea.getByText("Bug", { exact: true })).toBeVisible();
+    await expect(cardArea.locator('[title="Frustrated"]')).toHaveText(/^\+1/);
 
     // ...and comes back when a newer run lands that nobody has checked.
     await new Promise((resolve) => setTimeout(resolve, 10)); // a later created_at than the first run
     await seedRun("Re-run: export still failing.");
     await page.reload();
     await expect(card.getByText("Re-run: export still failing.")).toBeVisible();
-    await expect(card.getByText("AI unsure", { exact: true })).toBeVisible();
+    await expect(cardArea.getByText("AI unsure", { exact: true })).toBeVisible();
   } finally {
     await db.from("tickets").delete().eq("id", created.id);
   }
