@@ -36,10 +36,7 @@ export function ClaimButton({
   returnTo: string;
 }) {
   return (
-    <form
-      action={claimFromQueueAction}
-      className="flex items-center justify-end border-t border-black/[.08] px-4 py-2 dark:border-white/[.145]"
-    >
+    <form action={claimFromQueueAction} className="flex items-center">
       <input type="hidden" name="ticketId" value={ticketId} />
       <input type="hidden" name="from" value={from} />
       <input type="hidden" name="returnTo" value={returnTo} />
