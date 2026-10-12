@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import { requireProfile } from "@/app/lib/auth/session";
-import { deleteOwnAccount, LastAdminError } from "@/app/lib/db/account";
+import { deleteOwnAccount, LastAdminError, verifyOwnPassword } from "@/app/lib/db/account";
+import { AUTH_RATE_LIMITED_MESSAGE, consumeAuthRateLimit, refundAuthAttempt } from "@/app/lib/db/auth-rate-limit";
 import { ProfileSettingsError, updateOwnProfile } from "@/app/lib/db/profiles";
 import { checkRateLimit, RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/db/rate-limit";
 import { removeOwnAvatar, replaceOwnAvatar } from "@/app/lib/db/avatars";
@@ -94,6 +95,29 @@ export async function deleteAccountAction(
   if (confirmation !== profile.email.toLowerCase()) {
     return { error: "Type your account email exactly to confirm." };
   }
+
+  // Re-authenticate (security scan L-3): a stolen or unattended session
+  // knows the email, but not the password. Throttled like sign-in, so this
+  // form can't be used to guess passwords: the attempt is counted first
+  // and given back unless the password was wrong.
+  const password = String(formData.get("password") ?? "");
+  if (!password) {
+    return { error: "Enter your current password to confirm." };
+  }
+  if (!(await consumeAuthRateLimit("sign_in", profile.email))) {
+    return { error: AUTH_RATE_LIMITED_MESSAGE };
+  }
+  let check: "ok" | "wrong";
+  try {
+    check = await verifyOwnPassword(profile.email, password);
+  } catch (err) {
+    await refundAuthAttempt("sign_in_succeeded", profile.email);
+    throw err;
+  }
+  if (check === "wrong") {
+    return { error: "That password isn't right." };
+  }
+  await refundAuthAttempt("sign_in_succeeded", profile.email);
 
   try {
     await deleteOwnAccount(profile.id);

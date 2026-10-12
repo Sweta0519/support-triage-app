@@ -9,7 +9,9 @@ const dangerButtonClass =
   "rounded-full bg-red-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50";
 
 // A typed confirmation instead of window.confirm(): it works without a
-// browser dialog, and typing the address makes the action deliberate.
+// browser dialog, and typing the address makes the action deliberate. The
+// current password proves it's really the account's owner, not someone at
+// an unattended or stolen session.
 export function DeleteAccountForm({ email }: { email: string }) {
   const [state, action, pending] = useActionState(deleteAccountAction, undefined);
 
@@ -24,6 +26,17 @@ export function DeleteAccountForm({ email }: { email: string }) {
         type="email"
         autoComplete="off"
         placeholder="your@email.com"
+        required
+        className={inputClass}
+      />
+      <label htmlFor="delete-password" className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+        Current password
+      </label>
+      <input
+        id="delete-password"
+        name="password"
+        type="password"
+        autoComplete="current-password"
         required
         className={inputClass}
       />

@@ -1,4 +1,6 @@
 import { test as setup } from "@playwright/test";
+import { createHmac } from "node:crypto";
+
 import { createClient } from "@supabase/supabase-js";
 
 // The app rate-limits ticket creation to 10/hour per user (the limiter itself
@@ -40,6 +42,21 @@ setup("reset test users' rate-limit counters", async () => {
       .like("key", `${profile.id}:%`);
     if (deleteError) {
       throw new Error(deleteError.message);
+    }
+  }
+
+  // The sign-in limiter's per-email buckets (keyed by the same HMAC as
+  // app/lib/db/auth-rate-limit.ts): tests that enter a wrong password on
+  // purpose (e.g. account deletion) would otherwise lock a test account
+  // after a few runs.
+  for (const email of emails) {
+    const emailKey = createHmac("sha256", key).update(email.trim().toLowerCase()).digest("hex");
+    const { error: authError } = await db
+      .from("rate_limits")
+      .delete()
+      .or(`key.eq.sign_in_email:${emailKey},key.like.sign_in_pair:${emailKey}:%`);
+    if (authError) {
+      throw new Error(authError.message);
     }
   }
 });

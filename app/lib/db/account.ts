@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createClient } from "@supabase/supabase-js";
+
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import { AVATAR_BUCKET } from "@/app/lib/avatars";
 import { createServiceSupabaseClient } from "@/app/lib/supabase/service";
@@ -60,4 +62,31 @@ export async function deleteOwnAccount(userId: string): Promise<void> {
   } catch (err) {
     console.error(`Couldn't remove profile pictures of deleted user ${userId}:`, err);
   }
+}
+
+// Re-authentication before a destructive action (SUP-14): checks the
+// password against Supabase Auth with a throwaway client that keeps no
+// session, so the caller's own sign-in (cookies) is never touched. The
+// email must be the verified session's, never one from the form.
+// "ok" | "wrong" (the password didn't match) | throws on anything else.
+export async function verifyOwnPassword(email: string, password: string): Promise<"ok" | "wrong"> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
+    throw new Error("Supabase is not configured");
+  }
+  const client = createClient(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+  const { error } = await client.auth.signInWithPassword({ email, password });
+  if (!error) {
+    // Drop the extra session it just created (local only: the user's real
+    // session is a different one).
+    await client.auth.signOut({ scope: "local" });
+    return "ok";
+  }
+  if (error.code === "invalid_credentials") {
+    return "wrong";
+  }
+  throw new Error(error.message);
 }

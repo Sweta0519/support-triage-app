@@ -36,6 +36,7 @@ test("data export is a JSON attachment scoped to the signed-in user", async ({ p
 test("a wrong confirmation email does not delete the account", async ({ page }) => {
   await page.goto("/account");
   await page.getByLabel(/to confirm/).fill("someone-else@example.com");
+  await page.getByLabel("Current password").fill(process.env.TEST_USER_PASSWORD ?? "x");
   await page.getByRole("button", { name: "Delete my account" }).click();
   await expect(page.getByText("Type your account email exactly to confirm.")).toBeVisible();
   // Still signed in, still on the page.
@@ -48,4 +49,16 @@ test("anonymous export request is redirected to login", async ({ browser }) => {
   expect(response.status()).toBe(307);
   expect(response.headers()["location"]).toContain("/login");
   await context.close();
+});
+
+test("deleting the account needs the current password, not just the email", async ({ page }) => {
+  // A stolen or unattended session knows the email, not the password.
+  await page.goto("/account");
+  await page.getByLabel(/to confirm/).fill(process.env.TEST_USER_EMAIL ?? "");
+  await page.getByLabel("Current password").fill("not-the-password");
+  await page.getByRole("button", { name: "Delete my account" }).click();
+  await expect(page.getByText("That password isn't right.")).toBeVisible();
+  // Still signed in; the check didn't disturb the session either.
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 });

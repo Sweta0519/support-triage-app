@@ -19,7 +19,7 @@
 | Critical | 0 | - | - |
 | High | 1 | 1 (H-1) | - |
 | Medium | 2 | 1 (M-1); M-2 mitigated 2026-10-12 | WAF rule for M-2 |
-| Low | 3 | 1 (L-2) | 2 (L-1, L-3) |
+| Low | 3 | 1 (L-2); L-3 on 2026-10-12 | 1 (L-1) |
 | Info | 8 | 3 (I-2, I-4, I-6) | 5 |
 
 There are no Critical findings in the app's own code. The one High was the Next.js version.
@@ -42,7 +42,7 @@ There are no Critical findings in the app's own code. The one High was the Next.
 |---|---|
 | **M-2** no app-level throttling on sign-in / sign-up; this relies on Supabase Auth's built-in limits, which may see Vercel's IP rather than the visitor's (unverified) | **Mitigated 2026-10-12, SUP-13 (PR #35):** `ticketing.consume_auth_rate_limit()` (service-role only). Sign-in: every attempt is counted *before* the password check (parallel guesses can't slip past) and refunded unless it was a wrong password; 20 wrong passwords per 10 min per IP (IPv6 by /64), 10 per email *and* IP and 50 per email in 15 min. Keying the tight lock on email plus IP means a stranger can't lock someone else out. Sign-up: 5 per hour per IP, 3 per hour per email, refunded when Supabase sends no email. IP from Vercel's `x-forwarded-for`; emails only as an HMAC with a server-only secret; rows purged after a day. Fixed (clock-aligned) windows. Still open: the Vercel WAF rule (dashboard-only, see I-7; settings in `docs/security/vercel-waf.md`) and optional CAPTCHA on sign-up. |
 | **L-1** `alter default privileges in schema ticketing revoke execute ... from public` has no effect, because per-schema defaults only *add* to the global ones | **Accepted, documented.** No live exposure: every callable function revokes PUBLIC EXECUTE explicitly, and the rest are trigger functions. A global `alter default privileges for role postgres` would also affect `notes-collections`, which shares this database, so the rule stays: **every new function must revoke PUBLIC EXECUTE itself** |
-| **L-3** account deletion needs only the typed email, with no re-authentication | **Open, Linear SUP-14.** CSRF-protected, and the last-admin guard holds. The risk is a stolen or unattended session |
+| **L-3** account deletion needs only the typed email, with no re-authentication | **Fixed 2026-10-12, SUP-14:** deletion also requires the current password, checked against Supabase Auth with a throwaway client that keeps no session (`verifyOwnPassword` in `app/lib/db/account.ts`) and throttled with the sign-in limiter, so the form can't be used to guess passwords |
 | **I-1** CSP `script-src 'unsafe-inline'` | Accepted, as in audits 2-4. There's no `dangerouslySetInnerHTML`, `react-markdown` renders no raw HTML, and the `img-src` restriction blocks beacon exfiltration |
 | **I-3** sequential ticket numbers let a customer infer overall ticket volume | Accepted: the numbers aren't used for any lookup or authorisation outside the RLS-scoped queue. (The comment in `20261011000000_ticket_numbers.sql` listing `priority, category, team` as UPDATE-granted is stale; it's left unedited because the migration is already applied) |
 | **I-5** `x-forwarded-for` trusted by the public-share limiter | Accepted: Vercel sets the header at the edge |
