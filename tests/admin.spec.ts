@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-import { login, requireEnv } from "./helpers";
+import { login, requireEnv, selectStaffByEmail } from "./helpers";
 
 test("non-admins are bounced from /admin to /403", async ({ page, browser }) => {
   // Customer A (default storageState).
@@ -81,9 +81,10 @@ test("admin can reassign a ticket to an agent, who then sees it as theirs", asyn
   await adminPage.goto(ticketUrl);
   // "Unassigned" is also an <option> in the Reassign dropdown; target the status line.
   await expect(adminPage.locator("p", { hasText: /^Unassigned$/ })).toBeVisible();
-  await adminPage.getByLabel("Reassign").selectOption({ label: `${agentEmail} (agent)` });
+  await selectStaffByEmail(adminPage, agentEmail);
   await adminPage.getByRole("button", { name: "Assign" }).click();
-  await expect(adminPage.getByText(`Assigned to ${agentEmail}`)).toBeVisible();
+  // "Assigned to <display name, else email>".
+  await expect(adminPage.getByText(/^Assigned to /)).toBeVisible();
   await adminContext.close();
 
   const agentContext = await browser.newContext();

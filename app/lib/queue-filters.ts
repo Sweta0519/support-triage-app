@@ -7,6 +7,8 @@ const FILTER_LABELS = {
   all: "All",
   unassigned: "Unassigned",
   mine: "Mine",
+  // The viewer's own follow-up flags (SUP-27).
+  flagged: "Flagged",
 } as const;
 
 export type QueueFilterKey = keyof typeof FILTER_LABELS;

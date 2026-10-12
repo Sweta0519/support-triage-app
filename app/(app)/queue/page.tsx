@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { requireStaff } from "@/app/lib/auth/session";
 import { listStaffProfiles, type StaffProfile } from "@/app/lib/db/profiles";
+import { listMyFlaggedTicketIds } from "@/app/lib/db/flags";
 import { assignedToLabel, profileName } from "@/app/lib/people";
 import { Avatar } from "@/app/components/Avatar";
 import { listQueueTickets, type QueueTicketSummary } from "@/app/lib/db/tickets";
@@ -12,6 +13,8 @@ import { formatRelativeTime, formatTicketNumber } from "@/app/lib/format";
 import { computeSla } from "@/app/lib/sla";
 import { fieldLabel } from "@/app/lib/triage-fields";
 import { ClaimButton } from "./ClaimButton";
+import { CardMenuArea } from "./CardMenu";
+import { QueueAnnouncer } from "./QueueAnnouncer";
 import { ClaimNotice } from "./ClaimNotice";
 import {
   QUEUE_FILTERS,
@@ -105,12 +108,18 @@ function TicketCard({
   filter,
   currentUserId,
   assignee,
+  flagged,
+  isAdmin,
+  staffOptions,
   now,
   returnTo,
 }: {
   ticket: QueueTicketSummary;
   filter: QueueFilterKey;
   currentUserId: string;
+  flagged: boolean;
+  isAdmin: boolean;
+  staffOptions: { id: string; label: string }[];
   // Someone else's profile (only admins see others' tickets).
   assignee: StaffProfile | undefined;
   now: Date;
@@ -122,8 +131,37 @@ function TicketCard({
   const category = ticket.triage_state?.category ?? null;
   const unassigned = ticket.assignee_id === null;
 
+  const triage = ticket.triage_state;
   return (
-    <li className="flex flex-col overflow-hidden rounded-xl border border-black/[.08] transition-colors hover:border-indigo-300 dark:border-white/[.145] dark:hover:border-indigo-800">
+    <CardMenuArea
+      ticket={{
+        id: ticket.id,
+        label: formatTicketNumber(ticket.number),
+        href: ticketHref(ticket.id, filter),
+        status: ticket.status,
+        assigneeId: ticket.assignee_id,
+        flagged,
+        triage:
+          triage?.priority && triage.category && triage.team
+            ? { priority: triage.priority, category: triage.category, team: triage.team }
+            : null,
+        triageResultId: ticket.latest_triage?.id ?? null,
+        triageReviewedAt: triage?.reviewed_at ?? null,
+      }}
+      currentUserId={currentUserId}
+      isAdmin={isAdmin}
+      staff={staffOptions}
+      footer={
+        unassigned ? (
+          <ClaimButton
+            ticketId={ticket.id}
+            label={`Claim ${formatTicketNumber(ticket.number)}: ${ticket.subject}`}
+            from={filter}
+            returnTo={returnTo}
+          />
+        ) : null
+      }
+    >
       <Link
         // Carries the active tab along so the ticket page's breadcrumb
         // leads back here, not just to the full queue.
@@ -178,15 +216,7 @@ function TicketCard({
           ) : null}
         </div>
       </Link>
-      {unassigned ? (
-        <ClaimButton
-          ticketId={ticket.id}
-          label={`Claim ${formatTicketNumber(ticket.number)}: ${ticket.subject}`}
-          from={filter}
-          returnTo={returnTo}
-        />
-      ) : null}
-    </li>
+    </CardMenuArea>
   );
 }
 
@@ -202,12 +232,16 @@ export default async function QueuePage({
   }>;
 }) {
   const profile = await requireStaff();
-  const tickets = await listQueueTickets(profile.id, profile.role);
-  // Only admins see tickets assigned to someone else, so only they need
-  // the staff list to name the assignee.
-  const staff = new Map(
-    (profile.role === "admin" ? await listStaffProfiles() : []).map((s) => [s.id, s])
-  );
+  // Only admins see tickets assigned to someone else (and assign them), so
+  // only they need the staff list.
+  const [tickets, flagged, staffList] = await Promise.all([
+    listQueueTickets(profile.id, profile.role),
+    listMyFlaggedTicketIds(),
+    profile.role === "admin" ? listStaffProfiles() : Promise.resolve([]),
+  ]);
+  const staff = new Map(staffList.map((s) => [s.id, s]));
+
+  const staffOptions = [...staff.values()].map((s) => ({ id: s.id, label: profileName(s) }));
 
   const params = await searchParams;
   const defaults: QueueDefaults = { filter: profile.queue_default_filter, sort: profile.queue_default_sort };
@@ -221,6 +255,7 @@ export default async function QueuePage({
     all: tickets.length,
     unassigned: tickets.filter((t) => t.assignee_id === null).length,
     mine: tickets.filter((t) => t.assignee_id === profile.id).length,
+    flagged: tickets.filter((t) => flagged.has(t.id)).length,
   };
 
   // Narrowing order: assignment tab -> search -> status. Tiles describe the
@@ -229,6 +264,7 @@ export default async function QueuePage({
   const inTab = tickets.filter((t) => {
     if (filter === "unassigned") return t.assignee_id === null;
     if (filter === "mine") return t.assignee_id === profile.id;
+    if (filter === "flagged") return flagged.has(t.id);
     return true;
   });
   const searched = inTab.filter((t) => matchesSearch(t, view.q));
@@ -376,6 +412,9 @@ export default async function QueuePage({
         </div>
       </div>
 
+      {/* One live region for the card menus' confirmations; it wraps the
+          empty state too, so the last card's message survives it leaving. */}
+      <QueueAnnouncer>
       {visible.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-black/[.15] py-16 text-center dark:border-white/[.2]">
           <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
@@ -385,7 +424,9 @@ export default async function QueuePage({
                 ? "Nothing unassigned"
                 : filter === "mine"
                   ? "Nothing assigned to you"
-                  : "Nothing in the queue"}
+                  : filter === "flagged"
+                    ? "Nothing flagged -- use a card's ⋯ menu to flag one"
+                    : "Nothing in the queue"}
           </p>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
             {view.q !== "" || view.status !== "all" ? (
@@ -406,12 +447,16 @@ export default async function QueuePage({
               filter={filter}
               currentUserId={profile.id}
               assignee={ticket.assignee_id ? staff.get(ticket.assignee_id) : undefined}
+              flagged={flagged.has(ticket.id)}
+              isAdmin={profile.role === "admin"}
+              staffOptions={staffOptions}
               now={now}
               returnTo={returnTo}
             />
           ))}
         </ul>
       )}
+      </QueueAnnouncer>
     </div>
   );
 }

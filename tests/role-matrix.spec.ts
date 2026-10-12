@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-import { login, requireEnv } from "./helpers";
+import { login, requireEnv, selectStaffByEmail } from "./helpers";
 
 // Direct-URL checks for every role boundary not already covered by the
 // feature tests: customer -> staff routes, and agent -> a ticket owned by
@@ -46,7 +46,7 @@ test("an agent gets a 404 for a ticket assigned to someone else", async ({
   const adminPage = await adminContext.newPage();
   await login(adminPage, adminEmail, requireEnv("TEST_ADMIN_PASSWORD"));
   await adminPage.goto(ticketUrl);
-  await adminPage.getByLabel("Reassign").selectOption({ label: `${adminEmail} (admin)` });
+  await selectStaffByEmail(adminPage, adminEmail);
   await adminPage.getByRole("button", { name: "Assign" }).click();
   await expect(adminPage.getByText("Assigned to you")).toBeVisible();
   await adminContext.close();

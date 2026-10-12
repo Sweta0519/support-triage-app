@@ -41,3 +41,13 @@ export async function askSage(page: Page, question: string) {
   await expect(messages).toHaveCount(before + 2);
   return messages.last();
 }
+
+// Picks a staff member in the admin's Reassign dropdown by email. The
+// option reads "Name · email (role)" once they've set a display name, so
+// match on the email rather than the whole label.
+export async function selectStaffByEmail(page: Page, email: string) {
+  const select = page.getByLabel("Reassign");
+  const value = await select.locator("option", { hasText: email }).getAttribute("value");
+  if (!value) throw new Error(`No Reassign option for ${email}`);
+  await select.selectOption(value);
+}
