@@ -31,6 +31,7 @@ import { parseQueueFilter, queueBreadcrumb } from "@/app/lib/queue-filters";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { MY_TICKETS_CRUMB } from "@/app/lib/crumbs";
 import { readablePageClass, widePageClass, chipClass } from "@/app/lib/styles";
+import { effectiveTriageStatus } from "@/app/lib/triage-status";
 import { Stars } from "@/app/components/Stars";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
@@ -335,7 +336,7 @@ export default async function TicketDetailPage({
             ) : null}
             <TriagePanel
               ticketId={ticket.id}
-              triageStatus={ticket.triage_state?.triage_status ?? "pending"}
+              triageStatus={effectiveTriageStatus(ticket.triage_state?.triage_status, ticket.triage_state?.updated_at)}
               triage={triage}
               triageState={ticket.triage_state}
               currentUserId={profile.id}

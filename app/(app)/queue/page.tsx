@@ -33,6 +33,7 @@ import {
   type QueueView,
 } from "@/app/lib/queue";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
+import { effectiveTriageStatus } from "@/app/lib/triage-status";
 import { widePageClass, chipClass } from "@/app/lib/styles";
 
 const chipClasses = chipClass;
@@ -101,6 +102,20 @@ function AiChips({ ticket }: { ticket: QueueTicketSummary }) {
       )}
     </>
   );
+}
+
+// The card's summary line before an AI assessment exists. A run that died
+// (stalled) or failed says so, rather than "Awaiting" forever.
+function NoTriageYet({ state, now }: { state: QueueTicketSummary["triage_state"]; now: Date }) {
+  const status = effectiveTriageStatus(state?.triage_status, state?.updated_at, now.getTime());
+  if (status === "stalled" || status === "failed") {
+    return (
+      <span className="italic text-amber-700 dark:text-amber-400">
+        AI triage {status} -- open the ticket to re-run it
+      </span>
+    );
+  }
+  return <span className="italic text-zinc-500 dark:text-zinc-400">Awaiting AI triage</span>;
 }
 
 function TicketCard({
@@ -181,9 +196,7 @@ function TicketCard({
         </div>
         <span className="line-clamp-1 font-medium text-black dark:text-zinc-50">{ticket.subject}</span>
         <p className="line-clamp-2 text-sm text-zinc-600 dark:text-zinc-400">
-          {ticket.latest_triage?.summary ?? (
-            <span className="italic text-zinc-500 dark:text-zinc-400">Awaiting AI triage</span>
-          )}
+          {ticket.latest_triage?.summary ?? <NoTriageYet state={ticket.triage_state} now={now} />}
         </p>
         <div className="flex flex-wrap items-center gap-1.5">
           {priority ? <Badge label={priority} colorClasses={priorityBadgeClasses(priority)} /> : null}

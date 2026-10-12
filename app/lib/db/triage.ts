@@ -3,6 +3,7 @@ import "server-only";
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import { createServiceSupabaseClient } from "@/app/lib/supabase/service";
 import type { TicketStatus } from "@/app/lib/db/tickets";
+import { STALE_TRIAGE_MS } from "@/app/lib/triage-status";
 import type { TriageReviewFields } from "@/app/lib/triage-fields";
 
 export type TriageResult = {
@@ -152,14 +153,13 @@ export async function claimTicketForTriage(ticketId: string): Promise<TriageTick
 
 // Used by the manual "re-run triage" path: put a completed/failed ticket
 // back to pending so claimTicketForTriage() can pick it up again. A ticket
-// that is `processing` is only reset if it has been stuck there for more
-// than five minutes (updated_at is bumped by the claim) -- otherwise a
-// re-run could interrupt a live run and both would write results.
-const STALE_PROCESSING_MS = 5 * 60_000;
-
+// that is `processing` is only reset if it has been stuck there for longer
+// than STALE_TRIAGE_MS (updated_at is bumped by the claim) -- otherwise a
+// re-run could interrupt a live run and both would write results. A stale
+// `pending` needs no reset: the claim takes pending tickets as they are.
 export async function resetTriageStatus(ticketId: string): Promise<void> {
   const supabase = createServiceSupabaseClient();
-  const staleBefore = new Date(Date.now() - STALE_PROCESSING_MS).toISOString();
+  const staleBefore = new Date(Date.now() - STALE_TRIAGE_MS).toISOString();
   const { error } = await supabase
     .from("ticket_triage_state")
     .update({ triage_status: "pending" })

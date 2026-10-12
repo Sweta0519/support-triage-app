@@ -29,6 +29,9 @@ export type TriageState = {
   reviewed_by: string | null;
   reviewed_at: string | null;
   reviewed_result_id: string | null;
+  // Bumped by every change, including the triage claim; tells a stalled
+  // run apart from a live one (app/lib/triage-status.ts).
+  updated_at: string;
 };
 
 export type TicketSummary = {
@@ -70,7 +73,7 @@ export type TicketBase = TicketSummary & {
 export type Ticket = TicketBase & { triage_state: TriageState | null };
 
 const TRIAGE_STATE_EMBED =
-  "triage_state:ticket_triage_state(triage_status, priority, category, team, reviewed_by, reviewed_at, reviewed_result_id)";
+  "triage_state:ticket_triage_state(triage_status, priority, category, team, reviewed_by, reviewed_at, reviewed_result_id, updated_at)";
 const TICKET_BASE_COLUMNS =
   "id, number, subject, body, status, created_at, updated_at, customer_id, assignee_id, first_response_at, created_by";
 const TICKET_COLUMNS = `${TICKET_BASE_COLUMNS}, ${TRIAGE_STATE_EMBED}`;
