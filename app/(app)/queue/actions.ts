@@ -7,7 +7,7 @@ import { assignTicket, claimTicket, getTicketForStaff, isUuid, type TicketStatus
 import { listStaffProfiles } from "@/app/lib/db/profiles";
 import { setFlag } from "@/app/lib/db/flags";
 import { checkRateLimit, RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/db/rate-limit";
-import { getLatestTriageResult, reviewTriage, TriageReviewError } from "@/app/lib/db/triage";
+import { reviewTriage, TriageReviewError } from "@/app/lib/db/triage";
 import { rerunTriage } from "@/app/lib/ai/triage";
 import { moveTicketAs } from "@/app/lib/ticket-moves";
 import { ALLOWED_STATUS_TRANSITIONS } from "@/app/lib/ticket-status";
@@ -31,7 +31,17 @@ export type CardActionInput =
   | { kind: "claim" }
   | { kind: "assign"; assigneeId: string | null }
   | { kind: "status"; to: string }
-  | { kind: "triage"; field: "priority" | "category" | "team"; value: string }
+  | {
+      kind: "triage";
+      field: "priority" | "category" | "team";
+      value: string;
+      // What the card showed, so review_triage() can refuse a review made
+      // over a newer AI run or someone else's newer review -- exactly like
+      // the ticket page's form, which sends the same three things.
+      shown: { priority: string; category: string; team: string };
+      resultId: string | null;
+      reviewedAt: string | null;
+    }
   | { kind: "flag"; flagged: boolean }
   | { kind: "rerun" };
 
@@ -39,10 +49,45 @@ export type CardActionResult = { ok: true; message: string } | { ok: false; erro
 
 const GONE = "This ticket is no longer available to you.";
 
+const TRIAGE_FIELDS = ["priority", "category", "team"] as const;
+
+// The TypeScript type isn't enforced at runtime, and a Server Action is a
+// public endpoint: check the shape before acting on it.
+function isCardActionInput(value: unknown): value is CardActionInput {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  const str = (x: unknown) => typeof x === "string";
+  switch (v.kind) {
+    case "claim":
+    case "rerun":
+      return true;
+    case "assign":
+      return v.assigneeId === null || (str(v.assigneeId) && isUuid(v.assigneeId as string));
+    case "status":
+      return str(v.to);
+    case "flag":
+      return typeof v.flagged === "boolean";
+    case "triage": {
+      const shown = v.shown as Record<string, unknown> | null;
+      return (
+        isOneOf(TRIAGE_FIELDS, String(v.field)) &&
+        str(v.value) &&
+        typeof shown === "object" &&
+        shown !== null &&
+        TRIAGE_FIELDS.every((f) => str(shown[f])) &&
+        (v.resultId === null || str(v.resultId)) &&
+        (v.reviewedAt === null || str(v.reviewedAt))
+      );
+    }
+    default:
+      return false;
+  }
+}
+
 export async function queueCardAction(ticketId: string, input: CardActionInput): Promise<CardActionResult> {
   const profile = await requireStaff();
-  if (!isUuid(ticketId)) {
-    return { ok: false, error: GONE };
+  if (!isUuid(ticketId) || !isCardActionInput(input)) {
+    return { ok: false, error: "That action isn't possible." };
   }
   // Seen through the caller's own RLS: everything below acts only on a
   // ticket they can see right now.
@@ -58,7 +103,7 @@ export async function queueCardAction(ticketId: string, input: CardActionInput):
         const claimed = await claimTicket(profile.id, ticketId);
         return claimed
           ? { ok: true, message: `Claimed ${label}.` }
-          : { ok: false, error: `Someone else already claimed ${label}.` };
+          : { ok: false, error: `Couldn't claim ${label}: someone else got it first, or it's no longer open.` };
       }
 
       case "assign": {
@@ -87,25 +132,25 @@ export async function queueCardAction(ticketId: string, input: CardActionInput):
           return { ok: false, error: "That move isn't possible." };
         }
         const to = input.to as TicketStatus;
-        const moved = await moveTicketAs(profile.id, ticketId, to);
+        const moved = await moveTicketAs(profile.id, ticketId, to, ticket);
         return moved.ok ? { ok: true, message: `Moved ${label} to ${COLUMN_LABELS[to]}.` } : moved;
       }
 
       case "triage": {
-        const state = ticket.triage_state;
-        if (!state?.priority || !state.category || !state.team) {
-          return { ok: false, error: `${label} hasn't been triaged yet.` };
-        }
-        const priority = input.field === "priority" ? input.value : state.priority;
-        const category = input.field === "category" ? input.value : state.category;
-        const team = input.field === "team" ? input.value : state.team;
-        if (!isOneOf(TRIAGE_PRIORITIES, priority) || !isOneOf(TRIAGE_CATEGORIES, category) || !isOneOf(TRIAGE_TEAMS, team)) {
+        const values = { ...input.shown, [input.field]: input.value };
+        const { priority, category, team } = values;
+        if (
+          !isOneOf(TRIAGE_PRIORITIES, priority) ||
+          !isOneOf(TRIAGE_CATEGORIES, category) ||
+          !isOneOf(TRIAGE_TEAMS, team) ||
+          (input.resultId !== null && !isUuid(input.resultId)) ||
+          (input.reviewedAt !== null && Number.isNaN(Date.parse(input.reviewedAt)))
+        ) {
           return { ok: false, error: "Choose one of the listed values." };
         }
-        // Recorded as a review of the latest AI run, exactly like the
-        // ticket page's form (confirmed if it matches, corrected if not).
-        const latest = await getLatestTriageResult(ticketId);
-        await reviewTriage(ticketId, latest?.id ?? null, state.reviewed_at, { priority, category, team });
+        // Recorded as a review of the AI run the card showed, exactly like
+        // the ticket page's form (confirmed if it matches, else corrected).
+        await reviewTriage(ticketId, input.resultId, input.reviewedAt, { priority, category, team });
         return { ok: true, message: `Set ${label} ${input.field} to ${fieldLabel(input.value)}.` };
       }
 

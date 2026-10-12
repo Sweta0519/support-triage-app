@@ -145,6 +145,8 @@ function TicketCard({
           triage?.priority && triage.category && triage.team
             ? { priority: triage.priority, category: triage.category, team: triage.team }
             : null,
+        triageResultId: ticket.latest_triage?.id ?? null,
+        triageReviewedAt: triage?.reviewed_at ?? null,
       }}
       currentUserId={currentUserId}
       isAdmin={isAdmin}
@@ -230,12 +232,14 @@ export default async function QueuePage({
   }>;
 }) {
   const profile = await requireStaff();
-  const [tickets, flagged] = await Promise.all([listQueueTickets(profile.id, profile.role), listMyFlaggedTicketIds()]);
-  // Only admins see tickets assigned to someone else, so only they need
-  // the staff list to name the assignee.
-  const staff = new Map(
-    (profile.role === "admin" ? await listStaffProfiles() : []).map((s) => [s.id, s])
-  );
+  // Only admins see tickets assigned to someone else (and assign them), so
+  // only they need the staff list.
+  const [tickets, flagged, staffList] = await Promise.all([
+    listQueueTickets(profile.id, profile.role),
+    listMyFlaggedTicketIds(),
+    profile.role === "admin" ? listStaffProfiles() : Promise.resolve([]),
+  ]);
+  const staff = new Map(staffList.map((s) => [s.id, s]));
 
   const staffOptions = [...staff.values()].map((s) => ({ id: s.id, label: profileName(s) }));
 

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { canMove, COLUMN_LABELS, moveClaimsTicket } from "@/app/lib/board";
-import { claimTicket, getTicketForStaff, moveTicketStatus } from "@/app/lib/db/tickets";
+import { claimTicket, getTicketForStaff, moveTicketStatus, type Ticket } from "@/app/lib/db/tickets";
 import type { TicketStatus } from "@/app/lib/ticket-status";
 
 export type MoveResult = { ok: true } | { ok: false; error: string };
@@ -12,9 +12,15 @@ export type MoveResult = { ok: true } | { ok: false; error: string };
 // against the same transition map the database guard enforces, and claims
 // an unassigned ticket when it's moved into Assigned or In progress. The
 // guard trigger still has the final say.
-export async function moveTicketAs(staffId: string, ticketId: string, target: TicketStatus): Promise<MoveResult> {
+// `seen`: the ticket as the caller just read it, to save reading it again.
+export async function moveTicketAs(
+  staffId: string,
+  ticketId: string,
+  target: TicketStatus,
+  seen?: Ticket
+): Promise<MoveResult> {
   try {
-    const ticket = await getTicketForStaff(ticketId);
+    const ticket = seen ?? (await getTicketForStaff(ticketId));
     if (!ticket) {
       return { ok: false, error: "This ticket is no longer available to you." };
     }

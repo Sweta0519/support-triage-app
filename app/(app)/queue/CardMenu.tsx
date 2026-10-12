@@ -24,6 +24,9 @@ export type CardMenuTicket = {
   assigneeId: string | null;
   flagged: boolean;
   triage: { priority: string; category: string; team: string } | null;
+  // The AI run and review the card was rendered with (see queueCardAction).
+  triageResultId: string | null;
+  triageReviewedAt: string | null;
 };
 
 type Item =
@@ -35,7 +38,7 @@ type Item =
 type Panel = "main" | "assign" | "priority" | "category" | "team";
 
 const itemClass =
-  "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-zinc-700 outline-none hover:bg-indigo-50 focus:bg-indigo-50 disabled:opacity-50 dark:text-zinc-200 dark:hover:bg-indigo-950/40 dark:focus:bg-indigo-950/40";
+  "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-zinc-700 outline-none hover:bg-indigo-50 focus:bg-indigo-50 aria-disabled:opacity-50 dark:text-zinc-200 dark:hover:bg-indigo-950/40 dark:focus:bg-indigo-950/40";
 
 export function CardMenuArea({
   ticket,
@@ -60,7 +63,11 @@ export function CardMenuArea({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
-  const [open, setOpen] = useState<{ x: number; y: number } | null>(null);
+  // After "← Back", focus the item that opened the panel.
+  const focusPanelItem = useRef<Panel | null>(null);
+  // above: the top of what opened it (the ⋯ button), to flip the menu
+  // above it when there's no room below rather than covering it.
+  const [open, setOpen] = useState<{ x: number; y: number; above?: number } | null>(null);
   const [panel, setPanel] = useState<Panel>("main");
   const [pending, setPending] = useState(false);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
@@ -68,11 +75,11 @@ export function CardMenuArea({
   // Built only while open: some items read window (the link to copy).
   const items = open ? menuItems(panel, ticket, currentUserId, isAdmin, staff, announce) : [];
 
-  function openAt(x: number, y: number, from: HTMLElement | null) {
+  function openAt(x: number, y: number, from: HTMLElement | null, above?: number) {
     returnFocus.current = from;
     setPanel("main");
     setPosition(null);
-    setOpen({ x, y });
+    setOpen({ x, y, above });
   }
 
   function close(restoreFocus = true) {
@@ -85,9 +92,11 @@ export function CardMenuArea({
   useLayoutEffect(() => {
     if (!open || !menuRef.current) return;
     const rect = menuRef.current.getBoundingClientRect();
+    const fitsBelow = open.y + rect.height + 8 <= window.innerHeight;
+    const top = fitsBelow || open.above === undefined ? open.y : open.above - rect.height - 4;
     setPosition({
       left: Math.max(8, Math.min(open.x, window.innerWidth - rect.width - 8)),
-      top: Math.max(8, Math.min(open.y, window.innerHeight - rect.height - 8)),
+      top: Math.max(8, Math.min(top, window.innerHeight - rect.height - 8)),
     });
   }, [open, panel]);
 
@@ -95,21 +104,31 @@ export function CardMenuArea({
   // menu is visibility:hidden, and hidden elements can't take focus.
   useEffect(() => {
     if (!open || !position) return;
-    menuRef.current?.querySelector<HTMLElement>('[role^="menuitem"]')?.focus();
+    const back = focusPanelItem.current;
+    focusPanelItem.current = null;
+    const target = back ? menuRef.current?.querySelector<HTMLElement>(`[data-panel="${back}"]`) : null;
+    (target ?? menuRef.current?.querySelector<HTMLElement>('[role^="menuitem"]'))?.focus();
   }, [open, panel, position]);
 
-  // A click anywhere else closes it.
+  // A click anywhere else closes it. Not the "⋯" button: its own click
+  // toggles the menu, and closing here first would just reopen it.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) close(false);
+      const target = e.target as Node;
+      if (!menuRef.current?.contains(target) && !buttonRef.current?.contains(target)) {
+        setOpen(null);
+        setPanel("main");
+      }
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  });
+  }, [open]);
 
   async function run(item: Item) {
+    if (pending) return;
     if (item.kind === "back") {
+      focusPanelItem.current = panel;
       setPanel("main");
       return;
     }
@@ -136,6 +155,9 @@ export function CardMenuArea({
   }
 
   function onMenuKeyDown(e: React.KeyboardEvent) {
+    // The menu sits inside the card: keep its keys (Shift+F10, the Menu
+    // key) from reaching the card's handler and reopening it.
+    e.stopPropagation();
     const nodes = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? []);
     const index = nodes.indexOf(document.activeElement as HTMLElement);
     const focus = (i: number) => nodes[(i + nodes.length) % nodes.length]?.focus();
@@ -158,8 +180,10 @@ export function CardMenuArea({
         break;
       case "Escape":
         e.preventDefault();
-        if (panel !== "main") setPanel("main");
-        else close();
+        if (panel !== "main") {
+          focusPanelItem.current = panel;
+          setPanel("main");
+        } else close();
         break;
       case "Tab":
         e.preventDefault();
@@ -202,7 +226,7 @@ export function CardMenuArea({
               return;
             }
             const rect = e.currentTarget.getBoundingClientRect();
-            openAt(rect.left, rect.bottom + 4, e.currentTarget);
+            openAt(rect.left, rect.bottom + 4, e.currentTarget, rect.top);
           }}
           className="rounded-md px-2 py-0.5 text-base leading-none text-zinc-500 hover:bg-black/[.05] hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-white/[.08] dark:hover:text-zinc-100"
         >
@@ -216,7 +240,10 @@ export function CardMenuArea({
           role="menu"
           aria-label={`Actions for ${ticket.label}`}
           onKeyDown={onMenuKeyDown}
+          // A right-click on the menu itself mustn't reach the card's handler.
+          onContextMenu={(e) => e.stopPropagation()}
           style={{ position: "fixed", left: position?.left ?? open.x, top: position?.top ?? open.y, visibility: position ? "visible" : "hidden" }}
+          aria-busy={pending || undefined}
           className="z-50 flex min-w-52 flex-col gap-0.5 rounded-lg border border-black/[.08] bg-white p-1 shadow-lg dark:border-white/[.145] dark:bg-zinc-900"
         >
           {items.map((item, i) =>
@@ -229,8 +256,11 @@ export function CardMenuArea({
                 role={item.kind === "action" && item.checked !== undefined ? "menuitemradio" : "menuitem"}
                 aria-checked={item.kind === "action" && item.checked !== undefined ? item.checked : undefined}
                 aria-haspopup={item.kind === "panel" ? "menu" : undefined}
+                data-panel={item.kind === "panel" ? item.panel : undefined}
                 tabIndex={-1}
-                disabled={pending}
+                // aria-disabled, not disabled: a disabled button drops focus,
+                // and the menu's keys would stop working while it runs.
+                aria-disabled={pending || undefined}
                 onClick={() => run(item)}
                 className={itemClass}
               >
@@ -274,7 +304,14 @@ function menuItems(
       ...values.map((value) => ({
         kind: "action" as const,
         label: fieldLabel(value),
-        input: { kind: "triage" as const, field: panel, value },
+        input: {
+          kind: "triage" as const,
+          field: panel,
+          value,
+          shown: triage!,
+          resultId: ticket.triageResultId,
+          reviewedAt: ticket.triageReviewedAt,
+        },
         checked: triage?.[panel] === value,
       })),
     ];
@@ -291,10 +328,13 @@ function menuItems(
   const link = `${window.location.origin}${ticket.href}`;
 
   const items: (Item | null)[] = [];
-  if (ticket.assigneeId === null && ticket.status !== "resolved" && ticket.status !== "closed") {
+  const canClaim = ticket.assigneeId === null && ticket.status !== "resolved" && ticket.status !== "closed";
+  if (canClaim) {
     items.push({ kind: "action", label: "Claim", input: { kind: "claim" } });
   }
   for (const to of ALLOWED_STATUS_TRANSITIONS[ticket.status]) {
+    // Moving an unassigned ticket to Assigned is exactly a claim.
+    if (canClaim && to === "assigned") continue;
     items.push({ kind: "action", label: `Move to ${COLUMN_LABELS[to]}`, input: { kind: "status", to } });
   }
   if (isAdmin) {

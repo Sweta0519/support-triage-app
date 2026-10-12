@@ -68,10 +68,11 @@ test("an agent's menu offers only what the ticket allows, and works from the key
   await card.getByRole("link").click({ button: "right" });
   const labels = await menuItems(page).allTextContents();
   expect(labels).toEqual(
-    expect.arrayContaining(["Claim", "Move to Assigned", "Move to In progress", "Flag to follow up", "Copy link"])
+    expect.arrayContaining(["Claim", "Move to In progress", "Flag to follow up", "Copy link"])
   );
-  // Agents can't reassign; a new ticket can't jump to Resolved.
-  expect(labels.join("|")).not.toMatch(/Assign to|Unassign|Move to Resolved|Move to Closed/);
+  // Agents can't reassign; a new ticket can't jump to Resolved; and "Move to
+  // Assigned" would just be Claim again.
+  expect(labels.join("|")).not.toMatch(/Assign to|Unassign|Move to Resolved|Move to Closed|Move to Assigned/);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu")).toHaveCount(0);
 
@@ -118,7 +119,7 @@ test("a claim that loses the race says so", async ({ page }) => {
   await service().from("tickets").update({ assignee_id: adminId, status: "assigned" }).eq("id", ticket.id);
 
   await page.getByRole("menuitem", { name: "Claim" }).click();
-  await expect(page.getByRole("status").filter({ hasText: /no longer available|already claimed/ })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: /no longer available|someone else got it first/ })).toBeVisible();
 });
 
 test("flags are private, and the Flagged tab lists them", async ({ browser }) => {
@@ -169,4 +170,30 @@ test("an admin can assign and unassign from the menu", async ({ page }) => {
   await page.getByRole("menuitem", { name: "Unassign" }).click();
   await expect(page.getByRole("status").filter({ hasText: `Unassigned #${ticket.number}.` })).toBeVisible();
   expect((await service().from("tickets").select("assignee_id").eq("id", ticket.id).single()).data?.assignee_id).toBeNull();
+});
+
+test("a triage edit made over a newer AI run is refused, and ⋯ toggles the menu", async ({ page }) => {
+  const ticket = await seed(`Card stale probe ${Date.now()}`);
+  await login(page, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
+  const card = await openQueueFor(page, ticket.number);
+  const actions = card.getByRole("button", { name: `Actions for #${ticket.number}` });
+
+  // Clicking ⋯ again closes the menu rather than reopening it.
+  await actions.click();
+  await expect(page.getByRole("menu")).toBeVisible();
+  await actions.click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+
+  // A re-run lands after the card was rendered...
+  await service()
+    .from("triage_results")
+    .insert({ ticket_id: ticket.id, model: "test/seeded", prompt_version: "test", summary: "Newer.", confidence: 0.9, priority: "high", category: "billing", team: "billing" });
+
+  // ...so a change made from the stale card is refused, not recorded.
+  await actions.click();
+  await page.getByRole("menuitem", { name: "Set team…" }).click();
+  await page.getByRole("menuitemradio", { name: "Support" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "triage changed meanwhile" })).toBeVisible();
+  const { data: state } = await service().from("ticket_triage_state").select("team, reviewed_at").eq("ticket_id", ticket.id).single();
+  expect(state).toEqual({ team: "billing", reviewed_at: null });
 });
