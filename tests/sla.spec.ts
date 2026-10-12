@@ -113,7 +113,8 @@ test("an overdue ticket shows as overdue in the queue and on the ticket page", a
     const row = page.getByRole("link", { name: new RegExp(subject) });
     // Minutes tick on between the insert and the render (a cold dev server
     // can take well over 30s to compile /queue), so allow "1h 1m" etc.
-    await expect(row.getByText(/^Overdue 1h( \d+m)?$/)).toBeVisible();
+    // The SLA sits on the card below the link, next to the labels (SUP-40).
+    await expect(page.getByRole("listitem").filter({ has: row }).getByText(/^Overdue 1h( \d+m)?$/)).toBeVisible();
 
     await row.click();
     await expect(

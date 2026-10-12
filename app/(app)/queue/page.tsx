@@ -32,7 +32,8 @@ import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { effectiveTriageStatus } from "@/app/lib/triage-status";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { FlagIcon } from "@/app/components/FlagIcon";
-import { cardLabels, LabelRow, PriorityIcon, SlaText, StatusDot, UnassignedIcon } from "@/app/components/CardBits";
+import { CardLabels } from "@/app/components/CardLabels";
+import { cardLabels, PriorityIcon, SlaText, StatusDot, UnassignedIcon } from "@/app/components/CardBits";
 import { computeSla, slaBadgeLabel } from "@/app/lib/sla";
 import { listLabels, listLabelsForTickets } from "@/app/lib/db/labels";
 import type { TeamLabel } from "@/app/lib/labels";
@@ -158,11 +159,12 @@ function TicketCard({
         ) : null
       }
     >
+      <div className="flex flex-1 flex-col transition-colors hover:bg-black/[.02] dark:hover:bg-white/[.03]">
       <Link
         // Carries the active tab along so the ticket page's breadcrumb
         // leads back here, not just to the full queue.
         href={ticketHref(ticket.id, filter)}
-        className="flex flex-1 flex-col gap-1.5 p-4 transition-colors hover:bg-black/[.02] dark:hover:bg-white/[.03]"
+        className="flex flex-1 flex-col gap-1.5 px-4 pb-1.5 pt-4"
       >
         {/* Linear-style (SUP-38): priority icon, number and status up top,
             the flag and the assignee on the right; colour only in icons. */}
@@ -201,8 +203,15 @@ function TicketCard({
         <p className="line-clamp-2 text-sm text-zinc-500 dark:text-zinc-400">
           {ticket.latest_triage?.summary ?? <NoTriageYet state={ticket.triage_state} now={now} />}
         </p>
-        <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-          <LabelRow
+      </Link>
+        {/* Outside the link so the labels can be a button: click them (or
+            hover the card and press L) to edit them in place (SUP-40). */}
+        <div className="flex items-center justify-between gap-2 px-4 pb-3">
+          <CardLabels
+            ticketId={ticket.id}
+            ticketLabel={formatTicketNumber(ticket.number)}
+            allLabels={allLabels}
+            appliedIds={teamLabels.map((l) => l.id)}
             labels={cardLabels({
               teamLabels,
               category,
@@ -213,7 +222,7 @@ function TicketCard({
           />
           {sla ? <SlaText label={slaBadgeLabel(sla)} state={sla.state} /> : null}
         </div>
-      </Link>
+      </div>
     </CardMenuArea>
   );
 }

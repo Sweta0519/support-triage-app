@@ -8,7 +8,7 @@ import { formatTicketNumber } from "@/app/lib/format";
 import { isFrustrated, sortQueue } from "@/app/lib/queue";
 import { widePageClass } from "@/app/lib/styles";
 import { listMyFlaggedTicketIds } from "@/app/lib/db/flags";
-import { listLabelsForTickets } from "@/app/lib/db/labels";
+import { listLabels, listLabelsForTickets } from "@/app/lib/db/labels";
 import { Board, type BoardCard } from "./Board";
 
 // The staff triage board: the same tickets as the queue (RLS-scoped, no
@@ -18,7 +18,11 @@ import { Board, type BoardCard } from "./Board";
 export default async function BoardPage() {
   const profile = await requireStaff();
   const now = new Date();
-  const [queue, flagged] = await Promise.all([listQueueTickets(profile.id, profile.role), listMyFlaggedTicketIds()]);
+  const [queue, flagged, allLabels] = await Promise.all([
+    listQueueTickets(profile.id, profile.role),
+    listMyFlaggedTicketIds(),
+    listLabels(),
+  ]);
   const ticketLabels = await listLabelsForTickets(queue.map((t) => t.id));
   const tickets = sortQueue(queue, "sla", now);
   // Only admins see others' tickets, so only they need the staff list.
@@ -39,7 +43,7 @@ export default async function BoardPage() {
       assigneeLabel: t.assignee_id ? assignedToLabel(staff.get(t.assignee_id)) : null,
       priority: t.triage_state?.priority ?? null,
       category: t.triage_state?.category ?? null,
-      teamLabels: (ticketLabels.get(t.id) ?? []).map(({ name, color }) => ({ name, color })),
+      teamLabels: ticketLabels.get(t.id) ?? [],
       sla: sla ? { label: slaBadgeLabel(sla), state: sla.state } : null,
       escalation: t.latest_triage?.is_escalation_risk ?? false,
       frustrated: isFrustrated(t.latest_triage?.frustration ?? null),
@@ -56,7 +60,7 @@ export default async function BoardPage() {
           unassigned ticket to Assigned or In progress claims it for you.
         </p>
       </div>
-      <Board cards={cards} />
+      <Board cards={cards} allLabels={allLabels} />
     </div>
   );
 }

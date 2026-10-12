@@ -201,7 +201,8 @@ export function CardMenuArea({
   return (
     <li
       ref={areaRef}
-      className="flex flex-col overflow-hidden rounded-xl border border-black/[.08] transition-colors hover:border-indigo-300 dark:border-white/[.145] dark:hover:border-indigo-800"
+      data-card
+      className="group flex flex-col overflow-hidden rounded-xl border border-black/[.08] transition-colors hover:border-indigo-300 dark:border-white/[.145] dark:hover:border-indigo-800"
       onContextMenu={(e) => {
         // Leave the browser's menu alone when the user is after it: Shift
         // held, or text selected (to copy it).
