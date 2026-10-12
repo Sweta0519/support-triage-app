@@ -5,6 +5,7 @@
 
 import { statusLabel } from "@/app/lib/badges";
 import { capitalize } from "@/app/lib/format";
+import { labelDot } from "@/app/lib/labels";
 import { fieldLabel } from "@/app/lib/triage-fields";
 
 const srOnly = "sr-only";
@@ -79,15 +80,17 @@ export function UnassignedIcon({ size = 20 }: { size?: number }) {
 export type CardLabel = { text: string; dot: string; title?: string };
 
 // The card's labels in order of importance -- the first two are shown:
-// escalation risk, then "AI unsure" (the AI asking not to be trusted), then
-// the category, then frustration, then "AI unreviewed".
+// the labels the team put on the ticket (SUP-39: people chose them, so they
+// lead), then escalation risk, "AI unsure" (the AI asking not to be
+// trusted), the AI's category, frustration, and "AI unreviewed".
 export function cardLabels(input: {
+  teamLabels?: { name: string; color: string }[];
   category: string | null;
   escalation: boolean;
   frustrated: boolean;
   review?: "unsure" | "unreviewed" | null;
 }): CardLabel[] {
-  const labels: CardLabel[] = [];
+  const labels: CardLabel[] = (input.teamLabels ?? []).map((l) => ({ text: l.name, dot: labelDot(l.color) }));
   if (input.escalation) labels.push({ text: "Escalation risk", dot: "bg-red-500" });
   if (input.review === "unsure") {
     labels.push({ text: "AI unsure", dot: "bg-amber-500", title: "The AI flagged its own triage for a human to check" });
