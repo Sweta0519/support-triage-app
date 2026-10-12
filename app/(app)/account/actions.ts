@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
-import { requireProfile } from "@/app/lib/auth/session";
+import { getUser, requireProfile } from "@/app/lib/auth/session";
 import { deleteOwnAccount, LastAdminError, verifyOwnPassword } from "@/app/lib/db/account";
 import { AUTH_RATE_LIMITED_MESSAGE, consumeAuthRateLimit, refundAuthAttempt } from "@/app/lib/db/auth-rate-limit";
 import { ProfileSettingsError, updateOwnProfile } from "@/app/lib/db/profiles";
@@ -82,7 +82,9 @@ export async function updateSettingsAction(
   return { status: "saved" };
 }
 
-export type DeleteAccountState = { error: string } | undefined;
+// email: what was typed, so a mistake doesn't wipe it (React resets the
+// form after its action); the password field is always cleared.
+export type DeleteAccountState = { error: string; email: string } | undefined;
 
 export async function deleteAccountAction(
   _prevState: DeleteAccountState,
@@ -91,39 +93,46 @@ export async function deleteAccountAction(
   // The id to delete comes from the verified session, never from the form.
   const profile = await requireProfile();
 
-  const confirmation = String(formData.get("confirm") ?? "").trim().toLowerCase();
-  if (confirmation !== profile.email.toLowerCase()) {
-    return { error: "Type your account email exactly to confirm." };
+  const typed = String(formData.get("confirm") ?? "");
+  const failed = (error: string): DeleteAccountState => ({ error, email: typed });
+  if (typed.trim().toLowerCase() !== profile.email.toLowerCase()) {
+    return failed("Type your account email exactly to confirm.");
   }
 
   // Re-authenticate (security scan L-3): a stolen or unattended session
-  // knows the email, but not the password. Throttled like sign-in, so this
-  // form can't be used to guess passwords: the attempt is counted first
-  // and given back unless the password was wrong.
+  // knows the email, but not the password. Throttled like sign-in -- the
+  // attempt is counted first and given back unless the password was wrong
+  // -- so password guessing through this form is rate-limited too. The
+  // email checked is the one in the verified session (the sign-in email),
+  // not the profile's copy of it.
   const password = String(formData.get("password") ?? "");
   if (!password) {
-    return { error: "Enter your current password to confirm." };
+    return failed("Enter your current password to confirm.");
   }
-  if (!(await consumeAuthRateLimit("sign_in", profile.email))) {
-    return { error: AUTH_RATE_LIMITED_MESSAGE };
+  const claims = await getUser();
+  const authEmail = typeof claims?.email === "string" ? claims.email : profile.email;
+  if (!(await consumeAuthRateLimit("sign_in", authEmail))) {
+    return failed(AUTH_RATE_LIMITED_MESSAGE);
   }
-  let check: "ok" | "wrong";
-  try {
-    check = await verifyOwnPassword(profile.email, password);
-  } catch (err) {
-    await refundAuthAttempt("sign_in_succeeded", profile.email);
-    throw err;
+  const check = await verifyOwnPassword(authEmail, password);
+  if (check !== "wrong") {
+    await refundAuthAttempt("sign_in_succeeded", authEmail);
   }
   if (check === "wrong") {
-    return { error: "That password isn't right." };
+    return failed("That password isn't right.");
   }
-  await refundAuthAttempt("sign_in_succeeded", profile.email);
+  if (check === "busy") {
+    return failed(AUTH_RATE_LIMITED_MESSAGE);
+  }
+  if (check === "unavailable") {
+    return failed("Couldn't check your password just now. Please try again in a moment.");
+  }
 
   try {
     await deleteOwnAccount(profile.id);
   } catch (err) {
     if (err instanceof LastAdminError) {
-      return { error: err.message };
+      return failed(err.message);
     }
     throw err;
   }

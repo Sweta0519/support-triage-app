@@ -26,6 +26,7 @@ export function DeleteAccountForm({ email }: { email: string }) {
         type="email"
         autoComplete="off"
         placeholder="your@email.com"
+        defaultValue={state?.email ?? ""}
         required
         className={inputClass}
       />
