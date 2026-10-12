@@ -120,10 +120,12 @@ export default function PrivacyPolicyPage() {
                   <td className={cell}>Legitimate interest: an auditable support record.</td>
                 </tr>
                 <tr>
-                  <td className={cell}>IP address (public share links only)</td>
+                  <td className={cell}>IP address, and a pseudonymised form of the email entered</td>
                   <td className={cell}>
-                    If staff share a public status link for a ticket, visitors&apos; IP addresses
-                    are used to limit how often that link can be loaded, to protect it from abuse.
+                    Used to limit how often someone can try to sign in or sign up, and how often a
+                    public status link can be loaded, to protect accounts and links from abuse.
+                    For this the email is kept only as a keyed hash that can&apos;t be turned back
+                    into the address without a secret held on our server.
                   </td>
                   <td className={cell}>Legitimate interest: security and abuse prevention.</td>
                 </tr>
@@ -199,8 +201,8 @@ export default function PrivacyPolicyPage() {
             </li>
             <li>Public share links expire 30 days after they are created.</li>
             <li>
-              IP addresses used for rate limiting are deleted about a day after they are
-              recorded. The clean-up runs opportunistically, so the exact moment varies by a few
+              IP addresses and pseudonymised emails used for rate limiting are deleted about a
+              day after they are recorded. The clean-up runs opportunistically, so the exact moment varies by a few
               requests.
             </li>
             <li>Staff notes and assistant chats are kept until the staff member deletes them.</li>

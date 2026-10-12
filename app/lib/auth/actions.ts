@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 
 import { createServerSupabaseClient } from "./clients";
+import { AUTH_RATE_LIMITED_MESSAGE, consumeAuthRateLimit, refundAuthAttempt } from "@/app/lib/db/auth-rate-limit";
 
 export type AuthFormState = { error: string } | undefined;
 
@@ -19,6 +20,10 @@ export async function signUpAction(
   formData: FormData
 ): Promise<AuthFormState> {
   const { email, password } = parseCredentials(formData);
+  // Per IP and per email, before Supabase sends a confirmation email.
+  if (!(await consumeAuthRateLimit("sign_up", email))) {
+    return { error: AUTH_RATE_LIMITED_MESSAGE };
+  }
   const supabase = await createServerSupabaseClient();
 
   // No `options.data` role is ever passed here -- role is hard-coded to
@@ -31,6 +36,8 @@ export async function signUpAction(
   });
 
   if (error) {
+    // Refused before any email went out: give the email's quota back.
+    await refundAuthAttempt("sign_up_failed", email);
     return { error: error.message };
   }
 
@@ -42,6 +49,12 @@ export async function signInAction(
   formData: FormData
 ): Promise<AuthFormState> {
   const { email, password } = parseCredentials(formData);
+  // Counted before the password is checked: per IP, per email and IP, and
+  // per email. If the limiter itself is down this throws, so sign-in fails
+  // closed rather than going unthrottled.
+  if (!(await consumeAuthRateLimit("sign_in", email))) {
+    return { error: AUTH_RATE_LIMITED_MESSAGE };
+  }
   const supabase = await createServerSupabaseClient();
 
   const { error } = await supabase.auth.signInWithPassword({
@@ -49,6 +62,11 @@ export async function signInAction(
     password,
   });
 
+  // Only a wrong password stays counted; anything else (success, an
+  // unconfirmed email) gives the attempt back.
+  if (error?.code !== "invalid_credentials") {
+    await refundAuthAttempt("sign_in_succeeded", email);
+  }
   if (error) {
     return { error: error.message };
   }
