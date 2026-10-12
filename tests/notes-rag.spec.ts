@@ -60,6 +60,13 @@ test.describe("Sage: chat with your own notes", () => {
     // say, the model happening to remember the note from an earlier turn).
     await expect(page.getByTestId("assistant-widget-search").last()).toContainText(/[1-9]\d* match/);
 
+    // Asked again about the notes, it searches again rather than repeating
+    // its earlier answer -- the note could have changed in between (SUP-28).
+    const searchesBefore = await page.getByTestId("assistant-widget-search").count();
+    const again = await askSage(page, "Remind me, according to my notes: where is the Q3 launch?");
+    await expect(again).toContainText(/Barbican/i);
+    expect(await page.getByTestId("assistant-widget-search").count()).toBeGreaterThan(searchesBefore);
+
     await context.close();
   });
 
@@ -72,10 +79,13 @@ test.describe("Sage: chat with your own notes", () => {
 
     await page.goto("/queue");
     await openSage(page);
+    const searchesBefore = await page.getByTestId("assistant-widget-search").count();
     const reply = await askSage(
       page,
       "What do my notes say about the Antarctic penguin census schedule?"
     );
+    // "Not in your notes" is only honest if it actually looked (SUP-28).
+    expect(await page.getByTestId("assistant-widget-search").count()).toBeGreaterThan(searchesBefore);
 
     const text = (await reply.textContent()) ?? "";
     // It must admit the gap ("couldn't find anything in your notes about

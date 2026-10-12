@@ -242,7 +242,9 @@ export async function completeChat(opts: {
   model?: string;
   maxTokens?: number;
   tools?: ToolDefinition[];
-  toolChoice?: "auto" | "none";
+  // "required": the model must call a tool this round (OpenRouter maps it
+  // to each provider's equivalent, e.g. Anthropic's "any").
+  toolChoice?: "auto" | "none" | "required";
 }): Promise<{ text: string; toolCalls: ToolCall[]; usage: Usage; model: string }> {
   const withTools = Boolean(opts.tools && opts.tools.length > 0);
   const res = await post<ChatCompletionWithToolsResponse>("/chat/completions", {

@@ -63,7 +63,10 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
   must change, drop and re-embed every row in both tables in the same migration.
 - Sage (the floating staff assistant, `app/components/assistant/`) does agentic RAG over a staff
   member's own notes: `search_notes` is a tool the model decides to call, not a step that always
-  runs (`app/lib/ai/notes-rag.ts`). Retrieval is scoped to the caller *inside*
+  runs (`app/lib/ai/notes-rag.ts`). The one exception: a message that plainly asks about the
+  staff member's own notes (`isExplicitNotesQuestion`, `app/lib/ai/notes-question.ts`) forces a
+  search on the first round, so Sage never answers those from an earlier reply or says "not in your
+  notes" without looking. Retrieval is scoped to the caller *inside*
   `ticketing.match_documents()` (`auth.uid()`) and by RLS on `documents` -- never add a
   client-supplied user-id parameter to that function or to the tool.
 - Notes are chunked (~500 chars, 100 overlap) and embedded *before* the row is saved, so a note

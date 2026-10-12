@@ -116,7 +116,8 @@ export const SEARCH_NOTES_TOOL: ToolDefinition = {
       "Search the current staff member's own private knowledge notes (runbooks, policies, " +
       "saved snippets, customer context) and return the most relevant excerpts. Use it for " +
       "questions about their team's specifics that you could not know otherwise. Do not use it " +
-      "for general knowledge, or for things already said in this conversation.",
+      "for general knowledge, or for things the user told you earlier in this conversation. Notes " +
+      "can change, so search again for a notes question even if you answered it before.",
     parameters: {
       type: "object",
       properties: {
@@ -162,3 +163,5 @@ export async function searchNotes(rawQuery: string): Promise<NotesSearchResult> 
     })),
   };
 }
+
+export { isExplicitNotesQuestion } from "./notes-question";
