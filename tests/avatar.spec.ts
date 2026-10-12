@@ -172,6 +172,7 @@ test.describe("profile pictures", () => {
       expect(before).toHaveLength(1);
 
       await page.getByLabel(/to confirm/).fill(email);
+      await page.getByLabel("Current password").fill(password);
       await page.getByRole("button", { name: "Delete my account" }).click();
       await expect(page).toHaveURL(/\/login\?deleted=1$/);
 

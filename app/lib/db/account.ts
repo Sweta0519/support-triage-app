@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createClient } from "@supabase/supabase-js";
+
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import { AVATAR_BUCKET } from "@/app/lib/avatars";
 import { createServiceSupabaseClient } from "@/app/lib/supabase/service";
@@ -60,4 +62,44 @@ export async function deleteOwnAccount(userId: string): Promise<void> {
   } catch (err) {
     console.error(`Couldn't remove profile pictures of deleted user ${userId}:`, err);
   }
+}
+
+// Re-authentication before a destructive action (SUP-14): checks the
+// password against Supabase Auth with a throwaway client that keeps no
+// session, so the caller's own sign-in (cookies) is never touched. The
+// email must be the verified session's, never one from the form. It is a
+// real sign-in as far as Supabase is concerned (last_sign_in_at, the auth
+// audit log); with MFA it proves the password only, which is what this
+// confirmation needs.
+//   "ok"          the password matches
+//   "wrong"       it doesn't (the only outcome that counts as a guess)
+//   "busy"        Supabase Auth's own rate limit refused the check
+//   "unavailable" any other refusal or outage -- shown as a form message,
+//                 not an error page
+export type PasswordCheck = "ok" | "wrong" | "busy" | "unavailable";
+
+export async function verifyOwnPassword(email: string, password: string): Promise<PasswordCheck> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
+    throw new Error("Supabase is not configured");
+  }
+  const client = createClient(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+  const { error } = await client.auth.signInWithPassword({ email, password });
+  if (!error) {
+    // Revoke the extra session it just created -- "local" means only this
+    // one; the user's real session is a different one. If the revoke
+    // fails, the stray session simply expires; nobody holds its tokens.
+    const { error: signOutError } = await client.auth.signOut({ scope: "local" });
+    if (signOutError) {
+      console.error("Couldn't revoke the re-authentication session:", signOutError.message);
+    }
+    return "ok";
+  }
+  if (error.code === "invalid_credentials") return "wrong";
+  if (error.code === "over_request_rate_limit") return "busy";
+  console.error("Password re-check failed:", error.code, error.message);
+  return "unavailable";
 }
