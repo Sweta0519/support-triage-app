@@ -2,25 +2,63 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
-import { LabelRow, type CardLabel } from "@/app/components/CardBits";
+import { cardLabels, LabelRow } from "@/app/components/CardBits";
 import { LabelPickerPopup, useTicketLabels } from "@/app/components/LabelPicker";
 import type { TeamLabel } from "@/app/lib/labels";
 
 // A card's labels, editable in place like Linear (SUP-40): click them, or
 // hover the card (or focus something in it) and press L, to open the label
 // picker without leaving the queue or the board. With no labels at all, a
-// quiet "+ Label" appears on hover or focus. The card element is the
-// nearest [data-card] ancestor.
+// quiet "+ Label" appears on hover or focus (always on touch screens). The
+// card element is the nearest [data-card] ancestor.
+
+// The L shortcut: one document listener for every card on the page. The
+// hovered card wins, else the card holding focus -- exactly one, as in
+// Linear. Not while typing, and not over an open menu or picker.
+const openers = new Map<HTMLElement, () => void>();
+let hoveredCard: HTMLElement | null = null;
+
+function onShortcut(e: KeyboardEvent) {
+  if (e.key.toLowerCase() !== "l" || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+  const target = e.target as HTMLElement | null;
+  if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+  if (document.querySelector('[role="menu"], [aria-label="Add or remove labels"]')) return;
+  const focusCard = document.activeElement?.closest<HTMLElement>("[data-card]") ?? null;
+  const open = openers.get((hoveredCard?.isConnected ? hoveredCard : null) ?? focusCard ?? document.body);
+  if (!open) return;
+  e.preventDefault();
+  open();
+}
+
+function registerCard(card: HTMLElement, open: () => void) {
+  const enter = () => (hoveredCard = card);
+  const leave = () => {
+    if (hoveredCard === card) hoveredCard = null;
+  };
+  if (openers.size === 0) document.addEventListener("keydown", onShortcut);
+  openers.set(card, open);
+  card.addEventListener("mouseenter", enter);
+  card.addEventListener("mouseleave", leave);
+  return () => {
+    leave();
+    openers.delete(card);
+    card.removeEventListener("mouseenter", enter);
+    card.removeEventListener("mouseleave", leave);
+    if (openers.size === 0) document.removeEventListener("keydown", onShortcut);
+  };
+}
+
 export function CardLabels({
   ticketId,
   ticketLabel,
-  labels,
+  signals,
   allLabels,
   appliedIds,
 }: {
   ticketId: string;
   ticketLabel: string; // "#1042"
-  labels: CardLabel[];
+  // The AI's signals for cardLabels(); the team labels come from `applied`.
+  signals: Omit<Parameters<typeof cardLabels>[0], "teamLabels">;
   allLabels: TeamLabel[];
   appliedIds: string[];
 }) {
@@ -34,33 +72,20 @@ export function CardLabels({
     if (restoreFocus) buttonRef.current?.focus();
   }, []);
 
-  // L on a hovered or focused card, as in Linear. Not while typing.
   useEffect(() => {
     const card = buttonRef.current?.closest<HTMLElement>("[data-card]");
     if (!card) return;
-    let hovered = false;
-    const enter = () => (hovered = true);
-    const leave = () => (hovered = false);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== "l" || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
-      const target = e.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select, [contenteditable=true]")) return;
-      if (!hovered && !card.contains(document.activeElement)) return;
-      e.preventDefault();
+    return registerCard(card, () => {
       setError(null);
       setOpen(true);
-    };
-    card.addEventListener("mouseenter", enter);
-    card.addEventListener("mouseleave", leave);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      card.removeEventListener("mouseenter", enter);
-      card.removeEventListener("mouseleave", leave);
-      document.removeEventListener("keydown", onKey);
-    };
+    });
   }, [setError]);
 
-  const shownText = labels.map((l) => l.text);
+  // From the optimistic set, so the chips change as soon as you click.
+  // allLabels is sorted by name, like the server's list.
+  const labels = cardLabels({ ...signals, teamLabels: allLabels.filter((l) => applied.has(l.id)) });
+  // What the chips show: the first two, then "+N".
+  const shownText = [...labels.slice(0, 2).map((l) => l.text), ...(labels.length > 2 ? [`+${labels.length - 2}`] : [])];
   const empty = labels.length === 0;
 
   return (
@@ -71,10 +96,10 @@ export function CardLabels({
         aria-expanded={open}
         aria-controls={open ? popupId : undefined}
         aria-keyshortcuts="L"
-        // The name says what it does and what's on the card now; the
-        // visible chips stay as they are.
-        aria-label={`Edit labels for ${ticketLabel}${shownText.length ? `: ${shownText.join(", ")}` : ""}`}
-        title="Edit labels (L)"
+        // Starts with what's visible (label-in-name, for voice control),
+        // then says what it does.
+        aria-label={empty ? `+ Label: add labels for ${ticketLabel}` : `${shownText.join(", ")}: edit labels for ${ticketLabel}`}
+        title="Edit labels (L while the card is hovered or focused)"
         onClick={(e) => {
           e.stopPropagation();
           setError(null);
@@ -82,7 +107,7 @@ export function CardLabels({
         }}
         className={`-mx-1 min-w-0 rounded-md px-1 py-0.5 text-left hover:bg-black/[.04] dark:hover:bg-white/[.06] ${
           empty && !open
-            ? "text-[11px] text-zinc-400 opacity-0 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 dark:text-zinc-500"
+            ? "text-[11px] text-zinc-400 opacity-0 [@media(hover:none)]:opacity-100 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 dark:text-zinc-500"
             : ""
         }`}
       >

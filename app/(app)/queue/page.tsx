@@ -33,7 +33,7 @@ import { effectiveTriageStatus } from "@/app/lib/triage-status";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { FlagIcon } from "@/app/components/FlagIcon";
 import { CardLabels } from "@/app/components/CardLabels";
-import { cardLabels, PriorityIcon, SlaText, StatusDot, UnassignedIcon } from "@/app/components/CardBits";
+import { PriorityIcon, SlaText, StatusDot, UnassignedIcon } from "@/app/components/CardBits";
 import { computeSla, slaBadgeLabel } from "@/app/lib/sla";
 import { listLabels, listLabelsForTickets } from "@/app/lib/db/labels";
 import type { TeamLabel } from "@/app/lib/labels";
@@ -212,13 +212,12 @@ function TicketCard({
             ticketLabel={formatTicketNumber(ticket.number)}
             allLabels={allLabels}
             appliedIds={teamLabels.map((l) => l.id)}
-            labels={cardLabels({
-              teamLabels,
+            signals={{
               category,
               escalation: ticket.latest_triage?.is_escalation_risk ?? false,
               frustrated: isFrustrated(ticket.latest_triage?.frustration ?? null),
               review: reviewState(ticket),
-            })}
+            }}
           />
           {sla ? <SlaText label={slaBadgeLabel(sla)} state={sla.state} /> : null}
         </div>

@@ -53,7 +53,6 @@ export function LabelsPanel({
             <button
               type="button"
               onClick={() => toggle(label)}
-              aria-disabled={pending}
               aria-label={`Remove label ${label.name}`}
               className="rounded-full px-1 text-zinc-400 hover:bg-black/[.06] hover:text-zinc-700 dark:hover:bg-white/[.08] dark:hover:text-zinc-100"
             >

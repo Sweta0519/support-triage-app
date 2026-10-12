@@ -46,8 +46,10 @@ test("create, add and remove labels on a ticket; they show on the card", async (
   await page.goto(`/tickets/${ticket.id}`);
   const panel = page.getByRole("region", { name: "Labels" });
   await panel.getByRole("button", { name: "+ Add label" }).click();
-  await panel.getByLabel("Search or create a label").fill(name);
-  await panel.getByRole("button", { name: `Create “${name}”` }).click();
+  // The picker is portaled to <body>, outside the section.
+  const picker = page.getByRole("group", { name: "Add or remove labels" });
+  await picker.getByLabel("Search or create a label").fill(name);
+  await picker.getByRole("button", { name: `Create “${name}”` }).click();
   await expect(panel.getByRole("button", { name: `Remove label ${name}` })).toBeVisible();
 
   // The queue card shows it.
@@ -170,7 +172,7 @@ test("labels are edited right on the card: click them, or hover and press L (que
   // Queue: with no labels yet, "+ Label" on the card opens the picker.
   await page.goto(`/queue?filter=all&q=${encodeURIComponent(n)}`);
   const card = page.getByRole("listitem").filter({ has: page.getByRole("button", { name: `Actions for ${n}` }) });
-  const edit = card.getByRole("button", { name: `Edit labels for ${n}` });
+  const edit = card.getByRole("button", { name: `labels for ${n}` });
   await card.hover();
   await edit.click();
   const picker = page.getByRole("group", { name: "Add or remove labels" });
@@ -188,17 +190,21 @@ test("labels are edited right on the card: click them, or hover and press L (que
   await page.mouse.move(0, 0);
   await card.getByText(`Labels card probe`, { exact: false }).hover();
   await page.keyboard.press("l");
-  await expect(picker).toBeVisible();
+  // Exactly one picker, on the hovered card (focus is still on another
+  // element of the page).
+  await expect(picker).toHaveCount(1);
   await picker.getByLabel("Search or create a label").fill(refund);
   await picker.getByLabel("Search or create a label").press("Enter");
   await expect(picker.getByRole("button", { name: refund })).toHaveAttribute("aria-pressed", "true");
-  await page.keyboard.press("Escape");
+  // Escape from inside the search box closes it too.
+  await picker.getByLabel("Search or create a label").press("Escape");
+  await expect(picker).toHaveCount(0);
   await expect(card.getByText(refund, { exact: true })).toBeVisible();
 
   // Board: click the labels to take VIP off.
   await page.goto("/board");
   const boardCard = page.getByRole("article", { name: new RegExp(`Labels card probe`) });
-  await boardCard.getByRole("button", { name: `Edit labels for ${n}` }).click();
+  await boardCard.getByRole("button", { name: `labels for ${n}` }).click();
   await picker.getByRole("button", { name: vip }).click();
   await expect(picker.getByRole("button", { name: vip })).toHaveAttribute("aria-pressed", "false");
   await page.keyboard.press("Escape");

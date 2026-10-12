@@ -7,7 +7,7 @@ import { useState, useTransition } from "react";
 import { moveTicketAction } from "../tickets/actions";
 import { BOARD_COLUMNS, boardTargets, canMove, COLUMN_LABELS, moveClaimsTicket } from "@/app/lib/board";
 import { FlagIcon } from "@/app/components/FlagIcon";
-import { cardLabels, PriorityIcon, SlaText } from "@/app/components/CardBits";
+import { PriorityIcon, SlaText } from "@/app/components/CardBits";
 import { CardLabels } from "@/app/components/CardLabels";
 import type { TeamLabel } from "@/app/lib/labels";
 import type { TicketStatus } from "@/app/lib/ticket-status";
@@ -167,12 +167,7 @@ export function Board({ cards: initial, allLabels }: { cards: BoardCard[]; allLa
                     ticketLabel={card.number}
                     allLabels={allLabels}
                     appliedIds={card.teamLabels.map((l) => l.id)}
-                    labels={cardLabels({
-                      teamLabels: card.teamLabels,
-                      category: card.category,
-                      escalation: card.escalation,
-                      frustrated: card.frustrated,
-                    })}
+                    signals={{ category: card.category, escalation: card.escalation, frustrated: card.frustrated }}
                   />
                   <p className="truncate pt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
                     {card.assigneeId === null ? "Unassigned" : card.mine ? "Yours" : (card.assigneeLabel ?? "Assigned")}
