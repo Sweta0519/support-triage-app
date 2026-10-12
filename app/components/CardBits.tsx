@@ -80,9 +80,10 @@ export function UnassignedIcon({ size = 20 }: { size?: number }) {
 export type CardLabel = { text: string; dot: string; title?: string };
 
 // The card's labels in order of importance -- the first two are shown:
-// the labels the team put on the ticket (SUP-39: people chose them, so they
-// lead), then escalation risk, "AI unsure" (the AI asking not to be
-// trusted), the AI's category, frustration, and "AI unreviewed".
+// escalation risk and "AI unsure" (the AI asking not to be trusted) first,
+// so they're never hidden behind "+N" (SUP-38); then the labels the team
+// put on the ticket (SUP-39), the AI's category, frustration, and
+// "AI unreviewed".
 export function cardLabels(input: {
   teamLabels?: { name: string; color: string }[];
   category: string | null;
@@ -90,11 +91,12 @@ export function cardLabels(input: {
   frustrated: boolean;
   review?: "unsure" | "unreviewed" | null;
 }): CardLabel[] {
-  const labels: CardLabel[] = (input.teamLabels ?? []).map((l) => ({ text: l.name, dot: labelDot(l.color) }));
+  const labels: CardLabel[] = [];
   if (input.escalation) labels.push({ text: "Escalation risk", dot: "bg-red-500" });
   if (input.review === "unsure") {
     labels.push({ text: "AI unsure", dot: "bg-amber-500", title: "The AI flagged its own triage for a human to check" });
   }
+  for (const l of input.teamLabels ?? []) labels.push({ text: l.name, dot: labelDot(l.color) });
   if (input.category) {
     labels.push({ text: capitalize(fieldLabel(input.category)), dot: "bg-zinc-400" });
   }
@@ -112,9 +114,10 @@ export function LabelRow({ labels, max = 2 }: { labels: CardLabel[]; max?: numbe
   const hidden = labels.slice(max);
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-1">
-      {shown.map((label) => (
+      {shown.map((label, i) => (
         <span
-          key={label.text}
+          // Team label names are free text and can repeat an AI label's.
+          key={`${i}:${label.text}`}
           title={label.title}
           className="inline-flex items-center gap-1 rounded-full border border-black/[.1] px-2 py-0.5 text-[11px] text-zinc-600 dark:border-white/[.15] dark:text-zinc-300"
         >

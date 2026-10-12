@@ -9,6 +9,8 @@ import { defaultLabelColor, isLabelColor, labelNameError, type TeamLabel } from 
 
 // Team labels (SUP-39). Server Actions (CSRF); RLS is the real enforcement.
 
+const LABEL_GONE = "That label was deleted meanwhile.";
+
 export type LabelResult = { ok: true; label?: TeamLabel } | { ok: false; error: string };
 
 function refresh(ticketId?: string) {
@@ -64,9 +66,10 @@ export async function setTicketLabelAction(ticketId: string, labelId: string, on
   if (!isUuid(ticketId) || !isUuid(labelId) || typeof on !== "boolean") {
     return { ok: false, error: "That change isn't possible." };
   }
-  const done = await setTicketLabel(ticketId, labelId, on);
+  const result = await setTicketLabel(ticketId, labelId, on);
   refresh(ticketId);
-  return done ? { ok: true } : { ok: false, error: "This ticket is no longer available to you." };
+  if (result === "label_gone") return { ok: false, error: LABEL_GONE };
+  return result === "ok" ? { ok: true } : { ok: false, error: "This ticket is no longer available to you." };
 }
 
 // The picker's "Create “X”": make the label and put it on the ticket.

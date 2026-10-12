@@ -279,4 +279,13 @@ test("card labels: at most two, most important first, the rest counted", async (
   expect(all.map((l) => l.text)).toEqual(["Escalation risk", "AI unsure", "Feature request", "Frustrated"]);
   const calm = cardLabels({ category: "billing", escalation: false, frustrated: false, review: null });
   expect(calm.map((l) => l.text)).toEqual(["Billing"]);
+  // Team labels (SUP-39) come after the two safety signals, never before.
+  const labelled = cardLabels({
+    teamLabels: [{ name: "VIP", color: "violet" }, { name: "Refund", color: "green" }],
+    category: "billing",
+    escalation: true,
+    frustrated: false,
+    review: "unsure",
+  });
+  expect(labelled.map((l) => l.text)).toEqual(["Escalation risk", "AI unsure", "VIP", "Refund", "Billing"]);
 });

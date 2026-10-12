@@ -170,7 +170,8 @@ export async function queueCardAction(ticketId: string, input: CardActionInput):
 
       case "label": {
         const done = await setTicketLabel(ticketId, input.labelId, input.on);
-        if (!done) return { ok: false, error: GONE };
+        if (done === "label_gone") return { ok: false, error: "That label was deleted meanwhile." };
+        if (done === "ticket_gone") return { ok: false, error: GONE };
         return { ok: true, message: input.on ? `Added the label to ${label}.` : `Removed the label from ${label}.` };
       }
 
@@ -210,6 +211,5 @@ export async function queueCardAction(ticketId: string, input: CardActionInput):
     revalidatePath("/queue");
     revalidatePath("/board");
     revalidatePath(`/tickets/${ticketId}`);
-    revalidatePath("/labels");
   }
 }

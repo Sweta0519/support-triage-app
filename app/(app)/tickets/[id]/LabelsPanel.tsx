@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { createAndApplyLabelAction, setTicketLabelAction } from "../../labels/actions";
 import { labelDot, type TeamLabel } from "@/app/lib/labels";
@@ -32,6 +32,10 @@ export function LabelsPanel({
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // A ref as well as state: a second click or Enter arrives before the
+  // re-render, and must not start a second request.
+  const busy = useRef(false);
+  const popupId = useId();
   const boxRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -42,8 +46,18 @@ export function LabelsPanel({
     const onDown = (e: MouseEvent) => {
       if (!boxRef.current?.contains(e.target as Node)) setOpen(false);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        buttonRef.current?.focus();
+      }
+    };
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [open]);
 
   const appliedLabels = allLabels.filter((l) => applied.has(l.id));
@@ -51,7 +65,20 @@ export function LabelsPanel({
   const matches = allLabels.filter((l) => l.name.toLowerCase().includes(q));
   const exact = allLabels.some((l) => l.name.toLowerCase() === q);
 
+  async function run<T>(work: () => Promise<T>): Promise<T | undefined> {
+    if (busy.current) return undefined;
+    busy.current = true;
+    setPending(true);
+    try {
+      return await work();
+    } finally {
+      busy.current = false;
+      setPending(false);
+    }
+  }
+
   async function toggle(label: TeamLabel) {
+    if (busy.current) return;
     const on = !applied.has(label.id);
     setApplied((prev) => {
       const next = new Set(prev);
@@ -59,17 +86,14 @@ export function LabelsPanel({
       else next.delete(label.id);
       return next;
     });
-    setPending(true);
-    const result = await setTicketLabelAction(ticketId, label.id, on);
-    setPending(false);
-    if (!result.ok) setError(result.error);
+    const result = await run(() => setTicketLabelAction(ticketId, label.id, on));
+    if (result && !result.ok) setError(result.error);
     router.refresh();
   }
 
   async function create() {
-    setPending(true);
-    const result = await createAndApplyLabelAction(ticketId, query);
-    setPending(false);
+    const result = await run(() => createAndApplyLabelAction(ticketId, query));
+    if (!result) return;
     if (!result.ok) {
       setError(result.error);
       return;
@@ -102,7 +126,7 @@ export function LabelsPanel({
             <button
               type="button"
               onClick={() => toggle(label)}
-              disabled={pending}
+              aria-disabled={pending}
               aria-label={`Remove label ${label.name}`}
               className="rounded-full px-1 text-zinc-400 hover:bg-black/[.06] hover:text-zinc-700 dark:hover:bg-white/[.08] dark:hover:text-zinc-100"
             >
@@ -112,11 +136,19 @@ export function LabelsPanel({
         ))}
       </ul>
 
-      <div ref={boxRef} className="relative">
+      <div
+        ref={boxRef}
+        className="relative"
+        onBlur={(e) => {
+          // Tabbing out of the picker closes it, like clicking outside.
+          if (open && !boxRef.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
+        }}
+      >
         <button
           ref={buttonRef}
           type="button"
           aria-expanded={open}
+          aria-controls={open ? popupId : undefined}
           onClick={() => {
             setError(null);
             setOpen((v) => !v);
@@ -127,13 +159,10 @@ export function LabelsPanel({
         </button>
         {open ? (
           <div
+            id={popupId}
+            role="group"
+            aria-label="Add or remove labels"
             className="absolute left-0 top-6 z-30 flex w-64 flex-col gap-1 rounded-lg border border-black/[.08] bg-white p-1.5 shadow-lg dark:border-white/[.145] dark:bg-zinc-900"
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                setOpen(false);
-                buttonRef.current?.focus();
-              }
-            }}
           >
             <input
               ref={inputRef}
@@ -149,15 +178,14 @@ export function LabelsPanel({
               aria-label="Search or create a label"
               className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-xs outline-none focus:border-indigo-400 dark:border-white/[.145]"
             />
-            <ul className="max-h-56 overflow-y-auto">
+            <ul aria-label="Team labels" className="max-h-56 overflow-y-auto">
               {matches.map((label) => (
                 <li key={label.id}>
                   <button
                     type="button"
-                    role="menuitemcheckbox"
-                    aria-checked={applied.has(label.id)}
+                    aria-pressed={applied.has(label.id)}
                     onClick={() => toggle(label)}
-                    disabled={pending}
+                    aria-disabled={pending}
                     className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-zinc-700 hover:bg-black/[.04] dark:text-zinc-200 dark:hover:bg-white/[.06]"
                   >
                     <span aria-hidden className={`h-2 w-2 rounded-full ${labelDot(label.color)}`} />
@@ -171,7 +199,7 @@ export function LabelsPanel({
               <button
                 type="button"
                 onClick={() => void create()}
-                disabled={pending}
+                aria-disabled={pending}
                 className="rounded-md px-2 py-1 text-left text-xs text-indigo-700 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
               >
                 Create “{query.trim()}”

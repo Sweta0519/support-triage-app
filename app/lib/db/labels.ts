@@ -19,17 +19,26 @@ export async function listLabels(): Promise<TeamLabel[]> {
   return data as TeamLabel[];
 }
 
+// Ticket ids go in the request URL, so they're sent in chunks: a few hundred
+// open tickets in one `in.(...)` would pass the URL length limit. A chunk of
+// 50 tickets also stays far below PostgREST's 1000-row cap.
+const TICKET_ID_CHUNK = 50;
+
 // ticket id -> its labels, for the tickets on a page.
 export async function listLabelsForTickets(ticketIds: string[]): Promise<Map<string, TeamLabel[]>> {
   const result = new Map<string, TeamLabel[]>();
   if (ticketIds.length === 0) return result;
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("ticket_labels")
-    .select("ticket_id, label:labels(id, name, color)")
-    .in("ticket_id", ticketIds);
-  if (error) throw new Error(error.message);
-  for (const row of data as unknown as { ticket_id: string; label: TeamLabel | null }[]) {
+  const chunks: string[][] = [];
+  for (let i = 0; i < ticketIds.length; i += TICKET_ID_CHUNK) chunks.push(ticketIds.slice(i, i + TICKET_ID_CHUNK));
+  const responses = await Promise.all(
+    chunks.map((ids) => supabase.from("ticket_labels").select("ticket_id, label:labels(id, name, color)").in("ticket_id", ids)),
+  );
+  const rows = responses.flatMap(({ data, error }) => {
+    if (error) throw new Error(error.message);
+    return data as unknown as { ticket_id: string; label: TeamLabel | null }[];
+  });
+  for (const row of rows) {
     if (!row.label) continue;
     const list = result.get(row.ticket_id) ?? [];
     list.push(row.label);
@@ -64,21 +73,25 @@ export async function deleteLabel(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-// true when it took effect; false when the ticket isn't visible to the
-// caller (RLS refuses the insert). Adding twice / removing absent is a no-op.
-export async function setTicketLabel(ticketId: string, labelId: string, on: boolean): Promise<boolean> {
+// "ticket_gone" when the ticket isn't visible to the caller (RLS refuses the
+// insert); "label_gone" when someone deleted the label meanwhile (FK).
+// Adding twice / removing an absent label is a no-op.
+export type SetTicketLabelResult = "ok" | "ticket_gone" | "label_gone";
+
+export async function setTicketLabel(ticketId: string, labelId: string, on: boolean): Promise<SetTicketLabelResult> {
   const supabase = await createServerSupabaseClient();
   if (on) {
     const { error } = await supabase
       .from("ticket_labels")
       .upsert({ ticket_id: ticketId, label_id: labelId }, { onConflict: "ticket_id,label_id", ignoreDuplicates: true });
     if (error) {
-      if (error.code === "42501" || error.code === "23503") return false;
+      if (error.code === "42501") return "ticket_gone";
+      if (error.code === "23503") return "label_gone";
       throw new Error(error.message);
     }
-    return true;
+    return "ok";
   }
   const { error } = await supabase.from("ticket_labels").delete().eq("ticket_id", ticketId).eq("label_id", labelId);
   if (error) throw new Error(error.message);
-  return true;
+  return "ok";
 }

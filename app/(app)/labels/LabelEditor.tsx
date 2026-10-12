@@ -31,6 +31,14 @@ export function LabelEditor({ label }: { label: TeamLabel }) {
   const router = useRouter();
   const [name, setName] = useState(label.name);
   const [color, setColor] = useState<LabelColor>(label.color);
+  // After a refresh shows someone else's rename or recolour, the row follows
+  // it, so Save can't quietly put the old values back.
+  const [shown, setShown] = useState({ name: label.name, color: label.color });
+  if (shown.name !== label.name || shown.color !== label.color) {
+    setShown({ name: label.name, color: label.color });
+    setName(label.name);
+    setColor(label.color);
+  }
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const changed = name.trim() !== label.name || color !== label.color;

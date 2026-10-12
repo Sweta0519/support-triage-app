@@ -37,7 +37,7 @@ test.afterAll(async () => {
   await db.from("labels").delete().like("name", `${labelPrefix}%`);
 });
 
-test("create, add and remove labels on a ticket; they show first on the card", async ({ page }) => {
+test("create, add and remove labels on a ticket; they show on the card", async ({ page }) => {
   const ticket = await seedTicket(`Labels probe ${Date.now()}`);
   const name = `${labelPrefix} VIP`;
   await login(page, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
@@ -50,7 +50,7 @@ test("create, add and remove labels on a ticket; they show first on the card", a
   await panel.getByRole("button", { name: `Create “${name}”` }).click();
   await expect(panel.getByRole("button", { name: `Remove label ${name}` })).toBeVisible();
 
-  // The queue card leads with it.
+  // The queue card shows it.
   await page.goto(`/queue?filter=all&q=${encodeURIComponent(`#${ticket.number}`)}`);
   const card = page.getByRole("listitem").filter({ has: page.getByRole("button", { name: `Actions for #${ticket.number}` }) });
   await expect(card.getByText(name, { exact: true })).toBeVisible();
@@ -102,6 +102,40 @@ test("the card menu toggles labels; the Labels page renames and deletes them", a
   await expect(page.getByLabel(`Name of label ${renamed}`)).toHaveCount(0);
   const { data: left } = await service().from("ticket_labels").select("label_id").eq("ticket_id", ticket.id);
   expect(left).toEqual([]);
+  // The history still names it (recorded before the cascade removed it).
+  const { data: removed } = await service()
+    .from("ticket_events")
+    .select("from_value")
+    .eq("ticket_id", ticket.id)
+    .eq("event_type", "label_removed");
+  expect(removed).toEqual([{ from_value: renamed }]);
+});
+
+test("a labelled ticket can still be deleted (account deletion cascades to it)", async () => {
+  const name = `${labelPrefix} Cascade`;
+  const { data: label } = await service().from("labels").insert({ name, color: "teal" }).select("id").single();
+  const ticket = await seedTicket(`Labels cascade probe ${Date.now()}`);
+  expect((await service().from("ticket_labels").insert({ ticket_id: ticket.id, label_id: label!.id })).error).toBeNull();
+  const { error } = await service().from("tickets").delete().eq("id", ticket.id);
+  expect(error).toBeNull();
+  expect((await service().from("tickets").select("id").eq("id", ticket.id)).data).toEqual([]);
+});
+
+test("staff can rename a label but not rewrite who created it", async () => {
+  const name = `${labelPrefix} Attribution`;
+  const { data: label } = await service().from("labels").insert({ name, color: "sky" }).select("id, created_by").single();
+  const agent = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
+    db: { schema: "ticketing" },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: signedIn } = await agent.auth.signInWithPassword({
+    email: requireEnv("TEST_AGENT_EMAIL"),
+    password: requireEnv("TEST_AGENT_PASSWORD"),
+  });
+  expect((await agent.from("labels").update({ created_by: signedIn.user!.id }).eq("id", label!.id)).error).not.toBeNull();
+  expect((await agent.from("labels").update({ name: `${name} 2` }).eq("id", label!.id)).error).toBeNull();
+  const { data: after } = await service().from("labels").select("name, created_by").eq("id", label!.id).single();
+  expect(after).toEqual({ name: `${name} 2`, created_by: label!.created_by });
 });
 
 test("customers can't see or change labels", async () => {
