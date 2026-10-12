@@ -7,6 +7,7 @@ import { computeSla, slaBadgeClasses, slaBadgeLabel } from "@/app/lib/sla";
 import { formatTicketNumber } from "@/app/lib/format";
 import { isFrustrated, sortQueue } from "@/app/lib/queue";
 import { widePageClass } from "@/app/lib/styles";
+import { listMyFlaggedTicketIds } from "@/app/lib/db/flags";
 import { Board, type BoardCard } from "./Board";
 
 // The staff triage board: the same tickets as the queue (RLS-scoped, no
@@ -16,7 +17,8 @@ import { Board, type BoardCard } from "./Board";
 export default async function BoardPage() {
   const profile = await requireStaff();
   const now = new Date();
-  const tickets = sortQueue(await listQueueTickets(profile.id, profile.role), "sla", now);
+  const [queue, flagged] = await Promise.all([listQueueTickets(profile.id, profile.role), listMyFlaggedTicketIds()]);
+  const tickets = sortQueue(queue, "sla", now);
   // Only admins see others' tickets, so only they need the staff list.
   const staff = new Map(
     (profile.role === "admin" ? await listStaffProfiles() : []).map((s) => [s.id, s])
@@ -31,6 +33,7 @@ export default async function BoardPage() {
       status: t.status,
       assigneeId: t.assignee_id,
       mine: t.assignee_id === profile.id,
+      flagged: flagged.has(t.id),
       assigneeLabel: t.assignee_id ? assignedToLabel(staff.get(t.assignee_id)) : null,
       priority: t.triage_state?.priority ?? null,
       sla: sla ? { label: slaBadgeLabel(sla), classes: slaBadgeClasses(sla.state) } : null,

@@ -131,9 +131,26 @@ test("flags are private, and the Flagged tab lists them", async ({ browser }) =>
   await card.getByRole("button", { name: `Actions for #${ticket.number}` }).click();
   await page.getByRole("menuitem", { name: "Flag to follow up" }).click();
   await expect(page.getByRole("status").filter({ hasText: `Flagged #${ticket.number} to follow up.` })).toBeVisible();
+  // The card itself now shows the flag, on every queue tab, and so does
+  // the ticket page.
+  await expect(card.getByRole("img", { name: "Flagged to follow up" })).toBeVisible();
+  await page.goto(`/tickets/${ticket.id}`);
+  await expect(page.getByRole("img", { name: "Flagged to follow up" })).toBeVisible();
 
   await page.goto(`/queue?filter=flagged&q=${encodeURIComponent(`#${ticket.number}`)}`);
   await expect(page.getByRole("button", { name: `Actions for #${ticket.number}` })).toBeVisible();
+
+  // Removing the flag removes the icon too.
+  const again = await openQueueFor(page, ticket.number);
+  await again.getByRole("button", { name: `Actions for #${ticket.number}` }).click();
+  await page.getByRole("menuitem", { name: "Remove flag" }).click();
+  await expect(page.getByRole("status").filter({ hasText: `Removed the flag from #${ticket.number}.` })).toBeVisible();
+  await expect(again.getByRole("img", { name: "Flagged to follow up" })).toHaveCount(0);
+
+  // Flag it again for the privacy checks below.
+  await again.getByRole("button", { name: `Actions for #${ticket.number}` }).click();
+  await page.getByRole("menuitem", { name: "Flag to follow up" }).click();
+  await expect(again.getByRole("img", { name: "Flagged to follow up" })).toBeVisible();
   await agentContext.close();
 
   // The admin sees the ticket, but not the agent's flag.
@@ -142,6 +159,10 @@ test("flags are private, and the Flagged tab lists them", async ({ browser }) =>
   await login(adminPage, requireEnv("TEST_ADMIN_EMAIL"), requireEnv("TEST_ADMIN_PASSWORD"));
   await adminPage.goto(`/queue?filter=flagged&q=${encodeURIComponent(`#${ticket.number}`)}`);
   await expect(adminPage.getByRole("button", { name: `Actions for #${ticket.number}` })).toHaveCount(0);
+  // ...and the same card on the All tab carries no flag for them.
+  const adminCard = await openQueueFor(adminPage, ticket.number);
+  await expect(adminCard.getByText(`#${ticket.number}`)).toBeVisible();
+  await expect(adminCard.getByRole("img", { name: "Flagged to follow up" })).toHaveCount(0);
   // And through the Data API: no rows of anyone else's.
   const admin = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
     db: { schema: "ticketing" },

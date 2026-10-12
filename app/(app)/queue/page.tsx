@@ -35,6 +35,7 @@ import {
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { effectiveTriageStatus } from "@/app/lib/triage-status";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
+import { FlagIcon } from "@/app/components/FlagIcon";
 import { widePageClass, chipClass } from "@/app/lib/styles";
 
 const chipClasses = chipClass;
@@ -189,6 +190,7 @@ function TicketCard({
             {formatTicketNumber(ticket.number)}
           </span>
           <Badge label={statusLabel(ticket.status)} colorClasses={statusBadgeClasses(ticket.status)} />
+          {flagged ? <FlagIcon /> : null}
           {sla ? (
             <span className="ml-auto">
               <SlaBadge sla={sla} />

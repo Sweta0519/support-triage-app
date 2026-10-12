@@ -33,6 +33,8 @@ import { MY_TICKETS_CRUMB } from "@/app/lib/crumbs";
 import { readablePageClass, widePageClass, chipClass } from "@/app/lib/styles";
 import { effectiveTriageStatus } from "@/app/lib/triage-status";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
+import { FlagIcon } from "@/app/components/FlagIcon";
+import { listMyFlaggedTicketIds } from "@/app/lib/db/flags";
 import { Stars } from "@/app/components/Stars";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
@@ -118,7 +120,7 @@ export default async function TicketDetailPage({
     comments: list,
     people: await getPersonCards([ticket.customer_id, ticket.created_by, ...list.map((c: Comment) => c.author_id)]),
   }));
-  const [{ comments, people }, triage, staff, share, filerEmail, rating] = await Promise.all([
+  const [{ comments, people }, triage, staff, share, filerEmail, rating, flaggedByMe] = await Promise.all([
     commentsWithPeople,
     isStaff ? getLatestTriageResult(id) : Promise.resolve(null),
     // Only admins reassign, so only admins get the staff list.
@@ -127,6 +129,8 @@ export default async function TicketDetailPage({
     filedByOther ? getStaffEmail(ticket.created_by as string) : Promise.resolve(null),
     // RLS decides who sees it: the customer, an admin, or the credited agent.
     showRating ? getTicketRating(id) : Promise.resolve(null),
+    // The viewer's own follow-up flag (staff only; private to them).
+    isStaff ? listMyFlaggedTicketIds().then((ids) => ids.has(ticket.id)) : Promise.resolve(false),
   ]);
   const customerCard = people.get(ticket.customer_id);
 
@@ -254,7 +258,13 @@ export default async function TicketDetailPage({
               </p>
             ) : null}
             <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
-              <span className="font-mono">{formatTicketNumber(ticket.number)}</span> · Opened{" "}
+              <span className="font-mono">{formatTicketNumber(ticket.number)}</span>
+              {flaggedByMe ? (
+                <span className="ml-1.5 inline-flex align-middle">
+                  <FlagIcon size={12} />
+                </span>
+              ) : null}{" "}
+              · Opened{" "}
               {formatRelativeTime(ticket.created_at)}
               {filedBy ? <> · {filedBy}</> : null}
             </p>
