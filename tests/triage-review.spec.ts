@@ -114,7 +114,8 @@ test("staff confirm the AI's triage, then correct it, and both are recorded", as
   // The queue sorts and badges by the human value now.
   await page.goto("/queue?filter=unassigned");
   const row = page.getByRole("link", { name: new RegExp(subject) });
-  await expect(row.getByText("low", { exact: true })).toBeVisible();
+  // The card shows priority as an icon, named for screen readers (SUP-38).
+  await expect(row.getByText("Low priority", { exact: true })).toBeAttached();
 });
 
 test("a review against a superseded AI run is rejected, and a re-run never overwrites a review", async ({

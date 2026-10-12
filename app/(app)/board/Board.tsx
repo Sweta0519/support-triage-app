@@ -5,10 +5,9 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { moveTicketAction } from "../tickets/actions";
-import { Badge } from "@/app/components/Badge";
-import { priorityBadgeClasses } from "@/app/lib/badges";
 import { BOARD_COLUMNS, boardTargets, canMove, COLUMN_LABELS, moveClaimsTicket } from "@/app/lib/board";
 import { FlagIcon } from "@/app/components/FlagIcon";
+import { cardLabels, LabelRow, PriorityIcon, SlaText } from "@/app/components/CardBits";
 import type { TicketStatus } from "@/app/lib/ticket-status";
 
 export type BoardCard = {
@@ -21,14 +20,13 @@ export type BoardCard = {
   // "Assigned to …" when assigned (used when it isn't the viewer).
   assigneeLabel: string | null;
   priority: string | null;
-  sla: { label: string; classes: string } | null;
+  category: string | null;
+  sla: { label: string; state: string } | null;
   escalation: boolean;
   frustrated: boolean;
   // The viewer's own follow-up flag.
   flagged: boolean;
 };
-
-const chip = "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium";
 
 export function Board({ cards: initial }: { cards: BoardCard[] }) {
   const router = useRouter();
@@ -148,27 +146,22 @@ export function Board({ cards: initial }: { cards: BoardCard[] }) {
                   }`}
                 >
                   <div className="flex items-center gap-2 text-xs">
+                    <PriorityIcon priority={card.priority} />
                     <span className="font-mono text-zinc-500 dark:text-zinc-400">{card.number}</span>
                     {card.flagged ? <FlagIcon size={12} /> : null}
                     {card.sla ? (
                       <span className="ml-auto">
-                        <Badge label={card.sla.label} colorClasses={card.sla.classes} capitalize={false} />
+                        <SlaText label={card.sla.label} state={card.sla.state} />
                       </span>
                     ) : null}
                   </div>
                   <Link id={`card-${card.id}`} href={`/tickets/${card.id}`} className="line-clamp-2 text-sm font-medium text-black hover:underline dark:text-zinc-50">
                     {card.subject}
                   </Link>
-                  <div className="flex flex-wrap items-center gap-1">
-                    {card.priority ? <Badge label={card.priority} colorClasses={priorityBadgeClasses(card.priority)} /> : null}
-                    {card.escalation ? (
-                      <span className={`${chip} bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300`}>Escalation risk</span>
-                    ) : null}
-                    {card.frustrated ? (
-                      <span className={`${chip} bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-300`}>Frustrated</span>
-                    ) : null}
-                  </div>
-                  <p className="pt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
+                  <LabelRow
+                    labels={cardLabels({ category: card.category, escalation: card.escalation, frustrated: card.frustrated })}
+                  />
+                  <p className="truncate pt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
                     {card.assigneeId === null ? "Unassigned" : card.mine ? "Yours" : (card.assigneeLabel ?? "Assigned")}
                   </p>
                   {/* Its own full-width row: next to the owner it overflowed

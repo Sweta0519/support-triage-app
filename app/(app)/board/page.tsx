@@ -3,7 +3,7 @@ import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { listQueueTickets } from "@/app/lib/db/tickets";
 import { listStaffProfiles } from "@/app/lib/db/profiles";
 import { assignedToLabel } from "@/app/lib/people";
-import { computeSla, slaBadgeClasses, slaBadgeLabel } from "@/app/lib/sla";
+import { computeSla, slaBadgeLabel } from "@/app/lib/sla";
 import { formatTicketNumber } from "@/app/lib/format";
 import { isFrustrated, sortQueue } from "@/app/lib/queue";
 import { widePageClass } from "@/app/lib/styles";
@@ -36,7 +36,8 @@ export default async function BoardPage() {
       flagged: flagged.has(t.id),
       assigneeLabel: t.assignee_id ? assignedToLabel(staff.get(t.assignee_id)) : null,
       priority: t.triage_state?.priority ?? null,
-      sla: sla ? { label: slaBadgeLabel(sla), classes: slaBadgeClasses(sla.state) } : null,
+      category: t.triage_state?.category ?? null,
+      sla: sla ? { label: slaBadgeLabel(sla), state: sla.state } : null,
       escalation: t.latest_triage?.is_escalation_risk ?? false,
       frustrated: isFrustrated(t.latest_triage?.frustration ?? null),
     };

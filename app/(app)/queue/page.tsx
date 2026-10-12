@@ -6,12 +6,8 @@ import { listMyFlaggedTicketIds } from "@/app/lib/db/flags";
 import { assignedToLabel, profileName } from "@/app/lib/people";
 import { Avatar } from "@/app/components/Avatar";
 import { listQueueTickets, type QueueTicketSummary } from "@/app/lib/db/tickets";
-import { Badge } from "@/app/components/Badge";
-import { SlaBadge } from "@/app/components/SlaBadge";
-import { priorityBadgeClasses, statusBadgeClasses, statusLabel } from "@/app/lib/badges";
+import { statusLabel } from "@/app/lib/badges";
 import { formatRelativeTime, formatTicketNumber } from "@/app/lib/format";
-import { computeSla } from "@/app/lib/sla";
-import { fieldLabel } from "@/app/lib/triage-fields";
 import { ClaimButton } from "./ClaimButton";
 import { CardMenuArea } from "./CardMenu";
 import { QueueAnnouncer } from "./QueueAnnouncer";
@@ -36,9 +32,9 @@ import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { effectiveTriageStatus } from "@/app/lib/triage-status";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { FlagIcon } from "@/app/components/FlagIcon";
-import { widePageClass, chipClass } from "@/app/lib/styles";
-
-const chipClasses = chipClass;
+import { cardLabels, LabelRow, PriorityIcon, SlaText, StatusDot, UnassignedIcon } from "@/app/components/CardBits";
+import { computeSla, slaBadgeLabel } from "@/app/lib/sla";
+import { widePageClass } from "@/app/lib/styles";
 
 // The tab and sort a bare /queue opens on: the user's own defaults from
 // account settings.
@@ -68,42 +64,12 @@ function StatTile({ label, value, detail, tone }: { label: string; value: number
   );
 }
 
-// The AI's read of the ticket, in the order an agent cares about it.
-function AiChips({ ticket }: { ticket: QueueTicketSummary }) {
+// Whether anyone has checked the AI's latest run. Reviewed means *this*
+// run was reviewed: after a re-run the newer run is unchecked again.
+function reviewState(ticket: QueueTicketSummary): "unsure" | "unreviewed" | null {
   const ai = ticket.latest_triage;
-  if (!ai) return null;
-  // Reviewed means this run was reviewed: after a re-run the newer run's
-  // flags are on the card and nobody has checked them yet.
-  const reviewed = ticket.triage_state?.reviewed_result_id === ai.id;
-  return (
-    <>
-      {ai.is_escalation_risk ? (
-        <span className={`${chipClasses} bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300`}>
-          Escalation risk
-        </span>
-      ) : null}
-      {isFrustrated(ai.frustration) ? (
-        <span className={`${chipClasses} bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-300`}>
-          Frustrated
-        </span>
-      ) : null}
-      {reviewed ? null : ai.needs_human_review ? (
-        <span
-          title="The AI flagged its own triage for a human to check"
-          className={`${chipClasses} bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300`}
-        >
-          AI unsure
-        </span>
-      ) : (
-        <span
-          title="Nobody has confirmed or corrected the AI's triage yet"
-          className={`${chipClasses} bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400`}
-        >
-          AI unreviewed
-        </span>
-      )}
-    </>
-  );
+  if (!ai || ticket.triage_state?.reviewed_result_id === ai.id) return null;
+  return ai.needs_human_review ? "unsure" : "unreviewed";
 }
 
 // The card's summary line before an AI assessment exists. A run that died
@@ -125,6 +91,7 @@ function TicketCard({
   filter,
   currentUserId,
   assignee,
+  viewer,
   flagged,
   isAdmin,
   staffOptions,
@@ -139,6 +106,8 @@ function TicketCard({
   staffOptions: { id: string; label: string }[];
   // Someone else's profile (only admins see others' tickets).
   assignee: StaffProfile | undefined;
+  // The viewer, for their own avatar on tickets assigned to them.
+  viewer: { name: string; avatarPath: string | null };
   now: Date;
   // This queue view's URL, for a claim that loses the race to come back to.
   returnTo: string;
@@ -183,53 +152,55 @@ function TicketCard({
         // Carries the active tab along so the ticket page's breadcrumb
         // leads back here, not just to the full queue.
         href={ticketHref(ticket.id, filter)}
-        className="flex flex-1 flex-col gap-2 p-4 transition-colors hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20"
+        className="flex flex-1 flex-col gap-1.5 p-4 transition-colors hover:bg-black/[.02] dark:hover:bg-white/[.03]"
       >
+        {/* Linear-style (SUP-38): priority icon, number and status up top,
+            the flag and the assignee on the right; colour only in icons. */}
         <div className="flex items-center gap-2">
+          <PriorityIcon priority={priority} />
           <span className="font-mono text-xs text-zinc-500 dark:text-zinc-500">
             {formatTicketNumber(ticket.number)}
           </span>
-          <Badge label={statusLabel(ticket.status)} colorClasses={statusBadgeClasses(ticket.status)} />
-          {flagged ? <FlagIcon /> : null}
-          {sla ? (
-            <span className="ml-auto">
-              <SlaBadge sla={sla} />
-            </span>
-          ) : null}
+          <StatusDot status={ticket.status} />
+          <span className="text-xs text-zinc-400 dark:text-zinc-500" title={new Date(ticket.created_at).toLocaleString("en-GB")}>
+            {formatRelativeTime(ticket.created_at)}
+          </span>
+          <span className="ml-auto flex items-center gap-1.5">
+            {flagged ? <FlagIcon /> : null}
+            {unassigned ? (
+              <UnassignedIcon />
+            ) : ticket.assignee_id === currentUserId ? (
+              <span className="inline-flex" title="Assigned to you">
+                <Avatar id={currentUserId} name={viewer.name} avatarPath={viewer.avatarPath} size={20} />
+                <span className="sr-only">Assigned to you</span>
+              </span>
+            ) : ticket.assignee_id ? (
+              <span className="inline-flex" title={assignedToLabel(assignee)}>
+                <Avatar
+                  id={ticket.assignee_id}
+                  name={assignee ? profileName(assignee) : null}
+                  avatarPath={assignee?.avatar_path ?? null}
+                  size={20}
+                />
+                <span className="sr-only">{assignedToLabel(assignee)}</span>
+              </span>
+            ) : null}
+          </span>
         </div>
         <span className="line-clamp-1 font-medium text-black dark:text-zinc-50">{ticket.subject}</span>
-        <p className="line-clamp-2 text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="line-clamp-2 text-sm text-zinc-500 dark:text-zinc-400">
           {ticket.latest_triage?.summary ?? <NoTriageYet state={ticket.triage_state} now={now} />}
         </p>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {priority ? <Badge label={priority} colorClasses={priorityBadgeClasses(priority)} /> : null}
-          {category ? (
-            <span className={`${chipClasses} border border-black/[.08] capitalize text-zinc-600 dark:border-white/[.145] dark:text-zinc-400`}>
-              {fieldLabel(category)}
-            </span>
-          ) : null}
-          <AiChips ticket={ticket} />
-        </div>
-        <div className="mt-auto flex items-center justify-between pt-1 text-xs text-zinc-500 dark:text-zinc-500">
-          <span>{formatRelativeTime(ticket.created_at)}</span>
-          {unassigned ? (
-            <Badge
-              label="Unassigned"
-              colorClasses="bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
-            />
-          ) : ticket.assignee_id === currentUserId ? (
-            <span>Assigned to you</span>
-          ) : ticket.assignee_id ? (
-            <span className="flex items-center gap-1.5">
-              <Avatar
-                id={ticket.assignee_id}
-                name={assignee ? profileName(assignee) : null}
-                avatarPath={assignee?.avatar_path ?? null}
-                size={18}
-              />
-              {assignedToLabel(assignee)}
-            </span>
-          ) : null}
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+          <LabelRow
+            labels={cardLabels({
+              category,
+              escalation: ticket.latest_triage?.is_escalation_risk ?? false,
+              frustrated: isFrustrated(ticket.latest_triage?.frustration ?? null),
+              review: reviewState(ticket),
+            })}
+          />
+          {sla ? <SlaText label={slaBadgeLabel(sla)} state={sla.state} /> : null}
         </div>
       </Link>
     </CardMenuArea>
@@ -258,6 +229,7 @@ export default async function QueuePage({
   const staff = new Map(staffList.map((s) => [s.id, s]));
 
   const staffOptions = [...staff.values()].map((s) => ({ id: s.id, label: profileName(s) }));
+  const viewer = { name: profileName(profile), avatarPath: profile.avatar_path };
 
   const params = await searchParams;
   const defaults: QueueDefaults = { filter: profile.queue_default_filter, sort: profile.queue_default_sort };
@@ -463,6 +435,7 @@ export default async function QueuePage({
               filter={filter}
               currentUserId={profile.id}
               assignee={ticket.assignee_id ? staff.get(ticket.assignee_id) : undefined}
+              viewer={viewer}
               flagged={flagged.has(ticket.id)}
               isAdmin={profile.role === "admin"}
               staffOptions={staffOptions}
