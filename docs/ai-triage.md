@@ -64,9 +64,11 @@ Triggered from `createTicketAction` via Next's `after()`, so it runs once the cu
 response has already been sent -- the customer never waits on the model. Staff can also re-run
 it from the ticket page.
 
-1. **Claim.** `update tickets set triage_status = 'processing' where id = $1 and triage_status =
-   'pending'`. Zero rows means another invocation owns it; stop. This is what prevents
-   double-triage if a retry and the original both fire.
+1. **Claim.** Atomically set `triage_status = 'processing'` with a fresh `claim_id` and
+   `claimed_at`, if the ticket is `pending` or its run has been `processing` for longer than 5
+   minutes (a stalled run, SUP-30). Zero rows means another invocation owns it; stop. The run's
+   final writes only apply while its `claim_id` is still current, so a slow old run can't
+   overwrite the run that replaced it.
 2. **Embed.** `subject + body` (body capped at 6,000 chars) -> `openai/text-embedding-3-small`
    via `POST https://openrouter.ai/api/v1/embeddings` -> upsert into `ticket_embeddings`
    (`vector(1536)`, HNSW cosine index).
@@ -74,11 +76,12 @@ it from the ticket page.
    **subject and prior summary only, never bodies**. Each is flattened to one line (newlines and
    tabs stripped), capped at 120 / 200 characters, and the whole list is wrapped in
    `<candidate_tickets>` tags.
-4. **Assess.** One `POST /chat/completions` to `anthropic/claude-haiku-4.5` (this workspace's
+4. **Assess and draft.** Two `POST /chat/completions` calls in parallel (the assessment with the
+   candidates; the reply with this ticket alone -- see below) to `anthropic/claude-haiku-4.5` (this workspace's
    OpenRouter guardrail blocks Sonnet-tier endpoints; Haiku is well suited to closed-schema
    classification and 3x cheaper) with
    `response_format: { type: "json_schema", strict: true }` and `provider.require_parameters:
-   true` (so OpenRouter can't route to a provider that ignores the schema). The schema is built
+   true` (so OpenRouter can't route to a provider that ignores the schema). The assessment schema is built
    per request: `duplicate_of` and `related_ticket_ids` are `enum`s of the candidate ids, so the
    model *cannot emit an id it wasn't shown*.
 5. **Validate again in TypeScript.** Enums re-checked, ids filtered to the candidate set,
@@ -91,13 +94,33 @@ it from the ticket page.
 7. **On any failure**: `triage_status = 'failed'`, a `triage_failed` event, and a server-side log
    line. The ticket stays fully usable. Failure never surfaces to the customer.
 
-Two OpenRouter calls per ticket; `max_tokens` is capped at 1,200 and one retry on 429/5xx.
+Three OpenRouter calls per ticket: the embedding, then two completions **in parallel** (since
+SUP-31, prompt version `2026-10-12.1`):
+
+- **Assessment** (`max_tokens` 900): sees this ticket *and* the candidate tickets, and returns the
+  category, priority and reason, team, frustration, escalation flag, `duplicate_of`,
+  `related_ticket_ids` and confidence. Nothing it writes is customer-visible (`priority_reason`
+  is staff-only).
+- **Summary and reply** (`max_tokens` 600): sees **only this ticket** -- no candidates and
+  nothing from the assessment -- and returns the `summary` (which can be published on a public
+  share page), `suggested_reply` and `missing_info`.
+
+The ticket body is sent to both calls, so input tokens for a long ticket roughly double: that's
+the price of keeping the customer-visible text away from other customers' tickets. If either
+call fails, the run fails as a whole (a re-run is one click away), and what the other call
+already spent is logged, since a failed run stores no result row.
+
+Prompts, schemas and output clean-up live in `app/lib/ai/triage-prompts.ts` (no server-only
+import, so `tests/triage-prompts.spec.ts` checks exactly what each call is sent). Each call retries
+once on 429/5xx. Both responses are stored in `triage_results.raw` as `{ assessment, reply }`, each with the
+model OpenRouter actually used. The tokens and cost are summed, and `model` names both models if
+they ever differ.
 
 ## Cost tracking (optional task)
 
 OpenRouter includes the actual billed cost in `usage.cost` on every response -- the old
 `usage: { include: true }` request flag is deprecated and now a no-op; cost is always returned.
-Both calls' costs are summed into `triage_results.cost_usd`, shown per ticket in the footer of
+All three calls' costs (the embedding and both completions) are summed into `triage_results.cost_usd`, shown per ticket in the footer of
 the triage panel (`app/(app)/tickets/[id]/TriagePanel.tsx`) and as a running total on
 `/admin` (`app/lib/db/admin.ts`). A real run costs roughly $0.003 with Haiku 4.5 on this
 prompt -- small enough that per-ticket cost matters more for visibility than for budgeting, but
@@ -129,10 +152,13 @@ urgent" is a given. Mitigations are structural, not just prompt wording:
 - Any URL or email address in the draft reply that does not appear in the ticket being assessed
   is replaced with `[link removed]` before storing. A link can only have come from the model or
   from another customer's text; neither belongs in a reply an agent might paste unreviewed.
-- Other customers' text reaches the prompt too, via candidate subjects and summaries. It is
-  flattened, length-capped, wrapped in `<candidate_tickets>`, and the system prompt names it as
-  untrusted and forbids copying any of it into `suggested_reply` -- so one customer's ticket
-  cannot plant a phishing line in the draft reply an agent sees for another customer.
+- Other customers' text (candidate subjects and summaries) reaches **only the assessment call**,
+  which writes nothing customer-visible: the summary, the draft reply and `missing_info` come from
+  the other call. There it is flattened, length-capped, wrapped in
+  `<candidate_tickets>`, and named as untrusted. The draft reply comes from a separate call that
+  never sees it (SUP-31, after the Turing College review), so one customer's ticket can't plant a
+  line in the reply drafted for another. That's data minimisation rather than filtering the
+  output afterwards. The link and timeframe clean-up on the reply stays as a second layer.
 - Customers cannot read the AI-derived priority/category at all -- not in the UI and not via the
   Data API, because those fields live in `ticket_triage_state`, whose RLS returns no rows to a
   customer -- so there is no fast feedback loop for tuning an injection.
