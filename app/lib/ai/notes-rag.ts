@@ -164,15 +164,4 @@ export async function searchNotes(rawQuery: string): Promise<NotesSearchResult> 
   };
 }
 
-// A message that plainly asks about the staff member's notes ("my notes",
-// "according to our notes", "search the notes"). For these the first model
-// call *must* search (tool_choice "required"): left to decide, the model
-// sometimes answered a repeat question from its own earlier reply, or said
-// "nothing in your notes" without looking (SUP-28). Anything less explicit
-// stays the model's call -- that decision is the point of agentic RAG.
-const EXPLICIT_NOTES_QUESTION =
-  /\b(?:my|our|the team'?s|the)\s+notes?\b|\bnotes?\s+(?:say|says|mention|mentions)\b/i;
-
-export function isExplicitNotesQuestion(message: string): boolean {
-  return EXPLICIT_NOTES_QUESTION.test(message);
-}
+export { isExplicitNotesQuestion } from "./notes-question";

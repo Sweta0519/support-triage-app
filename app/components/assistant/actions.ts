@@ -57,6 +57,9 @@ const SYSTEM_PROMPT =
   "in this conversation -- answer those directly.\n" +
   "- Notes can be edited or deleted at any time: for a question about what " +
   "their notes say, search again even if you answered it before.\n" +
+  "Earlier replies of yours that start with \"[Answered earlier from a notes " +
+  "search\" were marked by the app, not written by you; never start a reply " +
+  "with that marker yourself.\n" +
   "- If the results don't answer the question, rewrite the query once with " +
   "different key terms and search again.\n" +
   "When you answer from notes, base the answer on the returned excerpts and " +
@@ -150,11 +153,20 @@ async function runAssistantTurn(
   const searches: NonNullable<AssistantMessageMetadata["searches"]> = [];
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const completion = await completeChat({
-      messages: transcript,
-      tools: [SEARCH_NOTES_TOOL],
-      toolChoice: mustSearch && round === 0 ? "required" : "auto",
-    });
+    const forced = mustSearch && round === 0;
+    let completion;
+    try {
+      completion = await completeChat({
+        messages: transcript,
+        tools: [SEARCH_NOTES_TOOL],
+        toolChoice: forced ? "required" : "auto",
+      });
+    } catch (err) {
+      // A forced round has no text to fall back on, so one malformed tool
+      // call would end the turn; let the model decide this round instead.
+      if (!forced) throw err;
+      completion = await completeChat({ messages: transcript, tools: [SEARCH_NOTES_TOOL] });
+    }
     if (completion.toolCalls.length === 0) {
       return { text: completion.text, model: completion.model, metadata: metadataFor(searches) };
     }
@@ -238,7 +250,10 @@ export async function sendMessageAction(content: string): Promise<SendMessageRes
       (m): ChatMessage =>
         m.role === "user"
           ? { role: "user", content: m.content }
-          : { role: "assistant", content: m.metadata?.searches?.length ? `${FROM_EARLIER_SEARCH}${m.content}` : m.content }
+          : {
+              role: "assistant",
+              content: m.metadata?.searches?.length ? `${FROM_EARLIER_SEARCH}${m.content}` : m.content,
+            }
     ),
     { role: "user", content: trimmed },
   ];
@@ -250,6 +265,10 @@ export async function sendMessageAction(content: string): Promise<SendMessageRes
   // handling) guards against exactly this the same way.
   try {
     const turn = await runAssistantTurn(messages, isExplicitNotesQuestion(trimmed));
+    // If the model imitated the context-only marker, don't store or show it.
+    turn.text = turn.text.startsWith(FROM_EARLIER_SEARCH.trim())
+      ? turn.text.slice(FROM_EARLIER_SEARCH.trim().length).trimStart() || NO_ANSWER_REPLY
+      : turn.text;
     const reply = await appendMessage(conversationId, "assistant", turn.text, turn.model, turn.metadata);
     return { status: "ok", userMessage, reply };
   } catch {
