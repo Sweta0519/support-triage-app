@@ -116,7 +116,8 @@ export const SEARCH_NOTES_TOOL: ToolDefinition = {
       "Search the current staff member's own private knowledge notes (runbooks, policies, " +
       "saved snippets, customer context) and return the most relevant excerpts. Use it for " +
       "questions about their team's specifics that you could not know otherwise. Do not use it " +
-      "for general knowledge, or for things already said in this conversation.",
+      "for general knowledge, or for things the user told you earlier in this conversation. Notes " +
+      "can change, so search again for a notes question even if you answered it before.",
     parameters: {
       type: "object",
       properties: {
@@ -161,4 +162,17 @@ export async function searchNotes(rawQuery: string): Promise<NotesSearchResult> 
       similarity: Math.round(row.similarity * 100) / 100,
     })),
   };
+}
+
+// A message that plainly asks about the staff member's notes ("my notes",
+// "according to our notes", "search the notes"). For these the first model
+// call *must* search (tool_choice "required"): left to decide, the model
+// sometimes answered a repeat question from its own earlier reply, or said
+// "nothing in your notes" without looking (SUP-28). Anything less explicit
+// stays the model's call -- that decision is the point of agentic RAG.
+const EXPLICIT_NOTES_QUESTION =
+  /\b(?:my|our|the team'?s|the)\s+notes?\b|\bnotes?\s+(?:say|says|mention|mentions)\b/i;
+
+export function isExplicitNotesQuestion(message: string): boolean {
+  return EXPLICIT_NOTES_QUESTION.test(message);
 }
