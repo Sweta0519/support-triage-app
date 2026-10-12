@@ -3,20 +3,22 @@
 // dots. Every icon carries a text equivalent for screen readers. No hooks
 // and no server-only imports, so server and client cards can both use them.
 
+import { statusLabel } from "@/app/lib/badges";
+import { capitalize } from "@/app/lib/format";
 import { fieldLabel } from "@/app/lib/triage-fields";
 
 const srOnly = "sr-only";
 
 // Priority as bars, like Linear: urgent is an exclamation mark in a square.
 export function PriorityIcon({ priority }: { priority: string | null }) {
-  const label = priority ? `${priority[0].toUpperCase()}${priority.slice(1)} priority` : "No priority yet";
+  const label = priority ? `${capitalize(priority)} priority` : "No priority yet";
   if (priority === "urgent") {
     return (
       <span className="inline-flex shrink-0 text-orange-600 dark:text-orange-400" title={label}>
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
           <rect x="1" y="1" width="14" height="14" rx="3" />
-          <rect x="7" y="4" width="2" height="5" rx="1" fill="white" />
-          <rect x="7" y="10.5" width="2" height="2" rx="1" fill="white" />
+          <rect x="7" y="4" width="2" height="5" rx="1" className="fill-white dark:fill-zinc-900" />
+          <rect x="7" y="10.5" width="2" height="2" rx="1" className="fill-white dark:fill-zinc-900" />
         </svg>
         <span className={srOnly}>{label}</span>
       </span>
@@ -57,7 +59,7 @@ export function StatusDot({ status }: { status: string }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-400">
       <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[status] ?? "bg-zinc-400"}`} />
-      <span className="capitalize">{status.replace(/_/g, " ")}</span>
+      <span>{capitalize(statusLabel(status))}</span>
     </span>
   );
 }
@@ -76,9 +78,9 @@ export function UnassignedIcon({ size = 20 }: { size?: number }) {
 
 export type CardLabel = { text: string; dot: string; title?: string };
 
-// The card's labels in order of importance: the category, then the AI's
-// read of the customer (escalation before frustration), then whether
-// anyone has checked the AI's triage. Cards show the first two.
+// The card's labels in order of importance -- the first two are shown:
+// escalation risk, then "AI unsure" (the AI asking not to be trusted), then
+// the category, then frustration, then "AI unreviewed".
 export function cardLabels(input: {
   category: string | null;
   escalation: boolean;
@@ -86,15 +88,15 @@ export function cardLabels(input: {
   review?: "unsure" | "unreviewed" | null;
 }): CardLabel[] {
   const labels: CardLabel[] = [];
-  if (input.category) {
-    const name = fieldLabel(input.category);
-    labels.push({ text: name.charAt(0).toUpperCase() + name.slice(1), dot: "bg-zinc-400" });
-  }
   if (input.escalation) labels.push({ text: "Escalation risk", dot: "bg-red-500" });
-  if (input.frustrated) labels.push({ text: "Frustrated", dot: "bg-orange-500" });
   if (input.review === "unsure") {
     labels.push({ text: "AI unsure", dot: "bg-amber-500", title: "The AI flagged its own triage for a human to check" });
-  } else if (input.review === "unreviewed") {
+  }
+  if (input.category) {
+    labels.push({ text: capitalize(fieldLabel(input.category)), dot: "bg-zinc-400" });
+  }
+  if (input.frustrated) labels.push({ text: "Frustrated", dot: "bg-orange-500" });
+  if (input.review === "unreviewed") {
     labels.push({ text: "AI unreviewed", dot: "bg-zinc-300 dark:bg-zinc-600", title: "Nobody has confirmed or corrected the AI's triage yet" });
   }
   return labels;
@@ -130,14 +132,16 @@ export function LabelRow({ labels, max = 2 }: { labels: CardLabel[]; max?: numbe
   );
 }
 
-// The first-reply SLA as quiet text: red only when overdue, amber when at
-// risk; otherwise the same grey as everything else.
+// The first-reply SLA as quiet text: red when overdue, amber when at risk
+// or replied late; otherwise the same grey as everything else. At risk
+// also says so in words, so it isn't told apart by colour alone.
 export function SlaText({ label, state }: { label: string; state: string }) {
+  const text = state === "at_risk" ? `At risk · ${label.charAt(0).toLowerCase()}${label.slice(1)}` : label;
   const tone =
     state === "breached"
       ? "text-red-600 dark:text-red-400"
-      : state === "at_risk"
+      : state === "at_risk" || state === "missed"
         ? "text-amber-700 dark:text-amber-400"
         : "text-zinc-500 dark:text-zinc-400";
-  return <span className={`shrink-0 text-[11px] font-medium ${tone}`}>{label}</span>;
+  return <span className={`shrink-0 text-[11px] font-medium ${tone}`}>{text}</span>;
 }

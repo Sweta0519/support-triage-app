@@ -7,7 +7,7 @@ import { assignedToLabel, profileName } from "@/app/lib/people";
 import { Avatar } from "@/app/components/Avatar";
 import { listQueueTickets, type QueueTicketSummary } from "@/app/lib/db/tickets";
 import { statusLabel } from "@/app/lib/badges";
-import { formatTicketNumber } from "@/app/lib/format";
+import { formatRelativeTime, formatTicketNumber } from "@/app/lib/format";
 import { ClaimButton } from "./ClaimButton";
 import { CardMenuArea } from "./CardMenu";
 import { QueueAnnouncer } from "./QueueAnnouncer";
@@ -162,6 +162,9 @@ function TicketCard({
             {formatTicketNumber(ticket.number)}
           </span>
           <StatusDot status={ticket.status} />
+          <span className="text-xs text-zinc-400 dark:text-zinc-500" title={new Date(ticket.created_at).toLocaleString("en-GB")}>
+            {formatRelativeTime(ticket.created_at)}
+          </span>
           <span className="ml-auto flex items-center gap-1.5">
             {flagged ? <FlagIcon /> : null}
             {unassigned ? (
@@ -185,7 +188,7 @@ function TicketCard({
           </span>
         </div>
         <span className="line-clamp-1 font-medium text-black dark:text-zinc-50">{ticket.subject}</span>
-        <p className="line-clamp-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="line-clamp-2 text-sm text-zinc-500 dark:text-zinc-400">
           {ticket.latest_triage?.summary ?? <NoTriageYet state={ticket.triage_state} now={now} />}
         </p>
         <div className="mt-auto flex items-center justify-between gap-2 pt-1">
@@ -226,6 +229,7 @@ export default async function QueuePage({
   const staff = new Map(staffList.map((s) => [s.id, s]));
 
   const staffOptions = [...staff.values()].map((s) => ({ id: s.id, label: profileName(s) }));
+  const viewer = { name: profileName(profile), avatarPath: profile.avatar_path };
 
   const params = await searchParams;
   const defaults: QueueDefaults = { filter: profile.queue_default_filter, sort: profile.queue_default_sort };
@@ -431,7 +435,7 @@ export default async function QueuePage({
               filter={filter}
               currentUserId={profile.id}
               assignee={ticket.assignee_id ? staff.get(ticket.assignee_id) : undefined}
-              viewer={{ name: profileName(profile), avatarPath: profile.avatar_path }}
+              viewer={viewer}
               flagged={flagged.has(ticket.id)}
               isAdmin={profile.role === "admin"}
               staffOptions={staffOptions}

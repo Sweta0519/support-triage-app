@@ -101,18 +101,3 @@ export function slaBadgeLabel(sla: Sla): string {
       return "Replied late";
   }
 }
-
-export function slaBadgeClasses(state: SlaState): string {
-  switch (state) {
-    case "on_track":
-      return "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400";
-    case "at_risk":
-      return "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300";
-    case "breached":
-      return "bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300";
-    case "met":
-      return "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300";
-    case "missed":
-      return "bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-300";
-  }
-}

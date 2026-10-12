@@ -40,3 +40,8 @@ export function formatRelativeTime(iso: string): string {
 export function formatTicketNumber(number: number): string {
   return `#${number}`;
 }
+
+// "urgent" -> "Urgent", "feature request" -> "Feature request".
+export function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
