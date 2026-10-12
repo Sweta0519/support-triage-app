@@ -7,6 +7,7 @@ import { queueCardAction, type CardActionInput } from "./actions";
 import { useAnnounce } from "./QueueAnnouncer";
 import { COLUMN_LABELS } from "@/app/lib/board";
 import { ALLOWED_STATUS_TRANSITIONS, type TicketStatus } from "@/app/lib/ticket-status";
+import { labelDot, type TeamLabel } from "@/app/lib/labels";
 import { fieldLabel, TRIAGE_CATEGORIES, TRIAGE_PRIORITIES, TRIAGE_TEAMS } from "@/app/lib/triage-fields";
 
 // The queue card's quick-action menu (SUP-27). Opens on right-click (the
@@ -27,15 +28,17 @@ export type CardMenuTicket = {
   // The AI run and review the card was rendered with (see queueCardAction).
   triageResultId: string | null;
   triageReviewedAt: string | null;
+  // The team labels on this ticket (SUP-39).
+  labelIds: string[];
 };
 
 type Item =
-  | { kind: "action"; label: string; input: CardActionInput; checked?: boolean }
+  | { kind: "action"; label: string; input: CardActionInput; checked?: boolean; checkbox?: boolean; dot?: string }
   | { kind: "panel"; label: string; panel: Panel }
   | { kind: "local"; label: string; run: () => void | Promise<void> }
   | { kind: "back" };
 
-type Panel = "main" | "assign" | "priority" | "category" | "team";
+type Panel = "main" | "assign" | "priority" | "category" | "team" | "labels";
 
 const itemClass =
   "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-zinc-700 outline-none hover:bg-indigo-50 focus:bg-indigo-50 aria-disabled:opacity-50 dark:text-zinc-200 dark:hover:bg-indigo-950/40 dark:focus:bg-indigo-950/40";
@@ -43,6 +46,7 @@ const itemClass =
 export function CardMenuArea({
   ticket,
   currentUserId,
+  allLabels,
   isAdmin,
   staff,
   footer,
@@ -50,6 +54,8 @@ export function CardMenuArea({
 }: {
   ticket: CardMenuTicket;
   currentUserId: string;
+  // The team's labels, for the "Labels…" panel.
+  allLabels: TeamLabel[];
   isAdmin: boolean;
   // Admins only: who a ticket can be assigned to.
   staff: { id: string; label: string }[];
@@ -73,7 +79,7 @@ export function CardMenuArea({
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
 
   // Built only while open: some items read window (the link to copy).
-  const items = open ? menuItems(panel, ticket, currentUserId, isAdmin, staff, announce) : [];
+  const items = open ? menuItems(panel, ticket, currentUserId, isAdmin, staff, allLabels, announce) : [];
 
   function openAt(x: number, y: number, from: HTMLElement | null, above?: number) {
     returnFocus.current = from;
@@ -253,7 +259,13 @@ export function CardMenuArea({
               <button
                 key={`${panel}-${i}`}
                 type="button"
-                role={item.kind === "action" && item.checked !== undefined ? "menuitemradio" : "menuitem"}
+                role={
+                  item.kind === "action" && item.checked !== undefined
+                    ? item.checkbox
+                      ? "menuitemcheckbox"
+                      : "menuitemradio"
+                    : "menuitem"
+                }
                 aria-checked={item.kind === "action" && item.checked !== undefined ? item.checked : undefined}
                 aria-haspopup={item.kind === "panel" ? "menu" : undefined}
                 data-panel={item.kind === "panel" ? item.panel : undefined}
@@ -264,6 +276,7 @@ export function CardMenuArea({
                 onClick={() => run(item)}
                 className={itemClass}
               >
+                {item.kind === "action" && item.dot ? <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${item.dot}`} /> : null}
                 {item.kind === "back" ? "← Back" : item.label}
                 {item.kind === "panel" ? <span aria-hidden className="ml-auto text-zinc-400">›</span> : null}
                 {item.kind === "action" && item.checked ? <span aria-hidden className="ml-auto">✓</span> : null}
@@ -283,9 +296,26 @@ function menuItems(
   currentUserId: string,
   isAdmin: boolean,
   staff: { id: string; label: string }[],
+  allLabels: TeamLabel[],
   announce: (text: string, tone: "ok" | "error") => void
 ): (Item | null)[] {
   const triage = ticket.triage;
+  if (panel === "labels") {
+    return [
+      { kind: "back" },
+      ...allLabels.map((label) => {
+        const on = ticket.labelIds.includes(label.id);
+        return {
+          kind: "action" as const,
+          label: label.name,
+          dot: labelDot(label.color),
+          checkbox: true,
+          checked: on,
+          input: { kind: "label" as const, labelId: label.id, on: !on },
+        };
+      }),
+    ];
+  }
   if (panel === "assign") {
     return [
       { kind: "back" },
@@ -342,6 +372,9 @@ function menuItems(
     if (ticket.assigneeId !== null) {
       items.push({ kind: "action", label: "Unassign", input: { kind: "assign", assigneeId: null } });
     }
+  }
+  if (allLabels.length > 0) {
+    items.push(null, { kind: "panel", label: "Labels…", panel: "labels" });
   }
   if (triage) {
     items.push(

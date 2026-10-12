@@ -34,6 +34,8 @@ import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { FlagIcon } from "@/app/components/FlagIcon";
 import { cardLabels, LabelRow, PriorityIcon, SlaText, StatusDot, UnassignedIcon } from "@/app/components/CardBits";
 import { computeSla, slaBadgeLabel } from "@/app/lib/sla";
+import { listLabels, listLabelsForTickets } from "@/app/lib/db/labels";
+import type { TeamLabel } from "@/app/lib/labels";
 import { widePageClass } from "@/app/lib/styles";
 
 // The tab and sort a bare /queue opens on: the user's own defaults from
@@ -92,6 +94,8 @@ function TicketCard({
   currentUserId,
   assignee,
   viewer,
+  labels,
+  allLabels,
   flagged,
   isAdmin,
   staffOptions,
@@ -108,11 +112,15 @@ function TicketCard({
   assignee: StaffProfile | undefined;
   // The viewer, for their own avatar on tickets assigned to them.
   viewer: { name: string; avatarPath: string | null };
+  // This ticket's team labels, and the whole list (for the ⋯ menu).
+  labels: TeamLabel[] | undefined;
+  allLabels: TeamLabel[];
   now: Date;
   // This queue view's URL, for a claim that loses the race to come back to.
   returnTo: string;
 }) {
   const sla = computeSla(ticket, now);
+  const teamLabels = labels ?? [];
   const priority = ticket.triage_state?.priority ?? null;
   const category = ticket.triage_state?.category ?? null;
   const unassigned = ticket.assignee_id === null;
@@ -132,9 +140,11 @@ function TicketCard({
             ? { priority: triage.priority, category: triage.category, team: triage.team }
             : null,
         triageResultId: ticket.latest_triage?.id ?? null,
+        labelIds: teamLabels.map((l) => l.id),
         triageReviewedAt: triage?.reviewed_at ?? null,
       }}
       currentUserId={currentUserId}
+      allLabels={allLabels}
       isAdmin={isAdmin}
       staff={staffOptions}
       footer={
@@ -194,6 +204,7 @@ function TicketCard({
         <div className="mt-auto flex items-center justify-between gap-2 pt-1">
           <LabelRow
             labels={cardLabels({
+              teamLabels,
               category,
               escalation: ticket.latest_triage?.is_escalation_risk ?? false,
               frustrated: isFrustrated(ticket.latest_triage?.frustration ?? null),
@@ -221,11 +232,13 @@ export default async function QueuePage({
   const profile = await requireStaff();
   // Only admins see tickets assigned to someone else (and assign them), so
   // only they need the staff list.
-  const [tickets, flagged, staffList] = await Promise.all([
+  const [tickets, flagged, staffList, allLabels] = await Promise.all([
     listQueueTickets(profile.id, profile.role),
     listMyFlaggedTicketIds(),
     profile.role === "admin" ? listStaffProfiles() : Promise.resolve([]),
+    listLabels(),
   ]);
+  const ticketLabels = await listLabelsForTickets(tickets.map((t) => t.id));
   const staff = new Map(staffList.map((s) => [s.id, s]));
 
   const staffOptions = [...staff.values()].map((s) => ({ id: s.id, label: profileName(s) }));
@@ -436,6 +449,8 @@ export default async function QueuePage({
               currentUserId={profile.id}
               assignee={ticket.assignee_id ? staff.get(ticket.assignee_id) : undefined}
               viewer={viewer}
+              labels={ticketLabels.get(ticket.id)}
+              allLabels={allLabels}
               flagged={flagged.has(ticket.id)}
               isAdmin={profile.role === "admin"}
               staffOptions={staffOptions}

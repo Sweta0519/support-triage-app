@@ -71,6 +71,12 @@ const icons = {
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
     </svg>
   ),
+  tag: (
+    <svg {...iconProps}>
+      <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z" />
+      <circle cx="7.5" cy="7.5" r="1.5" />
+    </svg>
+  ),
   menu: (
     <svg {...iconProps} width={20} height={20}>
       <path d="M4 6h16M4 12h16M4 18h16" />
@@ -110,6 +116,7 @@ function navItems(role: AppRole): NavItem[] {
     // Logging a ticket for a customer who called or emailed.
     { href: "/tickets/new", label: "New ticket", icon: icons.plus, isActive: (p) => p === "/tickets/new" },
     { href: "/notes", label: "Notes", icon: icons.note, isActive: under("/notes") },
+    { href: "/labels", label: "Labels", icon: icons.tag, isActive: under("/labels") },
   ];
   if (role === "admin") {
     staff.push(

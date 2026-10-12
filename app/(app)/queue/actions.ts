@@ -16,6 +16,7 @@ import { formatTicketNumber } from "@/app/lib/format";
 import { profileName } from "@/app/lib/people";
 import { canRerunTriage, effectiveTriageStatus } from "@/app/lib/triage-status";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
+import { setTicketLabel } from "@/app/lib/db/labels";
 import {
   fieldLabel,
   isOneOf,
@@ -45,6 +46,7 @@ export type CardActionInput =
       reviewedAt: string | null;
     }
   | { kind: "flag"; flagged: boolean }
+  | { kind: "label"; labelId: string; on: boolean }
   | { kind: "rerun" };
 
 export type CardActionResult = { ok: true; message: string } | { ok: false; error: string };
@@ -69,6 +71,8 @@ function isCardActionInput(value: unknown): value is CardActionInput {
       return str(v.to);
     case "flag":
       return typeof v.flagged === "boolean";
+    case "label":
+      return str(v.labelId) && isUuid(v.labelId as string) && typeof v.on === "boolean";
     case "triage": {
       const shown = v.shown as Record<string, unknown> | null;
       return (
@@ -164,6 +168,13 @@ export async function queueCardAction(ticketId: string, input: CardActionInput):
         return { ok: true, message: input.flagged ? `Flagged ${label} to follow up.` : `Removed the flag from ${label}.` };
       }
 
+      case "label": {
+        const done = await setTicketLabel(ticketId, input.labelId, input.on);
+        if (done === "label_gone") return { ok: false, error: "That label was deleted meanwhile." };
+        if (done === "ticket_gone") return { ok: false, error: GONE };
+        return { ok: true, message: input.on ? `Added the label to ${label}.` : `Removed the label from ${label}.` };
+      }
+
       case "rerun": {
         // A run that's still going isn't reset (it would race the live
         // one), so say so rather than reporting a re-run that didn't happen.
@@ -180,6 +191,7 @@ export async function queueCardAction(ticketId: string, input: CardActionInput):
         return { ok: true, message: `Re-ran AI triage for ${label}.` };
       }
     }
+    return { ok: false, error: "That action isn't possible." };
   } catch (err) {
     if (err instanceof RateLimitError) {
       return { ok: false, error: RATE_LIMITED_MESSAGE };

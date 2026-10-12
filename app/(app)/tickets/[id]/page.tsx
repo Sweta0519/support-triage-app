@@ -35,6 +35,8 @@ import { effectiveTriageStatus } from "@/app/lib/triage-status";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { FlagIcon } from "@/app/components/FlagIcon";
 import { listMyFlaggedTicketIds } from "@/app/lib/db/flags";
+import { listLabels, listLabelsForTickets } from "@/app/lib/db/labels";
+import { LabelsPanel } from "./LabelsPanel";
 import { Stars } from "@/app/components/Stars";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
@@ -120,7 +122,7 @@ export default async function TicketDetailPage({
     comments: list,
     people: await getPersonCards([ticket.customer_id, ticket.created_by, ...list.map((c: Comment) => c.author_id)]),
   }));
-  const [{ comments, people }, triage, staff, share, filerEmail, rating, flaggedByMe] = await Promise.all([
+  const [{ comments, people }, triage, staff, share, filerEmail, rating, flaggedByMe, labels] = await Promise.all([
     commentsWithPeople,
     isStaff ? getLatestTriageResult(id) : Promise.resolve(null),
     // Only admins reassign, so only admins get the staff list.
@@ -131,6 +133,13 @@ export default async function TicketDetailPage({
     showRating ? getTicketRating(id) : Promise.resolve(null),
     // The viewer's own follow-up flag (staff only; private to them).
     isStaff ? listMyFlaggedTicketIds().then((ids) => ids.has(ticket.id)) : Promise.resolve(false),
+    // Team labels (SUP-39): the team's list and this ticket's, staff only.
+    isStaff
+      ? Promise.all([listLabels(), listLabelsForTickets([ticket.id])]).then(([all, byTicket]) => ({
+          all,
+          applied: (byTicket.get(ticket.id) ?? []).map((l) => l.id),
+        }))
+      : Promise.resolve(null),
   ]);
   const customerCard = people.get(ticket.customer_id);
 
@@ -331,6 +340,7 @@ export default async function TicketDetailPage({
               isAdmin={isAdmin}
               staff={staff}
             />
+            {labels ? <LabelsPanel ticketId={ticket.id} allLabels={labels.all} appliedIds={labels.applied} /> : null}
             {rating ? (
               <section className="flex flex-col gap-1 rounded-xl border border-black/[.08] p-4 text-sm dark:border-white/[.145]">
                 <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-600">

@@ -21,6 +21,7 @@ export type BoardCard = {
   assigneeLabel: string | null;
   priority: string | null;
   category: string | null;
+  teamLabels: { name: string; color: string }[];
   sla: { label: string; state: string } | null;
   escalation: boolean;
   frustrated: boolean;
@@ -159,7 +160,12 @@ export function Board({ cards: initial }: { cards: BoardCard[] }) {
                     {card.subject}
                   </Link>
                   <LabelRow
-                    labels={cardLabels({ category: card.category, escalation: card.escalation, frustrated: card.frustrated })}
+                    labels={cardLabels({
+                      teamLabels: card.teamLabels,
+                      category: card.category,
+                      escalation: card.escalation,
+                      frustrated: card.frustrated,
+                    })}
                   />
                   <p className="truncate pt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
                     {card.assigneeId === null ? "Unassigned" : card.mine ? "Yours" : (card.assigneeLabel ?? "Assigned")}
