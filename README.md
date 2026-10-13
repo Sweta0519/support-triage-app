@@ -98,7 +98,7 @@ embeddings) · Vercel.
   tickets unattributed rather than vanishing.
 - **Rate limiting** in Postgres:
   - per-user limits on sensitive actions;
-  - sign-in and sign-up throttled per email and IP;
+  - sign-in throttled per IP, per email and IP, and per email; sign-up per IP and per email;
   - an IP-keyed limiter on the public share page.
 
   A Vercel WAF rule is the intended network-level backstop. It is documented in
@@ -155,9 +155,10 @@ npx playwright test
 
 The suite runs against the real Supabase project and, for the AI test, the real OpenRouter API.
 It needs dedicated test accounts in `.env.local` (`TEST_USER_*` customer A, `TEST_USER_B_*`
-customer B, `TEST_AGENT_*`, `TEST_ADMIN_*`, `TEST_ROLEFLIP_EMAIL`) -- create them with the Supabase
+customer B, `TEST_AGENT_*`, `TEST_ADMIN_*`, `TEST_ROLEFLIP_EMAIL`; they aren't in `.env.example`,
+so add them by hand) -- create them with the Supabase
 Admin API (`auth.admin.createUser` with `email_confirm: true`) and set roles via the service role.
-About 100 tests in 28 spec files. Feature PRs add their own tests. Highlights:
+About 100 tests in 29 spec files. Feature PRs add their own tests. Highlights:
 - **Isolation:**
   - customer B gets a 404 for customer A's ticket;
   - an agent gets a 404 for another staff member's ticket;
@@ -187,21 +188,24 @@ Eight optional tasks across both sprint projects' lists, spanning all three diff
 one says how it was delivered. Four came through a feature-branch PR. Four were committed directly
 to `main` on 2026-09-03, before the PR workflow was adopted.
 
-**Rule:** an optional task is claimed as PR-delivered only after its feature branch is merged.
+**Rule:** an optional task is claimed as PR-delivered only after its feature branch is merged. A
+task that went straight to `main` says so, with the commit.
 
 **Easy**
 
 - **Model display** -- the triage panel shows the exact OpenRouter slug, prompt version, and
   latency for every run. *Delivered:* committed directly to `main` (`d4badde`, 2026-09-03), with
   the AI triage agent.
-- **Usage/cost indicator** -- the real cost OpenRouter billed for each triage run (embedding +
-  completion, from `usage.cost` on the response, not an estimate). It's shown per ticket, and the
-  admin overview totals the last 1,000 runs ("AI spend (recent)"). *Delivered:* PR #2 (branch
+- **Usage/cost indicator** -- the real cost OpenRouter billed for each completed triage run
+  (embedding + completion, from `usage.cost` on the response, not an estimate). It's shown per
+  ticket, and the admin overview totals the last 1,000 runs ("AI spend (recent)"). A run that
+  fails stores no result, so its spend is only logged, not counted here. *Delivered:* PR #2 (branch
   `feature/usage-cost-indicator`).
 - **Security headers configured** (mid-sprint list) -- a same-origin CSP, HSTS with `preload`,
   `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, Referrer-Policy, and
   Permissions-Policy, applied to every route including the public share page. *Delivered:*
-  PR #1 (branch `feature/m7-readme-security-tests`; `bec27f5`, HSTS in `ab93d15`).
+  PR #1 (branch `feature/m7-readme-security-tests`; headers in `bec27f5`, HSTS in `ab93d15`,
+  `preload` in `c12257f`).
 
 **Medium**
 
@@ -240,19 +244,24 @@ to `main` on 2026-09-03, before the PR workflow was adopted.
 
 ## Development process
 
-- **2026-09-03:** the core was built with commits made directly to `main`: the schema, auth and
-  roles, tickets, the queue, AI triage and the admin surface (`1b91083` to `8f1142a`).
-- **From 2026-09-04:** features came through feature-branch PRs (#1-#11). A few small follow-ups
-  still went straight to `main`, e.g. `3145714`, `851446d` and `807c716`.
-- **Since PR #12 (2026-10-09):** every change goes through a feature branch and a reviewed PR. The
-  diff is reviewed with `/code-review --comment` and the `ai-code-reviewer` subagent, and each
+- **2026-09-03:** the core went straight to `main`: the schema, auth and roles, tickets, the queue,
+  AI triage and the admin surface (`1b91083` to `8f1142a`). The same day, the README, the security
+  headers and the test work started on the first feature branch, PR #1.
+- **PRs #1-#11 (merged 2026-09-04 to 2026-09-16):** most work came through feature-branch PRs. Some
+  still went straight to `main`: one feature, Sage's floating widget (`851446d`, 2026-09-05), and
+  small follow-ups such as `3145714` and `807c716`.
+- **Since PR #12 (2026-10-09):** every change goes through a feature branch and a PR, and every
+  feature PR is reviewed. The one exception is #14, which only added the submission mirror
+  workflow and had no review. The diff is reviewed with `/code-review --comment` and the `ai-code-reviewer` subagent, and each
   finding is answered inline and resolved (`docs/reviews/README.md`). The full Playwright suite
   passes before the commit, and the Vercel preview builds before the merge.
-- **Linear:** work is tracked in the team **SUP**. SUP-5 to SUP-28 were delivered in PRs #12 to
-  #37. It isn't one-to-one: #14 (the submission mirror) and #32/#33 (the logo) have no issue, and SUP-21
-  is the profiles epic, delivered through its sub-issues SUP-22 to SUP-24.
-  Each issue links its PR in Linear. After each merge, `main` is mirrored
-  to the Turing College submission repo.
+- **Linear:** work is tracked in the team **SUP**, and each issue links its PR there.
+  - SUP-5 to SUP-28 were delivered in PRs #12 to #37. It isn't one-to-one: #14 (the submission
+    mirror) and #32/#33 (the logo) have no issue, and SUP-21 is the profiles epic, delivered
+    through SUP-22 to SUP-24.
+  - The follow-ups to the Turing College review (epic SUP-29) and later work came after: SUP-30,
+    31, 37, 38, 39 and 40 in PRs #38 to #43, then SUP-32, 33 and 34 in PRs #44 to #46.
+- After each merge, `main` is mirrored to the Turing College submission repo.
 
 ## Docs
 
@@ -263,7 +272,9 @@ to `main` on 2026-09-03, before the PR workflow was adopted.
 - `docs/supabase-schema.md` -- every table, policy, trigger and function.
 - `docs/security/` -- security reports:
   - four fresh-context audit passes, each with its fixes recorded, ending in a clean rescan
-    (0 critical, 0 warning) before PR #1 was merged;
+    (0 critical, 0 warning) before PR #1 was merged, plus that PR's diff review
+    (`pr-1-diff-review.md`);
+  - the security audit of the public share page (`audit-share-feature.md`, PR #3);
   - the `/security-scan` report of 2026-10-11 (SUP-11), with its follow-ups;
   - the Vercel WAF rule to configure (`vercel-waf.md`).
 - `docs/reviews/` -- how each PR is reviewed (`/code-review --comment` plus the `ai-code-reviewer`
