@@ -42,6 +42,7 @@ function reviewStatusLine(
 export function TriagePanel({
   ticketId,
   triageStatus,
+  aiConfigured,
   triage,
   triageState,
   currentUserId,
@@ -50,6 +51,9 @@ export function TriagePanel({
   ticketId: string;
   // Effective: a run stuck in pending/processing shows as "stalled".
   triageStatus: EffectiveTriageStatus;
+  // False when no model key is configured: a pending ticket will never be
+  // triaged, so the panel says so instead of "queued" (SUP-36).
+  aiConfigured: boolean;
   triage: TriageResult | null;
   // The ticket's working values (what the queue sorts by) and who reviewed them.
   triageState: TriageState | null;
@@ -92,7 +96,11 @@ export function TriagePanel({
       ) : null}
       {!triage ? (
         <p className="text-xs text-zinc-500 dark:text-zinc-500">
-          {triageStatus === "failed" ? triageFailedCopy(triageState?.failure_reason) : STATUS_COPY[triageStatus]}
+          {triageStatus === "failed"
+            ? triageFailedCopy(triageState?.failure_reason)
+            : triageStatus === "pending" && !aiConfigured
+              ? "AI triage is off, so this ticket won't be assessed. Set its priority, category and team by hand under Your review."
+              : STATUS_COPY[triageStatus]}
         </p>
       ) : (
         <>

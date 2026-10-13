@@ -66,3 +66,59 @@ export function triageFailedCopy(reason: string | null | undefined): string {
 export function retriesLabel(n: number): string {
   return `${n} automatic retr${n === 1 ? "y" : "ies"}`;
 }
+
+// Is AI triage working at all (SUP-36)? Staff see a banner when it isn't,
+// because without it the product is a plain ticket inbox: nothing gets a
+// category, priority, team, duplicate links or a draft reply.
+// - "off": no model key configured. Tickets stay pending forever.
+// - "failing": the latest FAILING_STREAK finished runs all failed, the
+//   newest within FAILING_WINDOW_MS. One failure is noise (and shows on its
+//   own ticket); a streak means new tickets aren't being triaged.
+export const FAILING_STREAK = 3;
+export const FAILING_WINDOW_MS = 24 * 60 * 60_000;
+
+export type FinishedTriageRun = { triage_status: string; claimed_at: string | null; failure_reason: string | null };
+
+export type AiTriageHealth =
+  | { kind: "ok" }
+  | { kind: "off" }
+  | { kind: "failing"; reason: string | null };
+
+// `recent`: the latest finished runs (completed or failed), newest first.
+export function aiTriageHealth(
+  configured: boolean,
+  recent: FinishedTriageRun[],
+  now: number = Date.now()
+): AiTriageHealth {
+  if (!configured) return { kind: "off" };
+  const streak = recent.slice(0, FAILING_STREAK);
+  if (streak.length < FAILING_STREAK || !streak.every((run) => run.triage_status === "failed")) {
+    return { kind: "ok" };
+  }
+  const newest = Date.parse(streak[0].claimed_at ?? "");
+  if (Number.isNaN(newest) || now - newest > FAILING_WINDOW_MS) return { kind: "ok" };
+  return { kind: "failing", reason: streak[0].failure_reason };
+}
+
+// The banner's words (app/components/AiTriageBanner.tsx), or null when
+// there's nothing to say. Only admins are told the fix. An unknown reason
+// is dropped rather than shown raw.
+export function aiTriageBannerCopy(health: AiTriageHealth, isAdmin: boolean): { title: string; body: string } | null {
+  if (health.kind === "ok") return null;
+  if (health.kind === "off") {
+    return {
+      title: "AI triage is off.",
+      body:
+        "New tickets aren't being categorised, prioritised, routed to a team, checked for duplicates or given a draft reply, so they need triaging by hand." +
+        (isAdmin ? " To turn it on, set OPENROUTER_API_KEY on the server." : ""),
+    };
+  }
+  const why =
+    health.reason && Object.hasOwn(TRIAGE_FAILURE_COPY, health.reason)
+      ? ` ${TRIAGE_FAILURE_COPY[health.reason as TriageFailureReason]}`
+      : "";
+  return {
+    title: "AI triage is failing.",
+    body: `The last ${FAILING_STREAK} runs failed.${why} New tickets aren't being categorised, prioritised, routed or given a draft reply until it recovers; triage them by hand or re-run them later.`,
+  };
+}

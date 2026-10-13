@@ -28,6 +28,25 @@ of the product is that a human never has to read a ticket cold:
 
 Remove it and the app has no reason to exist over a shared inbox.
 
+**Without the model, this is a plain ticket inbox.** The app still runs with no model key or with
+the provider down, because a customer's ticket must never be lost. But every staff-facing feature
+on top of the inbox depends on triage:
+- **The queue:** ordering by priority and SLA. The SLA target follows the ticket's priority, which
+  triage sets; without triage every ticket falls back to the default until staff set one by hand.
+- **Routing:** the team the ticket should go to.
+- **The ticket:** duplicate and related links, the escalation and frustration signals on cards
+  and the ticket header, and the draft first reply with its "still needed" questions.
+- **Analytics:** triage quality.
+- **Sage:** search over notes uses the same model provider.
+
+So staff are told when the AI is missing, rather than seeing untriaged tickets that look normal.
+A banner on every staff page says **"AI triage is off"** when no key is configured. It says **"AI
+triage is failing"** when the last 3 runs all failed, the newest within the last 24 hours, and
+gives the reason. Untriaged tickets say **"Needs manual triage"** instead of "Awaiting AI
+triage", and the ticket page points staff to setting the fields by hand.
+
+![Staff banner: AI triage is failing](docs/screenshots/ai-triage-failing-banner.png)
+
 The AI is deliberately **advisory**: it seeds a staff-only working-state record (priority,
 category, team) and records its full assessment in an append-only audit table, but it never
 changes ticket status and never sends anything to a customer. Nothing it produces is readable by
@@ -74,6 +93,7 @@ Built since the core above, each through a reviewed PR (see Development process)
 | The reply draft is written by a call that sees only this ticket | #39 |
 | Team labels, editable on the ticket and on the cards | #42, #43 |
 | Model retries: none for interactive calls, bounded backoff for background triage, and the failure reason shown | #44 |
+| Staff banner when AI triage is off or failing; untriaged tickets marked as needing manual triage | #48 |
 
 ## Stack
 
@@ -144,7 +164,8 @@ Make yourself admin once you've signed up (SQL editor):
 update ticketing.profiles set role = 'admin' where email = 'you@example.com';
 ```
 
-Without `OPENROUTER_API_KEY` the app runs normally and tickets simply stay `pending` triage.
+Without `OPENROUTER_API_KEY` the app still runs, but tickets stay `pending` triage, and staff
+see the "AI triage is off" banner. As described above, that leaves a plain ticket inbox.
 
 ## Tests
 

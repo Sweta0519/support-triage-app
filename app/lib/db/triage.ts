@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import { createServiceSupabaseClient } from "@/app/lib/supabase/service";
 import type { TicketStatus } from "@/app/lib/db/tickets";
-import { STALE_TRIAGE_MS } from "@/app/lib/triage-status";
+import { STALE_TRIAGE_MS, type FinishedTriageRun } from "@/app/lib/triage-status";
 import type { TriageReviewFields } from "@/app/lib/triage-fields";
 import type { TriageFailureReason } from "@/app/lib/ai/retry-policy";
 
@@ -176,6 +176,24 @@ export async function ownsTriageClaim(ticketId: string, claimId: string): Promis
     throw new Error(error.message);
   }
   return data !== null;
+}
+
+// The latest finished triage runs across all tickets, newest first, for
+// the staff "AI triage is off / failing" banner (SUP-36). Service role
+// because the health of triage is team-wide, while an agent's RLS sees only
+// their own and unassigned tickets. Only status, time and the coarse reason
+// leave this function -- no ticket ids or content.
+export async function listRecentFinishedTriageRuns(limit: number): Promise<FinishedTriageRun[]> {
+  const supabase = createServiceSupabaseClient();
+  const { data, error } = await supabase
+    .from("ticket_triage_state")
+    .select("triage_status, claimed_at, failure_reason")
+    .in("triage_status", ["completed", "failed"])
+    .not("claimed_at", "is", null)
+    .order("claimed_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return data as FinishedTriageRun[];
 }
 
 // Used by the manual "re-run triage" path: put a completed or failed ticket

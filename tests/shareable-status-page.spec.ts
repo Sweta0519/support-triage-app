@@ -29,8 +29,8 @@ test("staff can publish a public status page; an anonymous visitor sees only the
   await login(agentPage, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
   await agentPage.goto(ticketUrl);
 
-  await expect(agentPage.getByRole("button", { name: "Publish public status page" })).toBeDisabled();
-
+  // (Disabled-before-triage is checked on a never-triaged ticket in its own
+  // test below: here triage often finishes before the agent has signed in.)
   // Poll until triage completes and the publish button becomes available.
   await expect(async () => {
     await agentPage.reload();
@@ -120,5 +120,28 @@ test("staff can't choose a share's token or expiry through the Data API", async 
     expect(new Date(legit.data!.expires_at).getTime()).toBeLessThan(Date.now() + 31 * 24 * 60 * 60 * 1000);
   } finally {
     await admin.from("tickets").delete().eq("id", ticket.id);
+  }
+});
+
+test("publishing waits for an AI summary: a ticket with no triage result can't be shared", async ({ browser }) => {
+  const db = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
+    db: { schema: "ticketing" },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: customer } = await db.from("profiles").select("id").eq("email", requireEnv("TEST_USER_EMAIL")).single();
+  // Inserted directly, so no triage run is ever started for it.
+  const { data: ticket, error } = await db
+    .from("tickets")
+    .insert({ customer_id: customer!.id, subject: `Unshareable probe ${Date.now()}`, body: "No summary yet." })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  try {
+    const agentPage = await (await browser.newContext()).newPage();
+    await login(agentPage, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
+    await agentPage.goto(`/tickets/${ticket.id}`);
+    await expect(agentPage.getByRole("button", { name: "Publish public status page" })).toBeDisabled();
+  } finally {
+    await db.from("tickets").delete().eq("id", ticket.id);
   }
 });

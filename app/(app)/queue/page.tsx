@@ -86,6 +86,10 @@ function NoTriageYet({ state, now }: { state: QueueTicketSummary["triage_state"]
       </span>
     );
   }
+  // With AI off nothing will ever triage it: say so instead of "awaiting".
+  if (!isAiConfigured()) {
+    return <span className="italic text-amber-700 dark:text-amber-400">Needs manual triage -- AI triage is off</span>;
+  }
   return <span className="italic text-zinc-500 dark:text-zinc-400">Awaiting AI triage</span>;
 }
 

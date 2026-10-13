@@ -358,6 +358,7 @@ export default async function TicketDetailPage({
             <TriagePanel
               ticketId={ticket.id}
               triageStatus={effectiveTriageStatus(ticket.triage_state, { aiConfigured: isAiConfigured() })}
+              aiConfigured={isAiConfigured()}
               triage={triage}
               triageState={ticket.triage_state}
               currentUserId={profile.id}

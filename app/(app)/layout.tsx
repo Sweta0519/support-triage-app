@@ -4,6 +4,10 @@ import { requireProfile } from "@/app/lib/auth/session";
 import { linkClass } from "@/app/lib/styles";
 import { AppSidebar } from "@/app/components/AppSidebar";
 import { AssistantWidget } from "@/app/components/assistant/AssistantWidget";
+import { AiTriageBanner } from "@/app/components/AiTriageBanner";
+import { isAiConfigured } from "@/app/lib/ai/openrouter";
+import { listRecentFinishedTriageRuns } from "@/app/lib/db/triage";
+import { aiTriageHealth, FAILING_STREAK } from "@/app/lib/triage-status";
 
 export default async function AppLayout({
   children,
@@ -11,6 +15,12 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const profile = await requireProfile();
+  const staff = profile.role !== "customer";
+  // Staff only: customers never see triage, working or not. With no key
+  // there's nothing to query.
+  const health = staff
+    ? aiTriageHealth(isAiConfigured(), isAiConfigured() ? await listRecentFinishedTriageRuns(FAILING_STREAK) : [])
+    : null;
 
   return (
     // Sidebar on the left from lg up, a top bar on phones; the page and
@@ -31,6 +41,7 @@ export default async function AppLayout({
         }}
       />
       <div className="flex min-w-0 flex-1 flex-col">
+        {health ? <AiTriageBanner health={health} isAdmin={profile.role === "admin"} /> : null}
         <main className="flex flex-1 flex-col">{children}</main>
         <footer className="border-t border-black/[.08] dark:border-white/[.145]">
           <div className="flex w-full max-w-screen-2xl items-center justify-end px-8 py-3">
@@ -40,7 +51,7 @@ export default async function AppLayout({
           </div>
         </footer>
       </div>
-      {profile.role !== "customer" ? <AssistantWidget /> : null}
+      {staff ? <AssistantWidget /> : null}
     </div>
   );
 }
