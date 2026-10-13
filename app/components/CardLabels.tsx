@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
-import { cardLabels, LabelRow } from "@/app/components/CardBits";
+import { aiSignals, AiSignal, LabelRow } from "@/app/components/CardBits";
 import { LabelPickerPopup, useTicketLabels } from "@/app/components/LabelPicker";
-import type { TeamLabel } from "@/app/lib/labels";
+import { labelDot, type TeamLabel } from "@/app/lib/labels";
 
 // A card's labels, editable in place like Linear (SUP-40): click them, or
 // hover the card (or focus something in it) and press L, to open the label
@@ -51,14 +51,14 @@ function registerCard(card: HTMLElement, open: () => void) {
 export function CardLabels({
   ticketId,
   ticketLabel,
-  signals,
+  signals: signals_,
   allLabels,
   appliedIds,
 }: {
   ticketId: string;
   ticketLabel: string; // "#1042"
-  // The AI's signals for cardLabels(); the team labels come from `applied`.
-  signals: Omit<Parameters<typeof cardLabels>[0], "teamLabels">;
+  // The AI's signals, shown beside the labels but read-only (SUP-41).
+  signals: Parameters<typeof aiSignals>[0];
   allLabels: TeamLabel[];
   appliedIds: string[];
 }) {
@@ -81,38 +81,50 @@ export function CardLabels({
     });
   }, [setError]);
 
-  // From the optimistic set, so the chips change as soon as you click.
-  // allLabels is sorted by name, like the server's list.
-  const labels = cardLabels({ ...signals, teamLabels: allLabels.filter((l) => applied.has(l.id)) });
-  // What the chips show: the first two, then "+N".
+  // Team labels only, from the optimistic set, so the pills change as soon
+  // as you click. allLabels is sorted by name, like the server's list.
+  const labels = allLabels.filter((l) => applied.has(l.id)).map((l) => ({ text: l.name, dot: labelDot(l.color) }));
+  // What the pills show: the first two, then "+N".
   const shownText = [...labels.slice(0, 2).map((l) => l.text), ...(labels.length > 2 ? [`+${labels.length - 2}`] : [])];
   const empty = labels.length === 0;
+  const signals = aiSignals(signals_);
+
+  const button = (
+    <button
+      ref={buttonRef}
+      type="button"
+      aria-expanded={open}
+      aria-controls={open ? popupId : undefined}
+      aria-keyshortcuts="L"
+      // Starts with what's visible (label-in-name, for voice control),
+      // then says what it does.
+      aria-label={empty ? `+ Label: add labels for ${ticketLabel}` : `${shownText.join(", ")}: edit labels for ${ticketLabel}`}
+      title="Edit labels (L while the card is hovered or focused)"
+      onClick={(e) => {
+        e.stopPropagation();
+        setError(null);
+        setOpen((v) => !v);
+      }}
+      className={`-mx-1 min-w-0 shrink-0 rounded-md px-1 py-0.5 text-left hover:bg-black/[.04] dark:hover:bg-white/[.06] ${
+        empty && !open
+          ? "text-[11px] text-zinc-400 opacity-0 [@media(hover:none)]:opacity-100 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 dark:text-zinc-500"
+          : ""
+      }`}
+    >
+      {empty ? <span aria-hidden>+ Label</span> : <LabelRow labels={labels} />}
+    </button>
+  );
 
   return (
     <span className="relative flex min-w-0 flex-col">
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-expanded={open}
-        aria-controls={open ? popupId : undefined}
-        aria-keyshortcuts="L"
-        // Starts with what's visible (label-in-name, for voice control),
-        // then says what it does.
-        aria-label={empty ? `+ Label: add labels for ${ticketLabel}` : `${shownText.join(", ")}: edit labels for ${ticketLabel}`}
-        title="Edit labels (L while the card is hovered or focused)"
-        onClick={(e) => {
-          e.stopPropagation();
-          setError(null);
-          setOpen((v) => !v);
-        }}
-        className={`-mx-1 min-w-0 rounded-md px-1 py-0.5 text-left hover:bg-black/[.04] dark:hover:bg-white/[.06] ${
-          empty && !open
-            ? "text-[11px] text-zinc-400 opacity-0 [@media(hover:none)]:opacity-100 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 dark:text-zinc-500"
-            : ""
-        }`}
-      >
-        {empty ? <span aria-hidden>+ Label</span> : <LabelRow labels={labels} />}
-      </button>
+      {/* Team labels (pills, clickable) and the AI's read (✦ text, not
+          clickable) on one row. With no labels, the AI's read comes first
+          and the hover-only "+ Label" after it, so nothing leaves a gap. */}
+      <span className="flex min-w-0 items-center gap-2">
+        {empty ? null : button}
+        <AiSignal signals={signals} />
+        {empty ? button : null}
+      </span>
       {open ? (
         <LabelPickerPopup
           id={popupId}

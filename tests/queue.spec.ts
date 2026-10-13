@@ -168,13 +168,15 @@ test("a triaged ticket's card shows its number, AI summary and AI flags, and sea
     await expect(card.getByText(`#${created.number}`, { exact: true })).toBeVisible();
     await expect(card.getByText("Export fails before the customer's deadline.")).toBeVisible();
     // Linear-style card (SUP-38): priority as an icon (named for screen
-    // readers), two labels, and the rest behind "+N".
+    // readers). The AI's read (SUP-41) shows its most important signal as
+    // ✦ text, the rest as "+N" with a tooltip naming them all -- and it
+    // isn't a button: only team labels open the label picker.
     await expect(card.getByText("Urgent priority", { exact: true })).toBeAttached();
-    for (const label of ["Escalation risk", "AI unsure"]) {
-      await expect(cardArea.getByText(label, { exact: true })).toBeVisible();
-    }
-    // The rest behind a visible "+2" whose tooltip names them.
-    await expect(cardArea.locator('[title="Bug, Frustrated"]')).toHaveText(/^\+2/);
+    const aiRead = cardArea.locator('[title^="AI\'s read of this ticket:"]');
+    await expect(aiRead).toHaveAttribute("title", "AI's read of this ticket: Escalation risk, AI unsure, Bug, Frustrated");
+    await expect(aiRead.getByText("Escalation risk", { exact: true })).toBeVisible();
+    await expect(aiRead.getByText("+3", { exact: true })).toBeVisible();
+    await expect(cardArea.getByRole("button", { name: /Escalation risk/ })).toHaveCount(0);
 
     // The ticket page header shows the same AI read, labelled as AI-estimated,
     // and the SLA as a banner.
@@ -199,17 +201,15 @@ test("a triaged ticket's card shows its number, AI summary and AI flags, and sea
       .eq("ticket_id", created.id);
     if (reviewError) throw new Error(reviewError.message);
     await page.goto(`/queue?q=${encodeURIComponent(`#${created.number}`)}`);
-    await expect(cardArea.getByText("Escalation risk", { exact: true })).toBeVisible();
-    await expect(cardArea.getByText(/AI (unsure|unreviewed)/)).toHaveCount(0);
-    await expect(cardArea.getByText("Bug", { exact: true })).toBeVisible();
-    await expect(cardArea.locator('[title="Frustrated"]')).toHaveText(/^\+1/);
+    await expect(aiRead).toHaveAttribute("title", "AI's read of this ticket: Escalation risk, Bug, Frustrated");
+    await expect(aiRead.getByText("Escalation risk", { exact: true })).toBeVisible();
 
     // ...and comes back when a newer run lands that nobody has checked.
     await new Promise((resolve) => setTimeout(resolve, 10)); // a later created_at than the first run
     await seedRun("Re-run: export still failing.");
     await page.reload();
     await expect(card.getByText("Re-run: export still failing.")).toBeVisible();
-    await expect(cardArea.getByText("AI unsure", { exact: true })).toBeVisible();
+    await expect(aiRead).toHaveAttribute("title", /AI unsure/);
   } finally {
     await db.from("tickets").delete().eq("id", created.id);
   }
@@ -276,19 +276,13 @@ test("Claim on a card opens the ticket; a lost race says so instead of doing not
   }
 });
 
-test("card labels: at most two, most important first, the rest counted", async () => {
-  const { cardLabels } = await import("../app/components/CardBits");
-  const all = cardLabels({ category: "feature_request", escalation: true, frustrated: true, review: "unsure" });
+test("the AI's read: most important signal first", async () => {
+  const { aiSignals } = await import("../app/components/CardBits");
+  const all = aiSignals({ category: "feature_request", escalation: true, frustrated: true, review: "unsure" });
   expect(all.map((l) => l.text)).toEqual(["Escalation risk", "AI unsure", "Feature request", "Frustrated"]);
-  const calm = cardLabels({ category: "billing", escalation: false, frustrated: false, review: null });
+  const calm = aiSignals({ category: "billing", escalation: false, frustrated: false, review: null });
   expect(calm.map((l) => l.text)).toEqual(["Billing"]);
-  // Team labels (SUP-39) come after the two safety signals, never before.
-  const labelled = cardLabels({
-    teamLabels: [{ name: "VIP", color: "violet" }, { name: "Refund", color: "green" }],
-    category: "billing",
-    escalation: true,
-    frustrated: false,
-    review: "unsure",
-  });
-  expect(labelled.map((l) => l.text)).toEqual(["Escalation risk", "AI unsure", "VIP", "Refund", "Billing"]);
+  expect(aiSignals({ category: null, escalation: false, frustrated: false, review: "unreviewed" }).map((l) => l.text)).toEqual([
+    "AI unreviewed",
+  ]);
 });
