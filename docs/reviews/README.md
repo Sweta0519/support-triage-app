@@ -19,8 +19,8 @@ Other review tooling in the repo, used for specific PRs:
 ## Where the evidence is
 
 **Since PR #12 (2026-10-09), the evidence is the PR itself.** Inline review comments began on PRs #9
-and #10 (see below). From #12 on, every PR uses them, except #14, which only added the submission
-mirror workflow and had no review. Each finding is an inline review comment on the file and line it
+and #10 (see below). From #12 on, every PR uses them, except #14, which only merged the submission
+repo's task file (so `main` can be pushed there) and had no review. Each finding is an inline review comment on the file and line it
 concerns. A finding outside the diff, which GitHub can't anchor,
 becomes a conversation comment instead (e.g. #17).
 - `ai-code-reviewer` findings name the agent in the comment's first words. The exact format
@@ -67,7 +67,7 @@ but the comments don't name the tool that produced them.
 - #4, the Sage chat. PR #5's report says `/code-review` was used for it, but no findings were kept.
 - #6, #7 and #8, small navigation changes;
 - #11, adding the EU AI Act auditor;
-- #14, the submission mirror workflow.
+- #14, which merged the submission repo's task file so `main` can be mirrored there.
 
 ## Reproducing a review
 
