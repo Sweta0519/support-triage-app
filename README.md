@@ -9,7 +9,7 @@ might start replying.
 **Live:** https://support-triage-app-one.vercel.app (requires sign-in; open it in an incognito
 window and you land on the login page, never on data).
 
-![Agent view of a ticket opened from the Unassigned queue tab, with the breadcrumb trail and the AI triage panel](docs/screenshots/ticket-triage.png)
+![An agent's view of a ticket: the AI triage panel with category, priority and its reason, team and escalation risk; the SLA banner and the AI's read of the customer in the header](docs/screenshots/ticket-triage.png)
 
 ## Why the AI feature is the core, not a bolt-on
 
@@ -22,7 +22,8 @@ of the product is that a human never has to read a ticket cold:
 - **Duplicate and related-ticket detection** via pgvector similarity search over previous tickets.
 - **Frustration score and escalation-risk flag.**
 - **A draft first reply** that acknowledges the specifics and asks for whatever is missing --
-  shown to the agent, never sent automatically.
+  shown to the agent, never sent automatically. It is drafted by a separate model call that sees
+  only this ticket, never other customers' tickets.
 - **"Still needed from the customer"** so the agent's first message is the right question.
 
 Remove it and the app has no reason to exist over a shared inbox.
@@ -52,6 +53,28 @@ notes** -- runbooks, policies, customer context written under **Notes** -- to an
 
 Design and calibration notes: `docs/notes-rag.md`.
 
+## What else it does
+
+Built since the core above, each through a reviewed PR (see Development process):
+
+| Feature | PR |
+|---|---|
+| Staff confirm or correct the AI's triage. The review is recorded, and a later re-run never overwrites it. | #12 |
+| First-reply SLA targets per priority: on the queue, as a banner on the ticket, and as sort order | #13, #16, #27 |
+| Admin analytics: SLA, triage quality, agent workload, customer sentiment | #15, #18 |
+| Queue cards with AI signals and ticket numbers, made calmer in a Linear style later | #16, #41 |
+| Left sidebar navigation for every role | #21 |
+| Staff file a ticket on a customer's behalf | #24 |
+| CSAT: customers rate resolved tickets, and admins see it per staff member | #25 |
+| Triage board with drag-and-drop status moves | #26 |
+| Account settings: display name, theme, queue defaults; profile pictures; names instead of emails | #29, #30, #31 |
+| Quick-action menu on queue cards, plus personal follow-up flags | #34, #40 |
+| Sign-in and sign-up throttling; the current password needed to delete an account | #35, #36 |
+| A stalled triage run is shown as stalled and can be re-run | #38 |
+| The reply draft is written by a call that sees only this ticket | #39 |
+| Team labels, editable on the ticket and on the cards | #42, #43 |
+| Model retries: none for interactive calls, bounded backoff for background triage, and the failure reason shown | #44 |
+
 ## Stack
 
 Next.js 16 (App Router) · TypeScript · Tailwind · Supabase (Postgres + Auth + RLS + pgvector) ·
@@ -67,12 +90,20 @@ embeddings) · Vercel.
 - A `BEFORE UPDATE` trigger enforces what RLS can't: immutable ticket text, legal status
   transitions, staff-only assignees, race-free claiming.
 - CSRF via Server Actions' built-in Origin/Host check; **no mutating Route Handlers exist** (the
-  two Route Handlers, `/auth/confirm` and `/account/export`, are GET-only).
+  three Route Handlers, `/auth/confirm`, `/account/export` and `/avatar/...`, are GET-only).
 - GDPR data rights are self-service on `/account`: a JSON **export** of everything the caller can
-  see (an RLS-scoped `SECURITY INVOKER` function) and **real account deletion** -- the `auth.users`
-  row goes and every table cascades; a trigger refuses to delete the last admin, and a departed
-  staff member's replies stay on customers' tickets unattributed rather than vanishing.
-- Per-user **rate limiting** in Postgres + a Vercel WAF rule; security headers incl. a CSP.
+  see (an RLS-scoped `SECURITY INVOKER` function) and **real account deletion**. Deletion asks for
+  the current password first. The `auth.users` row goes and every table cascades; a trigger
+  refuses to delete the last admin, and a departed staff member's replies stay on customers'
+  tickets unattributed rather than vanishing.
+- **Rate limiting** in Postgres:
+  - per-user limits on sensitive actions;
+  - sign-in and sign-up throttled per email and IP;
+  - an IP-keyed limiter on the public share page.
+
+  A Vercel WAF rule is the intended network-level backstop. It is documented in
+  `docs/security/vercel-waf.md` but lives only in the Vercel dashboard and **is not yet confirmed**
+  as configured. Security headers include a CSP.
 - `OPENROUTER_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are read only in `server-only` modules.
   Ticket text is treated as untrusted model input (closed strict schema, delimited, candidate-
   restricted ids). See `docs/ai-triage.md` for the prompt-injection and privacy analysis.
@@ -126,38 +157,66 @@ The suite runs against the real Supabase project and, for the AI test, the real 
 It needs dedicated test accounts in `.env.local` (`TEST_USER_*` customer A, `TEST_USER_B_*`
 customer B, `TEST_AGENT_*`, `TEST_ADMIN_*`, `TEST_ROLEFLIP_EMAIL`) -- create them with the Supabase
 Admin API (`auth.admin.createUser` with `email_confirm: true`) and set roles via the service role.
-Coverage: customer flow; **cross-user isolation** (customer B gets a 404 for customer A's ticket);
-agent claim / status / internal notes hidden from the customer; **AI triage happy path** with the
-panel never rendered for customers; admin role gate, role changes, reassignment; agent 404 for
-another staff member's ticket; customer bounced from staff routes; **Sage** conversation memory
-and persistence across a refresh; **notes RAG** -- answer-and-cite from a saved note, "nothing
-relevant" honesty, no search for general knowledge, and **cross-staff isolation** of notes in both
-the chat and a direct call to the retrieval RPC.
+About 100 tests in 28 spec files. Feature PRs add their own tests. Highlights:
+- **Isolation:**
+  - customer B gets a 404 for customer A's ticket;
+  - an agent gets a 404 for another staff member's ticket;
+  - customers are bounced from staff routes;
+  - labels and AI triage are invisible to customers, in the UI and through the database API;
+  - follow-up flags are private to the staff member who set them.
+- **AI triage:**
+  - a real LLM call, asserted end to end;
+  - the reply-drafting call never sees another customer's text;
+  - a stalled run can be re-run;
+  - the retry policy (pure unit tests).
+- **Sage:**
+  - conversation memory;
+  - answer-and-cite from a saved note;
+  - "nothing relevant" honesty;
+  - no search for general knowledge;
+  - cross-staff isolation of notes, in the chat and through the retrieval RPC.
+- **Roles and abuse:**
+  - the admin role gate and role changes;
+  - sign-in and sign-up throttling;
+  - rate limits;
+  - account export and deletion.
 
 ## Optional tasks completed
 
-Eight optional tasks across both sprint projects' lists, spanning all three difficulty tiers.
+Eight optional tasks across both sprint projects' lists, spanning all three difficulty tiers. Each
+one says how it was delivered. Four came through a feature-branch PR. Four were committed directly
+to `main` on 2026-09-03, before the PR workflow was adopted.
+
+**Rule:** an optional task is claimed as PR-delivered only after its feature branch is merged.
 
 **Easy**
 
 - **Model display** -- the triage panel shows the exact OpenRouter slug, prompt version, and
-  latency for every run.
+  latency for every run. *Delivered:* committed directly to `main` (`d4badde`, 2026-09-03), with
+  the AI triage agent.
 - **Usage/cost indicator** -- the real cost OpenRouter billed for each triage run (embedding +
-  completion, from `usage.cost` on the response, not an estimate), shown per ticket and as a
-  running total on the admin overview.
+  completion, from `usage.cost` on the response, not an estimate). It's shown per ticket, and the
+  admin overview totals the last 1,000 runs ("AI spend (recent)"). *Delivered:* PR #2 (branch
+  `feature/usage-cost-indicator`).
 - **Security headers configured** (mid-sprint list) -- a same-origin CSP, HSTS with `preload`,
   `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, Referrer-Policy, and
-  Permissions-Policy, applied to every route including the public share page.
+  Permissions-Policy, applied to every route including the public share page. *Delivered:*
+  PR #1 (branch `feature/m7-readme-security-tests`; `bec27f5`, HSTS in `ab93d15`).
 
 **Medium**
 
 - **Deploy to a live Vercel URL** -- secrets live only in the Vercel dashboard, never in the repo
-  or a `NEXT_PUBLIC_` variable.
+  or a `NEXT_PUBLIC_` variable. *Delivered:* a Vercel project linked to this repo, configured in
+  the Vercel dashboard rather than in code. The live origin was pinned in the Server Actions
+  config in `21a2c42`, committed directly to `main` on 2026-09-03.
 - **Playwright tests for the AI feature** -- a real LLM call asserted end to end (never mocked),
   plus the signed-out lockout and cross-user checks running against the live database.
+  *Delivered:* committed directly to `main` (`tests/ai-triage.spec.ts` in `d4badde`, 2026-09-03).
+  It was extended in later PRs (#1, #2, #12, #41).
 - **Two-user cross-account test** (mid-sprint list) -- a second real customer account (created via
   the Admin API) attempting to reach the first customer's ticket by direct URL, confirmed blocked
-  with a 404, not a login bounce.
+  with a 404, not a login bounce. *Delivered:* committed directly to `main`
+  (`tests/cross-user-security.spec.ts` in `73da112`, 2026-09-03), then extended in PR #1.
 
 **Hard**
 
@@ -167,7 +226,8 @@ Eight optional tasks across both sprint projects' lists, spanning all three diff
   when nothing relevant exists. Chunks are embedded with `openai/text-embedding-3-small` into a
   pgvector `documents` table; the match function scopes to the caller's `auth.uid()` and runs
   under RLS, so there is no user-id argument to spoof. Verified with a two-account test in the
-  chat and against the RPC directly (`docs/notes-rag.md`).
+  chat and against the RPC directly (`docs/notes-rag.md`). *Delivered:* PR #5 (branch
+  `feature/notes-rag`).
 - **Shareable AI outputs** -- staff can publish a read-only public status page (subject, status,
   and the AI-generated summary) to an unguessable URL. An unauthenticated visitor can view that
   one snapshot and nothing else: no comments, no ticket body, no other tickets, no sign-in prompt.
@@ -175,7 +235,24 @@ Eight optional tasks across both sprint projects' lists, spanning all three diff
   reads it server-side with the service role, by exact 128-bit token match only, with its own
   IP-keyed rate limiter since it's the app's only unauthenticated route. Staff can unpublish at
   any time (one-directional -- a raw API call can't silently un-revoke a link), after which the
-  link 404s, and shares expire automatically after 30 days.
+  link 404s, and shares expire automatically after 30 days. *Delivered:* PR #3 (branch
+  `feature/shareable-status-page`).
+
+## Development process
+
+- **2026-09-03:** the core was built with commits made directly to `main`: the schema, auth and
+  roles, tickets, the queue, AI triage and the admin surface (`1b91083` to `8f1142a`).
+- **From 2026-09-04:** features came through feature-branch PRs (#1-#11). A few small follow-ups
+  still went straight to `main`, e.g. `3145714`, `851446d` and `807c716`.
+- **Since PR #12 (2026-10-09):** every change goes through a feature branch and a reviewed PR. The
+  diff is reviewed with `/code-review --comment` and the `ai-code-reviewer` subagent, and each
+  finding is answered inline and resolved (`docs/reviews/README.md`). The full Playwright suite
+  passes before the commit, and the Vercel preview builds before the merge.
+- **Linear:** work is tracked in the team **SUP**. SUP-5 to SUP-28 were delivered in PRs #12 to
+  #37. It isn't one-to-one: #14 (the submission mirror) and #32/#33 (the logo) have no issue, and SUP-21
+  is the profiles epic, delivered through its sub-issues SUP-22 to SUP-24.
+  Each issue links its PR in Linear. After each merge, `main` is mirrored
+  to the Turing College submission repo.
 
 ## Docs
 
@@ -184,8 +261,11 @@ Eight optional tasks across both sprint projects' lists, spanning all three diff
 - `docs/notes-rag.md` -- Sage's notes retrieval: chunking, the tool loop, threshold calibration,
   and why the match function takes no user id.
 - `docs/supabase-schema.md` -- every table, policy, trigger and function.
-- `docs/security/` -- security audit reports: four fresh-context passes, each with its fixes
-  recorded, ending in a clean rescan (0 critical, 0 warning) before merge.
+- `docs/security/` -- security reports:
+  - four fresh-context audit passes, each with its fixes recorded, ending in a clean rescan
+    (0 critical, 0 warning) before PR #1 was merged;
+  - the `/security-scan` report of 2026-10-11 (SUP-11), with its follow-ups;
+  - the Vercel WAF rule to configure (`vercel-waf.md`).
 - `docs/reviews/` -- how each PR is reviewed (`/code-review --comment` plus the `ai-code-reviewer`
   subagent) and where the evidence is. It holds the early reports as files; since PR #12 the
   evidence is inline PR comments, each answered and resolved. See `docs/reviews/README.md`.
