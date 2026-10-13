@@ -4,6 +4,10 @@
 - Tool: `ai-code-reviewer` subagent (read-only) over `git diff main...feature/m7-readme-security-tests`
   at commit `f61026d` (README/tests/CSP, prompt tweak, audit-1 fixes, screenshot regen), plus the
   surrounding pre-existing code needed to judge each change
+- Mechanism note (added 2026-10-13, SUP-33): this repo had no subagent definition until 2026-09-14
+  (`d2b4f34`); until then it existed only in the `notes-collections` repo. How this review
+  invoked it was not recorded. Most likely, that definition's instructions were given to an agent
+  here, but that is an inference. See [`README.md`](README.md).
 - Result: **0 blocking, 2 should-fix, 2 nits** -- all addressed in the same PR before merge
 
 ## Actions taken

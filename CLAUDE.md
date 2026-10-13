@@ -116,8 +116,14 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
 - New pages go inside `app/`. Shared UI components go in `app/components/`.
 - One feature per branch, merged via pull request. Commit at each stable state.
 - Commit messages are descriptive (what changed and why) -- never "updates" or "stuff".
-- Run a third-party review command (`/full-review` or `/refactor-clean`) and the
-  `ai-code-reviewer` subagent on a PR's diff before merging it.
+- Before merging a PR, review its diff with both tools:
+  - `/code-review --comment <PR>`: the third-party review command, a review skill bundled with
+    Claude Code. It is not written or tuned in this repo, and it is not the
+    `claude-plugins-official` `code-review` plugin.
+  - the `ai-code-reviewer` subagent, defined in this repo at `.claude/agents/ai-code-reviewer.md`.
+    In Claude Code, ask for it by name on `git diff main...HEAD`, and name the PR's risky areas.
+
+  `docs/reviews/README.md` says which tool produced which review and where the evidence is.
 - Review findings always go on the PR as inline review comments (one comment per finding, on
   the relevant file and line), not only in the terminal. When a finding is fixed, reply on its
   comment thread saying what changed and in which commit, then mark the thread resolved. A

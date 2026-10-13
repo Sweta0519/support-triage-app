@@ -1,11 +1,15 @@
 # PR #5 review: staff notes + agentic RAG for Sage
 
-`/code-review main high` run on the `feature/notes-rag` diff before merge (the `ai-code-reviewer`
-subagent named in CLAUDE.md is not configured in this repo, so the code-review skill stands in, as
-it did for PR #4). Eight finder angles, 14 verifiers, ~26 deduped candidates; two refuted by the
-reviewer itself (the test-reset scope -- test accounts are documented as disposable -- and a
-`deleteNote` rowcount check, which is pure style for an idempotent delete). The ten reported
-findings and what was done about each:
+`/code-review main high` run on the `feature/notes-rag` diff before merge. At that time
+(2026-09-06) the `ai-code-reviewer` subagent named in CLAUDE.md was not yet configured in this
+repo, so the code-review skill stood in, as it did for PR #4. The subagent was added to this repo
+on 2026-09-14 (`.claude/agents/ai-code-reviewer.md`, commit `d2b4f34`); see
+[`README.md`](README.md) for how reviews have been done since.
+
+Eight finder angles, 14 verifiers, ~26 deduped candidates; two refuted by the reviewer itself (the
+test-reset scope -- test accounts are documented as disposable -- and a `deleteNote` rowcount check,
+which is pure style for an idempotent delete). The ten reported findings and what was done about
+each:
 
 | # | Finding | Severity | Resolution |
 |---|---|---|---|
