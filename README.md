@@ -251,8 +251,8 @@ task that went straight to `main` says so, with the commit.
   still went straight to `main`: one feature, Sage's floating widget (`851446d`, 2026-09-05), and
   small follow-ups such as `3145714` and `807c716`.
 - **Since PR #12 (2026-10-09):** every change goes through a feature branch and a PR, and every
-  feature PR is reviewed. The one exception is #14, which only added the submission mirror
-  workflow and had no review. The diff is reviewed with `/code-review --comment` and the `ai-code-reviewer` subagent, and each
+  feature PR is reviewed. The one exception is #14, which only merged the submission repo's
+  task file (so `main` can be pushed there) and had no review. The diff is reviewed with `/code-review --comment` and the `ai-code-reviewer` subagent, and each
   finding is answered inline and resolved (`docs/reviews/README.md`). The full Playwright suite
   passes before the commit, and the Vercel preview builds before the merge.
 - **Linear:** work is tracked in the team **SUP**, and each issue links its PR there.
@@ -261,6 +261,19 @@ task that went straight to `main` says so, with the commit.
     through SUP-22 to SUP-24.
   - The follow-ups to the Turing College review (epic SUP-29) and later work came after: SUP-30,
     31, 37, 38, 39 and 40 in PRs #38 to #43, then SUP-32, 33 and 34 in PRs #44 to #46.
+- **Since 2026-10-13, `main` is protected (SUP-35)**, and the rules bind admins too. GitHub
+  **enforces** four things:
+  - every change needs a PR;
+  - the Vercel preview build must pass before a merge;
+  - every review thread must be resolved;
+  - force-pushes and deleting the branch are blocked. Before that, the PR-only rule was
+  practice rather than enforced; the last direct commit to `main` was on 2026-09-07.
+- **Not enforced by GitHub, but required by convention:** the full Playwright suite (there's no CI
+  runner), running the two-tool review in the first place, and the PR template's checklist.
+  Branches aren't required to be up to date with `main`, so a combination of two merged PRs isn't
+  built before it lands. The template
+  (`.github/pull_request_template.md`, from PR #47 on) has a UI section for redesigns. The exact
+  settings and how to restore them are in `docs/branch-protection.md`.
 - After each merge, `main` is mirrored to the Turing College submission repo.
 
 ## Docs
