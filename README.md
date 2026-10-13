@@ -51,8 +51,10 @@ triage", and the ticket page points staff to setting the fields by hand.
 
 The AI is deliberately **advisory**: it seeds a staff-only working-state record (priority,
 category, team) and records its full assessment in an append-only audit table, but it never
-changes ticket status and never sends anything to a customer. Nothing it produces is readable by
-the customer who filed the ticket -- not in the UI and not through the database API.
+changes ticket status and never sends anything to a customer. The customer who filed the ticket
+can't read what it produces, in the UI or through the database API. The one exception is a staff
+member's deliberate choice: publishing a ticket's AI summary on a public status page (see
+Optional tasks).
 
 ## Sage: the staff assistant that can read your notes
 
@@ -96,6 +98,46 @@ Built since the core above, each through a reviewed PR (see Development process)
 | Team labels, editable on the ticket and on the cards | #42, #43 |
 | Model retries: none for interactive calls, bounded backoff for background triage, and the failure reason shown | #44 |
 | Staff banner when AI triage is off or failing; untriaged tickets marked as needing manual triage | #48 |
+
+## How it compares
+
+**Linear and Jira** are mainly built for a team's own work: filing issues, planning sprints and
+moving tasks through a workflow. Both have added ways to take in customer requests (Jira through
+Jira Service Management), but their core is internal work tracking. This app is **customer
+support** from the ground up. Customers sign in, file tickets, see replies and rate the help
+they got; agents and admins work the queue behind them. The Linear-style cards and labels borrow
+Linear's calm look, not its purpose.
+
+**Help desks** such as Zendesk, Freshdesk, Intercom and Help Scout are the closer comparison.
+What this app puts first:
+
+- **AI triage on every new ticket:** category, priority with a stated reason, team routing,
+  duplicate and related tickets, escalation risk, frustration, a draft reply, and the questions
+  to ask the customer. This is normally ready before anyone opens the ticket. If triage fails, or
+  no model is configured, staff are told and triage by hand.
+- **The AI never acts on the customer:** it never changes a ticket's status and never sends
+  anything. Its priority, category and team fill the ticket's working fields, which set queue
+  order and the SLA target, until a staff member confirms or corrects them. Analytics shows how
+  often staff accept its triage as it is.
+- **Safety built into the AI:** ticket text is treated as untrusted input to the model (prompt
+  injection). The AI can only link duplicates from a list the server chose, never invent one. The
+  reply draft never sees other customers' tickets.
+- **Open about the AI:** each run shows its model and prompt version, plus its time and real
+  billed cost where they were recorded. A failed run gives a plain reason, and a banner tells
+  staff when the AI is off or failing.
+- **Sage:** a private assistant for each staff member that answers from their own notes and
+  cites them. Nobody else's notes can reach it.
+
+The large help desks offer AI features too, such as auto-tagging, intent detection and reply
+suggestions, so the AI itself isn't what's unique here. What this app prioritises is making the
+AI visible and accountable. It states a reason for its priority, never acts on the customer by
+itself, is measured against the team's own reviews, and is built privacy- and security-first.
+
+**What it doesn't have**, compared with a production help desk (this is a capstone project):
+- channels beyond the web form: no email, chat, phone or social;
+- automation rules, saved reply templates and a public help centre;
+- integrations with Slack, CRMs or Jira;
+- support for many separate companies (multi-tenancy), and testing at real scale.
 
 ## Stack
 
