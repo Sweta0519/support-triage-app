@@ -7,7 +7,21 @@ import { AssistantWidget } from "@/app/components/assistant/AssistantWidget";
 import { AiTriageBanner } from "@/app/components/AiTriageBanner";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { listRecentFinishedTriageRuns } from "@/app/lib/db/triage";
-import { aiTriageHealth, FAILING_STREAK } from "@/app/lib/triage-status";
+import { aiTriageHealth, HEALTH_SAMPLE, type AiTriageHealth } from "@/app/lib/triage-status";
+
+// The AI triage banner's input. Best effort: the banner is a hint, so a
+// failed health query logs and shows nothing rather than breaking every
+// staff page. With no key there's nothing to query.
+async function triageHealth(): Promise<AiTriageHealth> {
+  const configured = isAiConfigured();
+  if (!configured) return aiTriageHealth(false, []);
+  try {
+    return aiTriageHealth(true, await listRecentFinishedTriageRuns(HEALTH_SAMPLE));
+  } catch (err) {
+    console.error("[layout] AI triage health check failed:", err instanceof Error ? err.message : err);
+    return { kind: "ok" };
+  }
+}
 
 export default async function AppLayout({
   children,
@@ -16,11 +30,8 @@ export default async function AppLayout({
 }) {
   const profile = await requireProfile();
   const staff = profile.role !== "customer";
-  // Staff only: customers never see triage, working or not. With no key
-  // there's nothing to query.
-  const health = staff
-    ? aiTriageHealth(isAiConfigured(), isAiConfigured() ? await listRecentFinishedTriageRuns(FAILING_STREAK) : [])
-    : null;
+  // Staff only: customers never see triage, working or not.
+  const health = staff ? await triageHealth() : null;
 
   return (
     // Sidebar on the left from lg up, a top bar on phones; the page and

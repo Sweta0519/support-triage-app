@@ -77,18 +77,27 @@ function reviewState(ticket: QueueTicketSummary): "unsure" | "unreviewed" | null
 
 // The card's summary line before an AI assessment exists. A run that died
 // (stalled) or failed says so, rather than "Awaiting" forever.
-function NoTriageYet({ state, now }: { state: QueueTicketSummary["triage_state"]; now: Date }) {
-  const status = effectiveTriageStatus(state, { now: now.getTime(), aiConfigured: isAiConfigured() });
+function NoTriageYet({
+  state,
+  now,
+  aiConfigured,
+}: {
+  state: QueueTicketSummary["triage_state"];
+  now: Date;
+  aiConfigured: boolean;
+}) {
+  // With AI off nothing will triage it -- not even a re-run -- whatever state
+  // it was left in: say so first (SUP-36).
+  if (!aiConfigured) {
+    return <span className="italic text-amber-700 dark:text-amber-400">Needs manual triage -- AI triage is off</span>;
+  }
+  const status = effectiveTriageStatus(state, { now: now.getTime() });
   if (status === "stalled" || status === "failed") {
     return (
       <span className="italic text-amber-700 dark:text-amber-400">
         AI triage {status} -- re-run it from the ⋯ menu or the ticket
       </span>
     );
-  }
-  // With AI off nothing will ever triage it: say so instead of "awaiting".
-  if (!isAiConfigured()) {
-    return <span className="italic text-amber-700 dark:text-amber-400">Needs manual triage -- AI triage is off</span>;
   }
   return <span className="italic text-zinc-500 dark:text-zinc-400">Awaiting AI triage</span>;
 }
@@ -105,6 +114,7 @@ function TicketCard({
   isAdmin,
   staffOptions,
   now,
+  aiConfigured,
   returnTo,
 }: {
   ticket: QueueTicketSummary;
@@ -121,6 +131,7 @@ function TicketCard({
   labels: TeamLabel[] | undefined;
   allLabels: TeamLabel[];
   now: Date;
+  aiConfigured: boolean;
   // This queue view's URL, for a claim that loses the race to come back to.
   returnTo: string;
 }) {
@@ -205,7 +216,7 @@ function TicketCard({
         </div>
         <span className="line-clamp-1 font-medium text-black dark:text-zinc-50">{ticket.subject}</span>
         <p className="line-clamp-2 text-sm text-zinc-500 dark:text-zinc-400">
-          {ticket.latest_triage?.summary ?? <NoTriageYet state={ticket.triage_state} now={now} />}
+          {ticket.latest_triage?.summary ?? <NoTriageYet state={ticket.triage_state} now={now} aiConfigured={aiConfigured} />}
         </p>
       </Link>
         {/* Outside the link so the labels can be a button: click them (or
@@ -263,6 +274,7 @@ export default async function QueuePage({
   const returnTo = viewHref(filter, view, defaults);
   const claimTaken = params.notice === "claim-taken";
   const now = new Date();
+  const aiConfigured = isAiConfigured();
 
   const tabCounts: Record<QueueFilterKey, number> = {
     all: tickets.length,
@@ -467,6 +479,7 @@ export default async function QueuePage({
               isAdmin={profile.role === "admin"}
               staffOptions={staffOptions}
               now={now}
+              aiConfigured={aiConfigured}
               returnTo={returnTo}
             />
           ))}

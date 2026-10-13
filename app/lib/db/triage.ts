@@ -178,7 +178,8 @@ export async function ownsTriageClaim(ticketId: string, claimId: string): Promis
   return data !== null;
 }
 
-// The latest finished triage runs across all tickets, newest first, for
+// The latest triage runs (finished, or still "processing" -- the health
+// rule decides which of those stalled) across all tickets, newest first, for
 // the staff "AI triage is off / failing" banner (SUP-36). Service role
 // because the health of triage is team-wide, while an agent's RLS sees only
 // their own and unassigned tickets. Only status, time and the coarse reason
@@ -188,7 +189,7 @@ export async function listRecentFinishedTriageRuns(limit: number): Promise<Finis
   const { data, error } = await supabase
     .from("ticket_triage_state")
     .select("triage_status, claimed_at, failure_reason")
-    .in("triage_status", ["completed", "failed"])
+    .in("triage_status", ["completed", "failed", "processing"])
     .not("claimed_at", "is", null)
     .order("claimed_at", { ascending: false })
     .limit(limit);
@@ -205,7 +206,7 @@ export async function resetTriageStatus(ticketId: string): Promise<void> {
     .from("ticket_triage_state")
     .update({ triage_status: "pending" })
     .eq("ticket_id", ticketId)
-    .in("triage_status", ["completed", "failed"]);
+    .in("triage_status", ["completed", "failed", "processing"]);
 
   if (error) {
     throw new Error(error.message);

@@ -1,6 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
-import { aiTriageBannerCopy, aiTriageHealth, FAILING_STREAK, FAILING_WINDOW_MS } from "../app/lib/triage-status";
+import {
+  aiTriageBannerCopy,
+  aiTriageHealth,
+  FAILING_STREAK,
+  FAILING_WINDOW_MS,
+  STALE_TRIAGE_MS,
+} from "../app/lib/triage-status";
 import { login, requireEnv } from "./helpers";
 
 // SUP-36: without the model the product is a plain ticket inbox, so staff
@@ -15,19 +21,41 @@ const run = (status: string, minutesAgo: number, reason: string | null = null) =
   failure_reason: reason,
 });
 
-test("health: off without a key; failing only on a recent streak; otherwise ok", () => {
+test("health: off without a key; failing only on a recent streak of provider failures; otherwise ok", () => {
   expect(aiTriageHealth(false, [], now)).toEqual({ kind: "off" });
   expect(aiTriageHealth(true, [], now)).toEqual({ kind: "ok" });
-  // A streak of FAILING_STREAK failures, the newest recent: failing, with its reason.
-  const streak = [run("failed", 1, "provider_unavailable"), run("failed", 5, "timeout"), run("failed", 9)];
+  // A streak of provider failures, all recent: failing, with the newest reason.
+  const streak = [
+    run("failed", 1, "provider_unavailable"),
+    run("failed", 5, "timeout"),
+    run("failed", 9, "rate_limited"),
+  ];
   expect(aiTriageHealth(true, streak, now)).toEqual({ kind: "failing", reason: "provider_unavailable" });
   // One success among them is enough to say it works.
-  expect(aiTriageHealth(true, [run("failed", 1), run("completed", 5), run("failed", 9)], now)).toEqual({ kind: "ok" });
-  // Fewer finished runs than the streak: not enough evidence.
+  expect(aiTriageHealth(true, [run("failed", 1, "timeout"), run("completed", 5), run("failed", 9, "timeout")], now)).toEqual({
+    kind: "ok",
+  });
+  // Fewer runs than the streak: not enough evidence.
   expect(aiTriageHealth(true, streak.slice(0, FAILING_STREAK - 1), now)).toEqual({ kind: "ok" });
-  // An old streak (nothing has run since): not shouted about.
+  // The whole streak must be recent, the oldest included.
   const old = FAILING_WINDOW_MS / 60_000 + 1;
-  expect(aiTriageHealth(true, [run("failed", old), run("failed", old + 1), run("failed", old + 2)], now)).toEqual({ kind: "ok" });
+  expect(aiTriageHealth(true, [run("failed", 1, "timeout"), run("failed", 2, "timeout"), run("failed", old, "timeout")], now)).toEqual({
+    kind: "ok",
+  });
+  // Content-shaped failures don't count: a customer can't raise the alarm
+  // for the whole team by filing tickets the model can't read.
+  expect(
+    aiTriageHealth(true, [run("failed", 1, "invalid_response"), run("failed", 2, "error"), run("failed", 3, "invalid_response")], now)
+  ).toEqual({ kind: "ok" });
+  // A run stuck in "processing" past the stall threshold counts as a failure
+  // (a hung provider gets the function killed before it records "failed")...
+  const stalled = STALE_TRIAGE_MS / 60_000 + 1;
+  expect(aiTriageHealth(true, [run("processing", stalled), run("failed", stalled + 1, "timeout"), run("processing", stalled + 2)], now)).toEqual({
+    kind: "failing",
+    reason: "timeout",
+  });
+  // ...a live one is no verdict yet, and is skipped.
+  expect(aiTriageHealth(true, [run("processing", 1), ...streak], now)).toEqual({ kind: "failing", reason: "provider_unavailable" });
 });
 
 test("the banner says what's missing, and only admins get the fix", () => {
@@ -52,6 +80,8 @@ function service() {
 }
 
 test("a streak of failed runs puts the banner on staff pages, never on customers'", async ({ browser }) => {
+  // With no key the banner says "off", not "failing": nothing to test here.
+  test.skip(!process.env.OPENROUTER_API_KEY, "needs OPENROUTER_API_KEY, like the server it tests");
   const db = service();
   const { data: customer } = await db.from("profiles").select("id").eq("email", requireEnv("TEST_USER_EMAIL")).single();
   const ids: string[] = [];
@@ -59,14 +89,17 @@ test("a streak of failed runs puts the banner on staff pages, never on customers
     for (let i = 0; i < FAILING_STREAK; i++) {
       const { data: ticket, error } = await db
         .from("tickets")
-        .insert({ customer_id: customer!.id, subject: `AI health probe ${Date.now()}-${i}`, body: "Health probe body" })
+        // Ends in a 13-digit timestamp, so the suite's cleanup teardown
+        // deletes it even if this test is killed before its finally runs.
+        .insert({ customer_id: customer!.id, subject: `AI health probe ${i} ${Date.now()}`, body: "Health probe body" })
         .select("id")
         .single();
       if (error) throw new Error(error.message);
       ids.push(ticket.id);
-      // Newest of all finished runs: claimed a little in the future, so a
-      // real run finishing meanwhile can't sit above the seeded streak.
-      const claimedAt = new Date(Date.now() + 10 * 60_000 - i * 1000).toISOString();
+      // Claimed "now" (this project runs last, alone, so no real run lands
+      // in between). Never in the future: a leftover row from a killed run
+      // would then hold the banner up for everyone for a day.
+      const claimedAt = new Date(Date.now() - i * 1000).toISOString();
       await db.from("ticket_triage_state").delete().eq("ticket_id", ticket.id);
       const { error: stateError } = await db.from("ticket_triage_state").insert({
         ticket_id: ticket.id,

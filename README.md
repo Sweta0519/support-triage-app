@@ -36,13 +36,15 @@ on top of the inbox depends on triage:
 - **Routing:** the team the ticket should go to.
 - **The ticket:** duplicate and related links, the escalation and frustration signals on cards
   and the ticket header, and the draft first reply with its "still needed" questions.
-- **Analytics:** triage quality.
+- **Analytics:** how often staff accept the AI's triage as it is.
 - **Sage:** search over notes uses the same model provider.
 
 So staff are told when the AI is missing, rather than seeing untriaged tickets that look normal.
 A banner on every staff page says **"AI triage is off"** when no key is configured. It says **"AI
-triage is failing"** when the last 3 runs all failed, the newest within the last 24 hours, and
-gives the reason. Untriaged tickets say **"Needs manual triage"** instead of "Awaiting AI
+triage is failing"** when the 3 most recently started runs all failed on the provider's side
+(rate-limited, unavailable, timed out, or stalled) within the last 24 hours, and gives the
+reason. Failures that can come from one ticket's content don't count, so a customer can't raise
+the alarm for everyone. Untriaged tickets say **"Needs manual triage"** instead of "Awaiting AI
 triage", and the ticket page points staff to setting the fields by hand.
 
 ![Staff banner: AI triage is failing](docs/screenshots/ai-triage-failing-banner.png)

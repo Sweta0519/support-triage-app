@@ -71,11 +71,21 @@ export function retriesLabel(n: number): string {
 // because without it the product is a plain ticket inbox: nothing gets a
 // category, priority, team, duplicate links or a draft reply.
 // - "off": no model key configured. Tickets stay pending forever.
-// - "failing": the latest FAILING_STREAK finished runs all failed, the
-//   newest within FAILING_WINDOW_MS. One failure is noise (and shows on its
-//   own ticket); a streak means new tickets aren't being triaged.
+// - "failing": the latest FAILING_STREAK runs all failed on the provider's
+//   side, all within FAILING_WINDOW_MS. One failure is noise (it shows on
+//   its own ticket); a streak means new tickets aren't being triaged.
+// Counted as provider failures: rate_limited, provider_unavailable,
+// timeout, and runs that stalled while "processing" (a hung provider gets
+// the function killed before it can record "failed"). Not counted:
+// invalid_response and error, which can come from one ticket's content,
+// so a customer can't raise the alarm for everyone by filing odd tickets.
 export const FAILING_STREAK = 3;
 export const FAILING_WINDOW_MS = 24 * 60 * 60_000;
+// Rows fetched for the check: enough that live runs (skipped) don't hide
+// the streak behind them.
+export const HEALTH_SAMPLE = 10;
+
+const PROVIDER_FAILURES = new Set(["rate_limited", "provider_unavailable", "timeout"]);
 
 export type FinishedTriageRun = { triage_status: string; claimed_at: string | null; failure_reason: string | null };
 
@@ -84,20 +94,33 @@ export type AiTriageHealth =
   | { kind: "off" }
   | { kind: "failing"; reason: string | null };
 
-// `recent`: the latest finished runs (completed or failed), newest first.
+// `recent`: the latest runs (completed, failed or processing), newest
+// claim first.
 export function aiTriageHealth(
   configured: boolean,
   recent: FinishedTriageRun[],
   now: number = Date.now()
 ): AiTriageHealth {
   if (!configured) return { kind: "off" };
-  const streak = recent.slice(0, FAILING_STREAK);
-  if (streak.length < FAILING_STREAK || !streak.every((run) => run.triage_status === "failed")) {
-    return { kind: "ok" };
+  const outcomes: { failed: boolean; reason: string | null; at: number }[] = [];
+  for (const run of recent) {
+    const at = Date.parse(run.claimed_at ?? "");
+    if (Number.isNaN(at)) continue;
+    if (run.triage_status === "processing") {
+      // Still running: no verdict yet. Stalled: it died mid-run.
+      if (now - at <= STALE_TRIAGE_MS) continue;
+      outcomes.push({ failed: true, reason: "timeout", at });
+    } else if (run.triage_status === "failed") {
+      outcomes.push({ failed: PROVIDER_FAILURES.has(run.failure_reason ?? ""), reason: run.failure_reason, at });
+    } else if (run.triage_status === "completed") {
+      outcomes.push({ failed: false, reason: null, at });
+    }
+    if (outcomes.length === FAILING_STREAK) break;
   }
-  const newest = Date.parse(streak[0].claimed_at ?? "");
-  if (Number.isNaN(newest) || now - newest > FAILING_WINDOW_MS) return { kind: "ok" };
-  return { kind: "failing", reason: streak[0].failure_reason };
+  if (outcomes.length < FAILING_STREAK || !outcomes.every((o) => o.failed)) return { kind: "ok" };
+  // The whole streak, oldest included, must be recent.
+  if (now - outcomes[outcomes.length - 1].at > FAILING_WINDOW_MS) return { kind: "ok" };
+  return { kind: "failing", reason: outcomes[0].reason };
 }
 
 // The banner's words (app/components/AiTriageBanner.tsx), or null when
@@ -110,7 +133,7 @@ export function aiTriageBannerCopy(health: AiTriageHealth, isAdmin: boolean): { 
       title: "AI triage is off.",
       body:
         "New tickets aren't being categorised, prioritised, routed to a team, checked for duplicates or given a draft reply, so they need triaging by hand." +
-        (isAdmin ? " To turn it on, set OPENROUTER_API_KEY on the server." : ""),
+        (isAdmin ? " To turn it on, set OPENROUTER_API_KEY in the deployment's environment." : ""),
     };
   }
   const why =
