@@ -6,8 +6,9 @@
   handling, page styling, and test quality -- a separate security-auditor pass (recorded in
   `docs/security/audit-share-feature.md`) covered RLS/grants/token-safety/data-exposure.
 - Mechanism note (added 2026-10-13, SUP-33): this repo had no subagent definition until 2026-09-14
-  (`d2b4f34`). This review ran from the `ai-code-reviewer` definition in the `notes-collections`
-  repo, which that commit then adapted to this app. See [`README.md`](README.md).
+  (`d2b4f34`); until then it existed only in the `notes-collections` repo. How this review
+  invoked it was not recorded. Most likely, that definition's instructions were given to an agent
+  here, but that is an inference. See [`README.md`](README.md).
 - Result: **0 blocking, 2 should-fix, 3 nits** -- both should-fix items resolved before merge; the
   nits were assessed and one (double-active-share) was independently closed by the security fix's
   partial unique index.
