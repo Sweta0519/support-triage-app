@@ -102,23 +102,33 @@ export function aiSignals(input: {
   return signals;
 }
 
-// The AI's read on a card: only the most important signal, as faint text
-// after a ✦ (never a pill, so it doesn't read as a clickable label), and
-// "+N" whose tooltip names the rest. Not interactive.
+// The AI's read on a card: the most important signal as faint text after a
+// ✦ (never a pill, so it doesn't read as a clickable label), and "+N" whose
+// tooltip names the rest. "AI unsure" -- the AI asking a human to check --
+// is never hidden behind "+N" (SUP-38), so it shows beside escalation risk
+// when both apply. Not interactive.
 export function AiSignal({ signals }: { signals: CardLabel[] }) {
   if (signals.length === 0) return null;
-  const [top, ...rest] = signals;
+  const shown = signals.filter((s, i) => i === 0 || s.text === "AI unsure").slice(0, 2);
+  const rest = signals.filter((s) => !shown.includes(s));
   const all = signals.map((s) => s.text).join(", ");
+  // The tooltip also says what "AI unsure" / "AI unreviewed" mean.
+  const explained = signals.map((s) => (s.title ? `${s.text} (${s.title})` : s.text)).join(", ");
   return (
     <span
-      title={`AI's read of this ticket: ${all}`}
+      title={`AI's read of this ticket: ${explained}`}
       className="inline-flex min-w-0 items-center gap-1 text-[11px] text-zinc-500 dark:text-zinc-400"
     >
       <span aria-hidden className="text-indigo-400 dark:text-indigo-300">
         ✦
       </span>
-      <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${top.dot}`} />
-      <span aria-hidden className="truncate">{top.text}</span>
+      {shown.map((s, i) => (
+        <span key={s.text} aria-hidden className="inline-flex min-w-0 items-center gap-1">
+          {i > 0 ? <span className="text-zinc-300 dark:text-zinc-600">·</span> : null}
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${s.dot}`} />
+          <span className="truncate">{s.text}</span>
+        </span>
+      ))}
       {rest.length > 0 ? <span aria-hidden className="shrink-0">+{rest.length}</span> : null}
       <span className={srOnly}>AI&apos;s read: {all}</span>
     </span>
@@ -134,13 +144,15 @@ export function LabelRow({ labels, max = 2 }: { labels: CardLabel[]; max?: numbe
     <span className="flex min-w-0 flex-wrap items-center gap-1">
       {shown.map((label, i) => (
         <span
-          // Team label names are free text and can repeat an AI label's.
+          // Index-prefixed: label names are free text, so keys stay unique
+          // even if a name repeats.
           key={`${i}:${label.text}`}
           title={label.title}
-          className="inline-flex items-center gap-1 rounded-full border border-black/[.1] px-2 py-0.5 text-[11px] text-zinc-600 dark:border-white/[.15] dark:text-zinc-300"
+          // Capped so two long names can't push a narrow board column wide.
+          className="inline-flex min-w-0 max-w-[9rem] items-center gap-1 rounded-full border border-black/[.1] px-2 py-0.5 text-[11px] text-zinc-600 dark:border-white/[.15] dark:text-zinc-300"
         >
           <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${label.dot}`} />
-          {label.text}
+          <span className="truncate">{label.text}</span>
         </span>
       ))}
       {hidden.length > 0 ? (

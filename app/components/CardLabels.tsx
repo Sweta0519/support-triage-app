@@ -10,7 +10,8 @@ import { labelDot, type TeamLabel } from "@/app/lib/labels";
 // hover the card (or focus something in it) and press L, to open the label
 // picker without leaving the queue or the board. With no labels at all, a
 // quiet "+ Label" appears on hover or focus (always on touch screens). The
-// card element is the nearest [data-card] ancestor.
+// AI's read sits beside the labels, outside the button, and is read-only
+// (SUP-41). The card element is the nearest [data-card] ancestor.
 
 // The L shortcut: one document listener for every card on the page. The
 // hovered card wins, else the card holding focus -- exactly one, as in
@@ -51,7 +52,7 @@ function registerCard(card: HTMLElement, open: () => void) {
 export function CardLabels({
   ticketId,
   ticketLabel,
-  signals: signals_,
+  signals,
   allLabels,
   appliedIds,
 }: {
@@ -87,7 +88,7 @@ export function CardLabels({
   // What the pills show: the first two, then "+N".
   const shownText = [...labels.slice(0, 2).map((l) => l.text), ...(labels.length > 2 ? [`+${labels.length - 2}`] : [])];
   const empty = labels.length === 0;
-  const signals = aiSignals(signals_);
+  const ai = aiSignals(signals);
 
   const button = (
     <button
@@ -105,7 +106,10 @@ export function CardLabels({
         setError(null);
         setOpen((v) => !v);
       }}
-      className={`-mx-1 min-w-0 shrink-0 rounded-md px-1 py-0.5 text-left hover:bg-black/[.04] dark:hover:bg-white/[.06] ${
+      // One button in one place (no remount when the first label is added
+      // or the last removed); with no labels CSS moves it after the AI's
+      // read, so the hover-only "+ Label" leaves no gap at the start.
+      className={`-mx-1 min-w-0 rounded-md px-1 py-0.5 text-left hover:bg-black/[.04] dark:hover:bg-white/[.06] ${empty ? "order-last" : ""} ${
         empty && !open
           ? "text-[11px] text-zinc-400 opacity-0 [@media(hover:none)]:opacity-100 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 dark:text-zinc-500"
           : ""
@@ -121,9 +125,8 @@ export function CardLabels({
           clickable) on one row. With no labels, the AI's read comes first
           and the hover-only "+ Label" after it, so nothing leaves a gap. */}
       <span className="flex min-w-0 items-center gap-2">
-        {empty ? null : button}
-        <AiSignal signals={signals} />
-        {empty ? button : null}
+        {button}
+        <AiSignal signals={ai} />
       </span>
       {open ? (
         <LabelPickerPopup

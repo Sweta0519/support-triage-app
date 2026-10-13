@@ -173,10 +173,16 @@ test("a triaged ticket's card shows its number, AI summary and AI flags, and sea
     // isn't a button: only team labels open the label picker.
     await expect(card.getByText("Urgent priority", { exact: true })).toBeAttached();
     const aiRead = cardArea.locator('[title^="AI\'s read of this ticket:"]');
-    await expect(aiRead).toHaveAttribute("title", "AI's read of this ticket: Escalation risk, AI unsure, Bug, Frustrated");
+    await expect(aiRead).toHaveAttribute(
+      "title",
+      "AI's read of this ticket: Escalation risk, AI unsure (The AI flagged its own triage for a human to check), Bug, Frustrated"
+    );
     await expect(aiRead.getByText("Escalation risk", { exact: true })).toBeVisible();
-    await expect(aiRead.getByText("+3", { exact: true })).toBeVisible();
-    await expect(cardArea.getByRole("button", { name: /Escalation risk/ })).toHaveCount(0);
+    // "AI unsure" is never hidden behind "+N" (SUP-38): it shows beside the top signal.
+    await expect(aiRead.getByText("AI unsure", { exact: true })).toBeVisible();
+    await expect(aiRead.getByText("+2", { exact: true })).toBeVisible();
+    // Read-only: it sits outside every button on the card.
+    await expect(aiRead.locator("xpath=ancestor::button")).toHaveCount(0);
 
     // The ticket page header shows the same AI read, labelled as AI-estimated,
     // and the SLA as a banner.
