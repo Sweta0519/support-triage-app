@@ -97,6 +97,36 @@ Built since the core above, each through a reviewed PR (see Development process)
 | Model retries: none for interactive calls, bounded backoff for background triage, and the failure reason shown | #44 |
 | Staff banner when AI triage is off or failing; untriaged tickets marked as needing manual triage | #48 |
 
+## How it compares
+
+**Linear and Jira** track a team's own work: engineers file issues, plan sprints and move tasks
+through a workflow. Everyone using them is on the team, and nothing there faces customers. This
+app is **customer support**. Customers sign in, file tickets, see replies and rate the help
+they got; agents and admins work the queue behind them. The Linear-style cards and labels borrow
+Linear's calm look, not its purpose.
+
+**Help desks** such as Zendesk, Freshdesk, Intercom and Help Scout are the closer comparison.
+What this app puts first:
+
+| | This app |
+|---|---|
+| **AI triage on every ticket** | Category, priority with a stated reason, team routing, duplicate and related tickets, escalation risk, frustration, a draft reply, and the questions to ask the customer, all before anyone opens the ticket. |
+| **The AI only advises** | It never changes a ticket's status and never sends anything to a customer. Staff confirm or correct its read, and Analytics measures how often it was right. |
+| **Safety built into the AI** | Ticket text is treated as untrusted input to the model (prompt injection). The AI can only link duplicates from a list the server chose, never invent one. The reply draft never sees other customers' tickets. |
+| **Open about the AI** | Every run shows its model, time and real cost. A failed run gives a plain reason, and a banner tells staff when the AI is off or failing. |
+| **Sage** | A private assistant for each staff member that answers from their own notes and cites them. Nobody else's notes can reach it. |
+
+The large help desks offer AI features too, such as auto-tagging, intent detection and reply
+suggestions, so the AI itself isn't what's unique here. The difference is how visible and
+accountable it is. The AI explains its reasoning, it only advises, the review loop holds it to
+account, and privacy and security come first.
+
+**What it doesn't have**, compared with a production help desk (this is a capstone project):
+- channels beyond the web form: no email, chat, phone or social;
+- automation rules, saved reply templates and a public help centre;
+- integrations with Slack, CRMs or Jira;
+- support for many separate companies (multi-tenancy), and testing at real scale.
+
 ## Stack
 
 Next.js 16 (App Router) · TypeScript · Tailwind · Supabase (Postgres + Auth + RLS + pgvector) ·
