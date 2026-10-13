@@ -115,6 +115,8 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
 
 - New pages go inside `app/`. Shared UI components go in `app/components/`.
 - One feature per branch, merged via pull request. Commit at each stable state.
+- An optional task is claimed as PR-delivered (in the README) only after its feature branch is
+  merged. A task that went straight to `main` says so, with the commit.
 - Commit messages are descriptive (what changed and why) -- never "updates" or "stuff".
 - Before merging a PR, review its diff with both tools:
   - `/code-review --comment <PR>`: the third-party review command, a review skill bundled with

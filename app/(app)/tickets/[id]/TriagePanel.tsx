@@ -161,8 +161,11 @@ export function TriagePanel({
           {triage.suggested_reply ? (
             <div className="text-xs text-zinc-600 dark:text-zinc-400">
               <p className="font-medium">
-                Suggested reply (draft -- edit before sending; it was written with other
-                tickets as context, so check every detail):
+                {/* Drafted by a call that sees only this ticket (SUP-31), so the
+                    old "written with other tickets as context" warning no longer
+                    applies; it's still a draft to check. */}
+                Suggested reply (AI draft from this ticket only -- edit and check every detail
+                before sending):
               </p>
               <p className="mt-1 whitespace-pre-wrap rounded-md bg-black/[.03] p-3 text-zinc-800 dark:bg-white/[.05] dark:text-zinc-200">
                 {triage.suggested_reply}
