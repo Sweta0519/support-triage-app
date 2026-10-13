@@ -3,6 +3,8 @@ import "server-only";
 // Thin fetch wrappers over OpenRouter's REST API. Server-only: this module
 // is the only place OPENROUTER_API_KEY is ever read.
 
+import { AttemptError, withRetries, type AttemptFailure, type RetryPolicy } from "./retry-policy";
+
 const BASE_URL = "https://openrouter.ai/api/v1";
 
 // OpenRouter slugs use dotted versions ("4.5"), unlike Anthropic's own
@@ -45,49 +47,87 @@ function authHeaders(): HeadersInit {
 export class OpenRouterError extends Error {
   constructor(
     message: string,
-    readonly status: number
+    readonly status: number,
+    // What kind of failure it was (HTTP status, network, our timeout), for
+    // the retry policy and for the reason staff see on a failed triage.
+    readonly failure: AttemptFailure = { kind: "http", status, retryAfter: null }
   ) {
     super(message);
     this.name = "OpenRouterError";
   }
 }
 
-// One retry on 429/5xx, then give up -- the caller marks the ticket
-// `failed` and a human can re-run. Retrying harder here just burns money
-// during an outage.
-async function post<T>(path: string, body: unknown): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
+// The provider answered, but not with something we can use: an empty or
+// non-JSON completion, or a non-JSON body. Typed so triage can say
+// "invalid_response" without matching on message text.
+export class InvalidResponseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidResponseError";
+  }
+}
+
+// One request, retried only as `retry` allows (app/lib/ai/retry-policy.ts,
+// SUP-32): never for interactive calls, a little for background triage.
+// Returns how many retries it took, so triage can record it.
+// `signal`: the caller gave up on this request (triage aborts the sibling
+// call once one of its two calls has failed). A cancelled request is never
+// retried and isn't a provider failure.
+async function post<T>(
+  path: string,
+  body: unknown,
+  retry: RetryPolicy,
+  signal?: AbortSignal
+): Promise<{ value: T; retries: number }> {
+  return withRetries(path, retry, async () => {
+    signal?.throwIfAborted();
+    // Everything up to and including reading the body is one attempt: a
+    // timeout or a reset mid-body is classified like one before headers.
+    let status = 0;
+    let retryAfter: string | null = null;
+    let text: string;
     try {
       const res = await fetch(`${BASE_URL}${path}`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
-
-      if (res.ok) {
-        return (await res.json()) as T;
-      }
-
-      const text = await res.text();
-      const err = new OpenRouterError(
-        `OpenRouter ${path} failed (${res.status}): ${text.slice(0, 500)}`,
-        res.status
-      );
-      const retryable = res.status === 429 || res.status >= 500;
-      if (!retryable) {
-        throw err;
-      }
-      lastError = err;
+      status = res.status;
+      retryAfter = res.headers.get("retry-after");
+      text = await res.text();
     } catch (err) {
-      if (err instanceof OpenRouterError && err.status < 500 && err.status !== 429) {
-        throw err;
-      }
-      lastError = err;
+      if (signal?.aborted) throw err;
+      const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
+      // Headers said 5xx but the body never came: still that HTTP failure.
+      const failure: AttemptFailure = timedOut
+        ? { kind: "timeout" }
+        : status >= 500
+          ? { kind: "http", status, retryAfter }
+          : { kind: "network" };
+      throw new AttemptError(
+        failure,
+        new OpenRouterError(
+          `OpenRouter ${path} ${timedOut ? "timed out" : "network error"}: ${err instanceof Error ? err.message : err}`,
+          status,
+          failure
+        )
+      );
     }
-  }
-  throw lastError instanceof Error ? lastError : new Error("OpenRouter request failed");
+    if (status < 200 || status >= 300) {
+      const failure: AttemptFailure = { kind: "http", status, retryAfter };
+      throw new AttemptError(
+        failure,
+        new OpenRouterError(`OpenRouter ${path} failed (${status}): ${text.slice(0, 500)}`, status, failure)
+      );
+    }
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      // Not retried: a 200 with an unreadable body is not a transient error.
+      throw new InvalidResponseError(`OpenRouter ${path} returned a body that isn't JSON`);
+    }
+  });
 }
 
 type EmbeddingsResponse = {
@@ -108,25 +148,31 @@ function assertEmbeddingShape(vector: number[] | undefined): number[] {
 // response now (the old `usage: { include: true }` request flag is
 // deprecated and has no effect) -- no separate pricing table to keep in
 // sync, and this is the actual charge, not an estimate.
-export async function embed(text: string): Promise<{ vector: number[]; costUsd: number }> {
-  const { vectors, costUsd } = await embedMany([text]);
-  return { vector: vectors[0], costUsd };
+export async function embed(
+  text: string,
+  { retry = "none" }: { retry?: RetryPolicy } = {}
+): Promise<{ vector: number[]; costUsd: number; retries: number }> {
+  const { vectors, costUsd, retries } = await embedMany([text], { retry });
+  return { vector: vectors[0], costUsd, retries };
 }
 
 // One request for a whole note's chunks (the embeddings endpoint takes an
 // array input) rather than one round-trip per chunk. Results come back in
 // input order; `index` is honoured anyway in case a provider reorders.
-export async function embedMany(texts: string[]): Promise<{ vectors: number[][]; costUsd: number }> {
+export async function embedMany(
+  texts: string[],
+  { retry = "none" }: { retry?: RetryPolicy } = {}
+): Promise<{ vectors: number[][]; costUsd: number; retries: number }> {
   if (texts.length === 0) {
-    return { vectors: [], costUsd: 0 };
+    return { vectors: [], costUsd: 0, retries: 0 };
   }
-  const res = await post<EmbeddingsResponse>("/embeddings", {
+  const { value: res, retries } = await post<EmbeddingsResponse>("/embeddings", {
     model: EMBEDDING_MODEL,
     input: texts,
     // Ticket text and staff notes are customer data, often PII: never route
     // to a provider that may retain or train on inputs.
     provider: { data_collection: "deny" },
-  });
+  }, retry);
   const data = res.data ?? [];
   if (data.length !== texts.length) {
     throw new Error(`Expected ${texts.length} embeddings, got ${data.length}`);
@@ -142,7 +188,7 @@ export async function embedMany(texts: string[]): Promise<{ vectors: number[][];
   if (vectors.some((vector) => vector === undefined)) {
     throw new Error("Embedding response left an input without a vector");
   }
-  return { vectors: vectors as number[][], costUsd: res.usage?.cost ?? 0 };
+  return { vectors: vectors as number[][], costUsd: res.usage?.cost ?? 0, retries };
 }
 
 export type JsonSchema = Record<string, unknown>;
@@ -164,8 +210,10 @@ export async function completeJson<T>(opts: {
   schemaName: string;
   schema: JsonSchema;
   maxTokens: number;
-}): Promise<{ data: T; usage: Usage; model: string }> {
-  const res = await post<ChatCompletionResponse>("/chat/completions", {
+  retry?: RetryPolicy;
+  signal?: AbortSignal;
+}): Promise<{ data: T; usage: Usage; model: string; retries: number }> {
+  const { value: res, retries } = await post<ChatCompletionResponse>("/chat/completions", {
     model: TRIAGE_MODEL,
     messages: [
       { role: "system", content: opts.system },
@@ -181,18 +229,18 @@ export async function completeJson<T>(opts: {
     provider: { require_parameters: true, data_collection: "deny" },
     max_tokens: opts.maxTokens,
     temperature: 0.2,
-  });
+  }, opts.retry ?? "none", opts.signal);
 
   const content = res.choices?.[0]?.message?.content;
   if (!content) {
-    throw new Error("OpenRouter returned an empty completion");
+    throw new InvalidResponseError("OpenRouter returned an empty completion");
   }
 
   let data: T;
   try {
     data = JSON.parse(content) as T;
   } catch {
-    throw new Error("OpenRouter returned non-JSON content despite json_schema response_format");
+    throw new InvalidResponseError("OpenRouter returned non-JSON content despite json_schema response_format");
   }
 
   return {
@@ -203,6 +251,7 @@ export async function completeJson<T>(opts: {
       cost_usd: res.usage?.cost ?? 0,
     },
     model: res.model ?? TRIAGE_MODEL,
+    retries,
   };
 }
 
@@ -247,7 +296,9 @@ export async function completeChat(opts: {
   toolChoice?: "auto" | "none" | "required";
 }): Promise<{ text: string; toolCalls: ToolCall[]; usage: Usage; model: string }> {
   const withTools = Boolean(opts.tools && opts.tools.length > 0);
-  const res = await post<ChatCompletionWithToolsResponse>("/chat/completions", {
+  // Sage is interactive: never retried automatically (SUP-32); a failure
+  // shows the chat's "couldn't respond" message and the person asks again.
+  const { value: res } = await post<ChatCompletionWithToolsResponse>("/chat/completions", {
     model: opts.model ?? ASSISTANT_MODEL,
     messages: opts.messages,
     ...(withTools ? { tools: opts.tools, tool_choice: opts.toolChoice ?? "auto" } : {}),
@@ -257,7 +308,7 @@ export async function completeChat(opts: {
     // silently drop the tool definitions and answer without them.
     provider: { data_collection: "deny", ...(withTools ? { require_parameters: true } : {}) },
     max_tokens: opts.maxTokens ?? 1024,
-  });
+  }, "none");
 
   const message = res.choices?.[0]?.message;
   const text = message?.content ?? "";

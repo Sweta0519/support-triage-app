@@ -111,10 +111,45 @@ call fails, the run fails as a whole (a re-run is one click away), and what the 
 already spent is logged, since a failed run stores no result row.
 
 Prompts, schemas and output clean-up live in `app/lib/ai/triage-prompts.ts` (no server-only
-import, so `tests/triage-prompts.spec.ts` checks exactly what each call is sent). Each call retries
-once on 429/5xx. Both responses are stored in `triage_results.raw` as `{ assessment, reply }`, each with the
+import, so `tests/triage-prompts.spec.ts` checks exactly what each call is sent). Both responses are stored in `triage_results.raw` as `{ assessment, reply }`, each with the
 model OpenRouter actually used. The tokens and cost are summed, and `model` names both models if
 they ever differ.
+
+## Automatic retries (SUP-32)
+
+Retries are set per call site, not hard-coded (`app/lib/ai/retry-policy.ts`, used by every helper in
+`app/lib/ai/openrouter.ts`):
+
+| Caller | Policy | Why |
+|---|---|---|
+| Triage after a ticket is filed (`after()`) | `background` | Nobody is watching it, and a short blip shouldn't leave a failed ticket. |
+| Staff **Re-run triage** (ticket page, card menu) | `none` | A person is right there and decides whether to try again. |
+| Sage chat, saving and searching notes | `none` | Interactive: retrying silently doubles the wait and the cost. |
+
+`background` retries only clearly transient failures:
+- 429 *with* a `Retry-After` of 8 s or less;
+- 502, 503, 504;
+- network errors.
+
+It never retries a timeout (another 45 s wait) or a plain 500. It makes at most 2 retries, with
+exponential backoff and jitter (0.5-1 s, then 1-2 s, capped at 8 s). It never starts a retry more
+than 20 s after the call's first attempt, so even the worst case stays far below the function time
+limit and the 5-minute stall threshold.
+
+**Measurable:**
+- Each retry is logged (`[openrouter] retrying /chat/completions after HTTP 503 (retry 1/2, waiting 742ms)`).
+- A run that needed retries says so in the log.
+- The run stores `triage_results.retry_count`, shown next to its latency and cost in the AI triage
+  panel.
+- A failed run stores a coarse `failure_reason` on `ticket_triage_state`:
+  - `rate_limited`
+  - `provider_unavailable`
+  - `timeout`
+  - `invalid_response`
+  - `error`
+
+  It goes in the `triage_failed` event too. Staff see it in plain words ("Triage failed. The AI
+  provider was unavailable. You can re-run it."). No provider error text reaches the page.
 
 ## Cost tracking (optional task)
 

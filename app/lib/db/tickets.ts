@@ -34,6 +34,9 @@ export type TriageState = {
   // (app/lib/triage-status.ts).
   updated_at: string;
   claimed_at: string | null;
+  // Why the latest run failed (SUP-32); null unless triage_status is failed
+  // (a trigger clears it on any other status).
+  failure_reason: string | null;
 };
 
 export type TicketSummary = {
@@ -75,7 +78,7 @@ export type TicketBase = TicketSummary & {
 export type Ticket = TicketBase & { triage_state: TriageState | null };
 
 const TRIAGE_STATE_EMBED =
-  "triage_state:ticket_triage_state(triage_status, priority, category, team, reviewed_by, reviewed_at, reviewed_result_id, updated_at, claimed_at)";
+  "triage_state:ticket_triage_state(triage_status, priority, category, team, reviewed_by, reviewed_at, reviewed_result_id, updated_at, claimed_at, failure_reason)";
 const TICKET_BASE_COLUMNS =
   "id, number, subject, body, status, created_at, updated_at, customer_id, assignee_id, first_response_at, created_by";
 const TICKET_COLUMNS = `${TICKET_BASE_COLUMNS}, ${TRIAGE_STATE_EMBED}`;

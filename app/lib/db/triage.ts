@@ -7,6 +7,7 @@ import { createServiceSupabaseClient } from "@/app/lib/supabase/service";
 import type { TicketStatus } from "@/app/lib/db/tickets";
 import { STALE_TRIAGE_MS } from "@/app/lib/triage-status";
 import type { TriageReviewFields } from "@/app/lib/triage-fields";
+import type { TriageFailureReason } from "@/app/lib/ai/retry-policy";
 
 export type TriageResult = {
   id: string;
@@ -30,11 +31,13 @@ export type TriageResult = {
   completion_tokens: number | null;
   latency_ms: number | null;
   cost_usd: number | null;
+  // Automatic retries the run's model calls needed (SUP-32).
+  retry_count: number;
   created_at: string;
 };
 
 const TRIAGE_RESULT_COLUMNS =
-  "id, ticket_id, model, prompt_version, summary, category, priority, priority_reason, team, frustration, is_escalation_risk, duplicate_of, related_ticket_ids, suggested_reply, missing_info, confidence, needs_human_review, prompt_tokens, completion_tokens, latency_ms, cost_usd, created_at";
+  "id, ticket_id, model, prompt_version, summary, category, priority, priority_reason, team, frustration, is_escalation_risk, duplicate_of, related_ticket_ids, suggested_reply, missing_info, confidence, needs_human_review, prompt_tokens, completion_tokens, latency_ms, cost_usd, retry_count, created_at";
 
 // ---- Reads on behalf of the signed-in user (RLS: staff-only) ------------
 
@@ -134,7 +137,7 @@ export async function claimTicketForTriage(
   const staleBefore = new Date(Date.now() - STALE_TRIAGE_MS).toISOString();
   const { data: claimed, error: claimError } = await supabase
     .from("ticket_triage_state")
-    .update({ triage_status: "processing", claim_id: claimId, claimed_at: new Date().toISOString() })
+    .update({ triage_status: "processing", claim_id: claimId, claimed_at: new Date().toISOString(), failure_reason: null })
     .eq("ticket_id", ticketId)
     .or(`triage_status.eq.pending,and(triage_status.eq.processing,claimed_at.lt.${staleBefore})`)
     .select("ticket_id")
@@ -291,11 +294,11 @@ export async function applyTriageToTicket(
 
 // Only while the claim is still this run's: a run that lost its claim to a
 // re-run must not mark the re-run's ticket failed.
-export async function markTriageFailed(ticketId: string, claimId: string): Promise<void> {
+export async function markTriageFailed(ticketId: string, claimId: string, reason: TriageFailureReason): Promise<void> {
   const supabase = createServiceSupabaseClient();
   const { error } = await supabase
     .from("ticket_triage_state")
-    .update({ triage_status: "failed" })
+    .update({ triage_status: "failed", failure_reason: reason })
     .eq("ticket_id", ticketId)
     .eq("claim_id", claimId);
 
