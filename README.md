@@ -186,5 +186,7 @@ Eight optional tasks across both sprint projects' lists, spanning all three diff
 - `docs/supabase-schema.md` -- every table, policy, trigger and function.
 - `docs/security/` -- security audit reports: four fresh-context passes, each with its fixes
   recorded, ending in a clean rescan (0 critical, 0 warning) before merge.
-- `docs/reviews/` -- `ai-code-reviewer` report recorded before merging the PR.
+- `docs/reviews/` -- how each PR is reviewed (`/code-review --comment` plus the `ai-code-reviewer`
+  subagent) and where the evidence is. It holds the early reports as files; since PR #12 the
+  evidence is inline PR comments, each answered and resolved. See `docs/reviews/README.md`.
 - `CLAUDE.md` -- the AI rules and conventions the codebase is built to.
