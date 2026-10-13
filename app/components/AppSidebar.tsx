@@ -71,6 +71,12 @@ const icons = {
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
     </svg>
   ),
+  // A pulse line: incidents (SUP-42).
+  pulse: (
+    <svg {...iconProps}>
+      <path d="M3 12h4l2-5 4 10 2-5h6" />
+    </svg>
+  ),
   tag: (
     <svg {...iconProps}>
       <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z" />
@@ -117,6 +123,7 @@ function navItems(role: AppRole): NavItem[] {
     { href: "/tickets/new", label: "New ticket", icon: icons.plus, isActive: (p) => p === "/tickets/new" },
     { href: "/notes", label: "Notes", icon: icons.note, isActive: under("/notes") },
     { href: "/labels", label: "Labels", icon: icons.tag, isActive: under("/labels") },
+    { href: "/incidents", label: "Incidents", icon: icons.pulse, isActive: under("/incidents") },
   ];
   if (role === "admin") {
     staff.push(

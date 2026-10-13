@@ -26,6 +26,10 @@ import { TRIAGE_PRIORITIES } from "@/app/lib/triage-fields";
 import { linkClass, widePageClass } from "@/app/lib/styles";
 import { formatTicketNumber } from "@/app/lib/format";
 import { Stars } from "@/app/components/Stars";
+import { listIncidentsSince } from "@/app/lib/db/incidents";
+import { summarizeIncidents } from "@/app/lib/incidents";
+
+const INCIDENT_ANALYTICS_DAYS = 30;
 
 // Admin-only: under RLS an agent would aggregate just their own and the
 // unassigned tickets, which would read as the whole picture and isn't.
@@ -345,11 +349,13 @@ function SentimentBreakdown({ sentiment: s }: { sentiment: Sentiment }) {
 
 export default async function AnalyticsPage() {
   await requireAdmin();
-  const [{ recent, open, sampled: ticketsSampled }, staff, { ratings, sampled: ratingsSampled }] = await Promise.all([
+  const [{ recent, open, sampled: ticketsSampled }, staff, { ratings, sampled: ratingsSampled }, incidentRows] = await Promise.all([
     listAnalyticsTickets(),
     listStaffProfiles(),
     listRatingsForAnalytics(),
+    listIncidentsSince(INCIDENT_ANALYTICS_DAYS),
   ]);
+  const incidents = summarizeIncidents(incidentRows);
   const sampled = ticketsSampled || ratingsSampled;
   const now = new Date();
   const a = computeAnalytics(recent, now, open);
@@ -480,6 +486,33 @@ export default async function AnalyticsPage() {
             </div>
           </div>
         )}
+      </section>
+
+      <section className={`${cardClasses} flex flex-col gap-3`}>
+        <div>
+          <h2 className={sectionTitleClasses}>Incidents (last {INCIDENT_ANALYTICS_DAYS} days)</h2>
+          <p className={`mt-1 ${mutedClasses}`}>
+            Bursts of similar tickets the app grouped by itself, and how long after the first report each was
+            detected. A dismissed incident was a false alarm.
+          </p>
+        </div>
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {[
+            ["Detected", String(incidents.total)],
+            ["Open", String(incidents.open)],
+            ["Resolved", String(incidents.resolved)],
+            ["Dismissed", String(incidents.dismissed)],
+            ["Median time to detect", incidents.medianDetectionMs === null ? "-" : formatDuration(incidents.medianDetectionMs)],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <dt className="text-xs text-zinc-500 dark:text-zinc-500">{label}</dt>
+              <dd className="mt-0.5 text-lg font-semibold tabular-nums text-black dark:text-zinc-50">{value}</dd>
+            </div>
+          ))}
+        </dl>
+        <Link href="/incidents" className={`text-xs ${linkClass}`}>
+          All incidents
+        </Link>
       </section>
 
       <section className={`${cardClasses} flex flex-col gap-3`}>

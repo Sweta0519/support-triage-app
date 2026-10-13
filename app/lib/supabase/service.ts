@@ -11,8 +11,10 @@ import { createClient } from "@supabase/supabase-js";
 // the sign-in/sign-up limiter in app/lib/db/auth-rate-limit.ts (keyed by
 // the visitor's IP, so clients mustn't be able to call it), and the
 // profile-picture storage in app/lib/db/avatars.ts (the bucket has no
-// client policies; paths come from the session, never the request) may
-// import it. Never pass a client-supplied ticket id into a service-role
+// client policies; paths come from the session, never the request), and
+// the incident detection and team-wide counts in app/lib/db/incidents.ts
+// (run in the background with no signed-in user; no ticket content
+// returned to pages) may import it. Never pass a client-supplied ticket id into a service-role
 // read without the caller having already proven it may see that ticket --
 // the one exception is shares.ts's token-based public read, where an
 // unguessable 128-bit token is itself the proof of authorization, the same

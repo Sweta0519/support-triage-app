@@ -7,6 +7,7 @@ import { useState, useTransition } from "react";
 import { moveTicketAction } from "../tickets/actions";
 import { BOARD_COLUMNS, boardTargets, canMove, COLUMN_LABELS, moveClaimsTicket } from "@/app/lib/board";
 import { FlagIcon } from "@/app/components/FlagIcon";
+import { IncidentMark } from "@/app/components/IncidentMark";
 import { PriorityIcon, SlaText } from "@/app/components/CardBits";
 import { CardLabels } from "@/app/components/CardLabels";
 import type { TeamLabel } from "@/app/lib/labels";
@@ -24,6 +25,8 @@ export type BoardCard = {
   priority: string | null;
   category: string | null;
   teamLabels: TeamLabel[];
+  // The open incident this ticket is part of (SUP-42), if any.
+  incident: { number: number; title: string } | null;
   sla: { label: string; state: string } | null;
   escalation: boolean;
   frustrated: boolean;
@@ -152,6 +155,7 @@ export function Board({ cards: initial, allLabels }: { cards: BoardCard[]; allLa
                   <div className="flex items-center gap-2 text-xs">
                     <PriorityIcon priority={card.priority} />
                     <span className="font-mono text-zinc-500 dark:text-zinc-400">{card.number}</span>
+                    {card.incident ? <IncidentMark incident={card.incident} size={12} /> : null}
                     {card.flagged ? <FlagIcon size={12} /> : null}
                     {card.sla ? (
                       <span className="ml-auto">

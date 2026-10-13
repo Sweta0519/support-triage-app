@@ -39,7 +39,7 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"], storageState: "playwright/.auth/customerA.json" },
       dependencies: ["setup"],
-      testIgnore: [/\.(setup|teardown)\.ts$/, /(account-settings|people|ai-health)\.spec\.ts$/],
+      testIgnore: [/\.(setup|teardown)\.ts$/, /(account-settings|people|ai-health|incidents)\.spec\.ts$/],
     },
     {
       // Changes the shared test accounts' theme, queue defaults and display
@@ -66,6 +66,15 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
       dependencies: ["people"],
       testMatch: /ai-health\.spec\.ts$/,
+    },
+    {
+      // Seeds incidents, which put a banner on every staff page while they're
+      // open, so it runs after everything else, alone.
+      // On its own: npx playwright test --project=incidents --no-deps
+      name: "incidents",
+      use: { ...devices["Desktop Chrome"] },
+      dependencies: ["ai-health"],
+      testMatch: /incidents\.spec\.ts$/,
     },
   ],
 

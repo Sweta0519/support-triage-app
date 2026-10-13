@@ -97,6 +97,7 @@ Built since the core above, each through a reviewed PR (see Development process)
 | The reply draft is written by a call that sees only this ticket | #39 |
 | Team labels, editable on the ticket and on the cards | #42, #43 |
 | Model retries: none for interactive calls, bounded backoff for background triage, and the failure reason shown | #44 |
+| **Incident detection:** a burst of similar tickets is grouped into one incident, with a staff banner, an incident page and an AI-drafted update posted to every ticket on staff action (`docs/incidents.md`) | #52 |
 | Staff banner when AI triage is off or failing; untriaged tickets marked as needing manual triage | #48 |
 
 ## How it compares
@@ -125,6 +126,10 @@ What this app puts first:
 - **Open about the AI:** each run shows its model and prompt version, plus its time and real
   billed cost where they were recorded. A failed run gives a plain reason, and a banner tells
   staff when the AI is off or failing.
+- **Incident detection:** when several customers report what looks like the same problem
+  within an hour, their tickets are grouped into one incident automatically. Staff get a banner
+  and an AI-drafted update, written without anyone's personal details, that they can post to all
+  of those tickets at once.
 - **Sage:** a private assistant for each staff member that answers from their own notes and
   cites them. Nobody else's notes can reach it.
 

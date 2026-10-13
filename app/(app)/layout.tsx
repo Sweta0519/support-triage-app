@@ -5,6 +5,8 @@ import { linkClass } from "@/app/lib/styles";
 import { AppSidebar } from "@/app/components/AppSidebar";
 import { AssistantWidget } from "@/app/components/assistant/AssistantWidget";
 import { AiTriageBanner } from "@/app/components/AiTriageBanner";
+import { IncidentBanner, type BannerIncident } from "@/app/components/IncidentBanner";
+import { listOpenIncidentsWithCounts } from "@/app/lib/db/incidents";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { listRecentFinishedTriageRuns } from "@/app/lib/db/triage";
 import { aiTriageHealth, HEALTH_SAMPLE, type AiTriageHealth } from "@/app/lib/triage-status";
@@ -23,6 +25,17 @@ async function triageHealth(): Promise<AiTriageHealth> {
   }
 }
 
+// Open incidents for the staff banner (SUP-42). Best effort, like the
+// health check: a failed read shows no banner rather than breaking the page.
+async function openIncidents(): Promise<BannerIncident[]> {
+  try {
+    return await listOpenIncidentsWithCounts(2);
+  } catch (err) {
+    console.error("[layout] open incidents read failed:", err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
 export default async function AppLayout({
   children,
 }: {
@@ -31,7 +44,7 @@ export default async function AppLayout({
   const profile = await requireProfile();
   const staff = profile.role !== "customer";
   // Staff only: customers never see triage, working or not.
-  const health = staff ? await triageHealth() : null;
+  const [health, incidents] = staff ? await Promise.all([triageHealth(), openIncidents()]) : [null, []];
 
   return (
     // Sidebar on the left from lg up, a top bar on phones; the page and
@@ -53,6 +66,7 @@ export default async function AppLayout({
       />
       <div className="flex min-w-0 flex-1 flex-col">
         {health ? <AiTriageBanner health={health} isAdmin={profile.role === "admin"} /> : null}
+        <IncidentBanner incidents={incidents} />
         <main className="flex flex-1 flex-col">{children}</main>
         <footer className="border-t border-black/[.08] dark:border-white/[.145]">
           <div className="flex w-full max-w-screen-2xl items-center justify-end px-8 py-3">

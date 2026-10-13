@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireProfile } from "@/app/lib/auth/session";
@@ -34,6 +35,9 @@ import { readablePageClass, widePageClass, chipClass } from "@/app/lib/styles";
 import { effectiveTriageStatus } from "@/app/lib/triage-status";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { FlagIcon } from "@/app/components/FlagIcon";
+import { IncidentMark } from "@/app/components/IncidentMark";
+import { openIncidentsForTickets } from "@/app/lib/db/incidents";
+import { incidentLabel } from "@/app/lib/incidents";
 import { listMyFlaggedTicketIds } from "@/app/lib/db/flags";
 import { listLabels, listLabelsForTickets } from "@/app/lib/db/labels";
 import { LabelsPanel } from "./LabelsPanel";
@@ -122,7 +126,7 @@ export default async function TicketDetailPage({
     comments: list,
     people: await getPersonCards([ticket.customer_id, ticket.created_by, ...list.map((c: Comment) => c.author_id)]),
   }));
-  const [{ comments, people }, triage, staff, share, filerEmail, rating, flaggedByMe, labels] = await Promise.all([
+  const [{ comments, people }, triage, staff, share, filerEmail, rating, flaggedByMe, labels, incident] = await Promise.all([
     commentsWithPeople,
     isStaff ? getLatestTriageResult(id) : Promise.resolve(null),
     // Only admins reassign, so only admins get the staff list.
@@ -140,6 +144,8 @@ export default async function TicketDetailPage({
           applied: (byTicket.get(ticket.id) ?? []).map((l) => l.id),
         }))
       : Promise.resolve(null),
+    // The open incident this ticket is part of (SUP-42); staff only.
+    isStaff ? openIncidentsForTickets([ticket.id]).then((m) => m.get(ticket.id) ?? null) : Promise.resolve(null),
   ]);
   const customerCard = people.get(ticket.customer_id);
 
@@ -277,6 +283,17 @@ export default async function TicketDetailPage({
               {formatRelativeTime(ticket.created_at)}
               {filedBy ? <> · {filedBy}</> : null}
             </p>
+            {incident ? (
+              <p className="mt-1 flex items-center gap-1.5 text-xs text-red-700 dark:text-red-400">
+                <IncidentMark incident={incident} size={12} />
+                <span>
+                  Part of a possible incident:{" "}
+                  <Link href={`/incidents/${incident.id}`} className="font-medium underline underline-offset-2">
+                    {incidentLabel(incident.number)} {incident.title}
+                  </Link>
+                </span>
+              </p>
+            ) : null}
             {isStaff && (triage?.is_escalation_risk || triage?.frustration != null) ? (
               // The AI's read of the customer, up front: it's what decides
               // how carefully to word the first reply. AI-estimated, and
