@@ -181,8 +181,13 @@ node --env-file=.env.local scripts/backdate-demo.mjs --restore .demo-backups/<fi
 ```
 
 Ages are relative to the moment it runs, so run it shortly before the demo; the "at risk" tickets
-go overdue within the hour. It writes with the service-role key but touches only those ticket
-numbers, and saves every timestamp it changes before writing.
+go overdue within the hour.
+- **It writes the live database** with the service-role key, but only ever those ticket numbers.
+  `--restore` refuses a file that names any other ticket.
+- **Backups:** every timestamp it changes is saved before writing.
+- **Not covered:** `updated_at`. A trigger stamps it on every write, so it can't be set or
+  restored.
+- **If a run fails part-way,** it prints the `--restore` command to undo it.
 
 ## Tests
 
