@@ -114,7 +114,12 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
 ## Conventions
 
 - New pages go inside `app/`. Shared UI components go in `app/components/`.
-- One feature per branch, merged via pull request. Commit at each stable state.
+- One feature per branch, merged via pull request. Commit at each stable state. `main` is
+  protected: there are no direct pushes, and a PR merges only once the Vercel preview check
+  passes.
+- UI redesigns are engineering changes, not cosmetic ones. They get the same branch, tests and
+  two-tool review as any feature, plus the UI section of `.github/pull_request_template.md`:
+  state handling, accessibility, regressions, and screenshots or tests.
 - An optional task is claimed as PR-delivered (in the README) only after its feature branch is
   merged. A task that went straight to `main` says so, with the commit.
 - Commit messages are descriptive (what changed and why) -- never "updates" or "stuff".

@@ -261,6 +261,11 @@ task that went straight to `main` says so, with the commit.
     through SUP-22 to SUP-24.
   - The follow-ups to the Turing College review (epic SUP-29) and later work came after: SUP-30,
     31, 37, 38, 39 and 40 in PRs #38 to #43, then SUP-32, 33 and 34 in PRs #44 to #46.
+- **Since 2026-10-13, `main` is protected (SUP-35)**, and the rules bind admins too. Every change
+  needs a PR, the Vercel preview check must pass before a merge, and force-pushes and deleting
+  the branch are blocked. Before that, the PR-only rule was practice rather than enforced; the
+  last direct commit to `main` was on 2026-09-07. Every PR fills in
+  `.github/pull_request_template.md`, which has a UI section for redesigns.
 - After each merge, `main` is mirrored to the Turing College submission repo.
 
 ## Docs
