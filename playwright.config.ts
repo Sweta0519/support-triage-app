@@ -39,7 +39,7 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"], storageState: "playwright/.auth/customerA.json" },
       dependencies: ["setup"],
-      testIgnore: [/\.(setup|teardown)\.ts$/, /(account-settings|people)\.spec\.ts$/],
+      testIgnore: [/\.(setup|teardown)\.ts$/, /(account-settings|people|ai-health)\.spec\.ts$/],
     },
     {
       // Changes the shared test accounts' theme, queue defaults and display
@@ -57,6 +57,15 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
       dependencies: ["settings"],
       testMatch: /people\.spec\.ts$/,
+    },
+    {
+      // Seeds a team-wide streak of failed triage runs, which puts the "AI
+      // triage is failing" banner on every staff page while it runs, so it
+      // goes last, alone. On its own: npx playwright test --project=ai-health --no-deps
+      name: "ai-health",
+      use: { ...devices["Desktop Chrome"] },
+      dependencies: ["people"],
+      testMatch: /ai-health\.spec\.ts$/,
     },
   ],
 

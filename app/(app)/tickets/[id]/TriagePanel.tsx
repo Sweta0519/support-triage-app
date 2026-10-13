@@ -42,6 +42,7 @@ function reviewStatusLine(
 export function TriagePanel({
   ticketId,
   triageStatus,
+  aiConfigured,
   triage,
   triageState,
   currentUserId,
@@ -50,6 +51,9 @@ export function TriagePanel({
   ticketId: string;
   // Effective: a run stuck in pending/processing shows as "stalled".
   triageStatus: EffectiveTriageStatus;
+  // False when no model key is configured: a pending ticket will never be
+  // triaged, so the panel says so instead of "queued" (SUP-36).
+  aiConfigured: boolean;
   triage: TriageResult | null;
   // The ticket's working values (what the queue sorts by) and who reviewed them.
   triageState: TriageState | null;
@@ -58,7 +62,12 @@ export function TriagePanel({
   // links so hopping between tickets doesn't lose the way back.
   fromFilter: QueueFilterKey;
 }) {
-  const canRerun = canRerunTriage(triageStatus);
+  // With no key a re-run can't do anything (runTriage returns at once).
+  const canRerun = aiConfigured && canRerunTriage(triageStatus);
+  // With AI off, a ticket that has no finished result -- pending, stuck
+  // "processing", or failed earlier -- will only ever be triaged by hand.
+  const offCopy =
+    "AI triage is off, so this ticket won't be assessed. Set its priority, category and team by hand under Your review.";
 
   return (
     <section className="flex flex-col gap-3 rounded-xl border border-black/[.08] p-4 dark:border-white/[.145]">
@@ -87,12 +96,20 @@ export function TriagePanel({
       {triage && (triageStatus === "stalled" || triageStatus === "failed") ? (
         // A re-run that failed or stalled: the earlier result stays below.
         <p className="text-xs text-amber-700 dark:text-amber-400">
-          {triageStatus === "failed" ? triageFailedCopy(triageState?.failure_reason) : STATUS_COPY.stalled}
+          {!aiConfigured
+            ? offCopy
+            : triageStatus === "failed"
+              ? triageFailedCopy(triageState?.failure_reason)
+              : STATUS_COPY.stalled}
         </p>
       ) : null}
       {!triage ? (
         <p className="text-xs text-zinc-500 dark:text-zinc-500">
-          {triageStatus === "failed" ? triageFailedCopy(triageState?.failure_reason) : STATUS_COPY[triageStatus]}
+          {!aiConfigured && triageStatus !== "completed"
+            ? offCopy
+            : triageStatus === "failed"
+              ? triageFailedCopy(triageState?.failure_reason)
+              : STATUS_COPY[triageStatus]}
         </p>
       ) : (
         <>
@@ -181,7 +198,9 @@ export function TriagePanel({
         </>
       )}
 
-      {triageStatus !== "processing" ? (
+      {/* Hidden while a live run is about to overwrite it; with AI off a
+          "processing" row is just stuck, so staff can triage by hand. */}
+      {triageStatus !== "processing" || !aiConfigured ? (
         <div className="flex flex-col gap-2 border-t border-black/[.08] pt-3 dark:border-white/[.145]">
           <h3 className="text-xs font-semibold text-black dark:text-zinc-50">Your review</h3>
           <p className="text-xs text-zinc-500 dark:text-zinc-500">

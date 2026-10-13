@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import { createServiceSupabaseClient } from "@/app/lib/supabase/service";
 import type { TicketStatus } from "@/app/lib/db/tickets";
-import { STALE_TRIAGE_MS } from "@/app/lib/triage-status";
+import { STALE_TRIAGE_MS, type FinishedTriageRun } from "@/app/lib/triage-status";
 import type { TriageReviewFields } from "@/app/lib/triage-fields";
 import type { TriageFailureReason } from "@/app/lib/ai/retry-policy";
 
@@ -178,6 +178,25 @@ export async function ownsTriageClaim(ticketId: string, claimId: string): Promis
   return data !== null;
 }
 
+// The latest triage runs (finished, or still "processing" -- the health
+// rule decides which of those stalled) across all tickets, newest first, for
+// the staff "AI triage is off / failing" banner (SUP-36). Service role
+// because the health of triage is team-wide, while an agent's RLS sees only
+// their own and unassigned tickets. Only status, time and the coarse reason
+// leave this function -- no ticket ids or content.
+export async function listRecentFinishedTriageRuns(limit: number): Promise<FinishedTriageRun[]> {
+  const supabase = createServiceSupabaseClient();
+  const { data, error } = await supabase
+    .from("ticket_triage_state")
+    .select("triage_status, claimed_at, failure_reason")
+    .in("triage_status", ["completed", "failed", "processing"])
+    .not("claimed_at", "is", null)
+    .order("claimed_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return data as FinishedTriageRun[];
+}
+
 // Used by the manual "re-run triage" path: put a completed or failed ticket
 // back to pending so claimTicketForTriage() can pick it up again. A stalled
 // "processing" run needs no reset -- the claim takes it over directly.
@@ -187,7 +206,7 @@ export async function resetTriageStatus(ticketId: string): Promise<void> {
     .from("ticket_triage_state")
     .update({ triage_status: "pending" })
     .eq("ticket_id", ticketId)
-    .in("triage_status", ["completed", "failed"]);
+    .in("triage_status", ["completed", "failed", "processing"]);
 
   if (error) {
     throw new Error(error.message);
