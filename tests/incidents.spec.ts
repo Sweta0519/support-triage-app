@@ -5,7 +5,7 @@ import {
   INCIDENT_MIN_TICKETS,
   INCIDENT_SIMILARITY,
   INCIDENT_WINDOW_MINUTES,
-  sanitizeIncidentUpdate,
+  sanitizeIncidentText,
   summarizeIncidents,
 } from "../app/lib/incidents";
 import { login, requireEnv } from "./helpers";
@@ -52,9 +52,13 @@ function similar(base: number[], seed: number): number[] {
 const created: string[] = [];
 const stamp = Date.now();
 
-async function seed(subject: string, embedding: number[], { minutesAgo = 0 } = {}) {
+// Bursts alternate between the two test customers: an incident needs at
+// least two different customers.
+let seeded = 0;
+async function seed(subject: string, embedding: number[], { minutesAgo = 0, customerEmail = "" } = {}) {
   const db = service();
-  const { data: customer } = await db.from("profiles").select("id").eq("email", requireEnv("TEST_USER_EMAIL")).single();
+  const email = customerEmail || requireEnv(seeded++ % 2 ? "TEST_USER_B_EMAIL" : "TEST_USER_EMAIL");
+  const { data: customer } = await db.from("profiles").select("id").eq("email", email).single();
   const { data: ticket, error } = await db
     .from("tickets")
     .insert({ customer_id: customer!.id, subject: `${subject} ${stamp}`, body: "Incident probe body" })
@@ -82,7 +86,7 @@ async function detect(ticketId: string) {
     p_min_tickets: INCIDENT_MIN_TICKETS,
   });
   if (error) throw new Error(error.message);
-  return (data as { incident_id: string; created: boolean; ticket_count: number }[])[0] ?? null;
+  return (data as { incident_id: string; created: boolean; ticket_count: number; status: string }[])[0] ?? null;
 }
 
 test.afterAll(async () => {
@@ -90,10 +94,18 @@ test.afterAll(async () => {
   if (created.length) await service().from("tickets").delete().in("id", created);
 });
 
-test("the update draft keeps nothing customer-specific; analytics counts", () => {
-  expect(
-    sanitizeIncidentUpdate("Hi! See https://x.io/a or mail ops@example.com about order ORD-48213 / 12345. Thanks")
-  ).toBe("Hi! See [removed] or mail [removed] about order [removed] / [removed]. Thanks");
+test("the incident text keeps nothing customer-specific, but keeps dates and times; analytics counts", () => {
+  expect(sanitizeIncidentText("Hi! See https://x.io/a or mail ops@example.com about order ORD-48213 / 123456. Thanks")).toBe(
+    "Hi! See [removed] or mail [removed] about order [removed] / [removed]. Thanks"
+  );
+  // Phones in any format, reference codes, amounts.
+  expect(sanitizeIncidentText("Call +1 555 123 4567, (555) 123-4567 or +49 151 2345 678. Ref INV 20431, refund $49.99 or 30 EUR")).toBe(
+    "Call [removed], [removed] or [removed]. Ref [removed], refund [removed] or [removed]"
+  );
+  // The incident's own when: kept.
+  expect(sanitizeIncidentText("Since 2026-10-13 at 14:00 (all of 2026's webhooks), 3 tickets")).toBe(
+    "Since 2026-10-13 at 14:00 (all of 2026's webhooks), 3 tickets"
+  );
   const s = summarizeIncidents([
     { status: "open", first_seen_at: "2026-10-13T10:00:00Z", opened_at: "2026-10-13T10:10:00Z" },
     { status: "resolved", first_seen_at: "2026-10-13T10:00:00Z", opened_at: "2026-10-13T10:30:00Z" },
@@ -110,9 +122,9 @@ test("a burst of similar tickets opens one incident; later ones join; unrelated 
   expect(await detect(b.id)).toBeNull(); // only 2 so far
   const c = await seed("Incident probe C", similar(base, 3));
   const opened = await detect(c.id);
-  expect(opened).toMatchObject({ created: true, ticket_count: 3 });
+  expect(opened).toMatchObject({ created: true, ticket_count: 3, status: "open" });
   const d = await seed("Incident probe D", similar(base, 4));
-  expect(await detect(d.id)).toEqual({ incident_id: opened!.incident_id, created: false, ticket_count: 4 });
+  expect(await detect(d.id)).toEqual({ incident_id: opened!.incident_id, created: false, ticket_count: 4, status: "open" });
   // Unrelated: no incident.
   const e = await seed("Incident probe unrelated", randomUnit(99));
   expect(await detect(e.id)).toBeNull();
@@ -123,8 +135,14 @@ test("a burst of similar tickets opens one incident; later ones join; unrelated 
   await seed("Incident probe old 3", similar(old, 7), { minutesAgo: 120 });
   const o4 = await seed("Incident probe old 4", similar(old, 8));
   expect(await detect(o4.id)).toBeNull();
-  void o1;
+  // ...and an old ticket re-triaged now doesn't join today's burst.
+  expect(await detect(o1.id)).toBeNull();
   void o2;
+  // Three look-alikes from one customer (follow-ups, duplicates): not an outage.
+  const solo = randomUnit(57);
+  const email = requireEnv("TEST_USER_EMAIL");
+  for (let i = 0; i < 2; i++) await detect((await seed(`Incident probe solo ${i}`, similar(solo, 60 + i), { customerEmail: email })).id);
+  expect(await detect((await seed("Incident probe solo 2", similar(solo, 62), { customerEmail: email })).id)).toBeNull();
 });
 
 test("customers can't read incidents, even for their own tickets", async () => {
@@ -152,7 +170,7 @@ test("staff see the banner and markers, post one update to every ticket, then re
   await page.goto("/notes");
   const banner = page.getByRole("region", { name: "Open incidents" });
   await expect(banner).toContainText(title);
-  await expect(banner).toContainText("4 tickets");
+  await expect(banner).toContainText("4 tickets, the first");
 
   // The queue card carries the marker.
   const { data: first } = await db.from("tickets").select("number").eq("id", created[1]).single();
@@ -166,6 +184,10 @@ test("staff see the banner and markers, post one update to every ticket, then re
   await page.getByRole("button", { name: "Post update…" }).click();
   await page.getByRole("button", { name: "Post to 4 tickets" }).click();
   await expect(page.getByRole("status")).toHaveText("Posted the update to 4 tickets.");
+  // Posting again sends nothing twice.
+  await page.getByRole("button", { name: "Post update…" }).click();
+  await page.getByRole("button", { name: "Post to 4 tickets" }).click();
+  await expect(page.getByRole("status")).toHaveText("Every open ticket already has this update.");
   const { data: comments } = await db
     .from("ticket_comments")
     .select("ticket_id, is_internal, body")

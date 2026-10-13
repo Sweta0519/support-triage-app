@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { requireStaff } from "@/app/lib/auth/session";
 import { addComment } from "@/app/lib/db/comments";
-import { closeIncident, getIncident, listIncidentTickets, recordIncidentUpdatePosted } from "@/app/lib/db/incidents";
+import { closeIncident, getIncident, listIncidentTickets, recordIncidentUpdatePosted, ticketsWithReply } from "@/app/lib/db/incidents";
 import { RateLimitError, RATE_LIMITED_MESSAGE } from "@/app/lib/db/rate-limit";
 import { isUuid } from "@/app/lib/db/tickets";
 import { canMove } from "@/app/lib/board";
@@ -29,7 +29,9 @@ function refresh(incidentId: string) {
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 // Posts one public reply on every open ticket in the incident the caller can
-// see. Tickets they can't see (another agent's) are left out and counted.
+// see. Tickets they can't see (another agent's) are left out. A ticket that
+// already has this exact reply from the caller is skipped, so retrying after
+// a partial failure (e.g. the comment rate limit) never sends it twice.
 export async function postIncidentUpdateAction(incidentId: string, rawBody: string): Promise<IncidentActionResult> {
   const profile = await requireStaff();
   const body = String(rawBody ?? "").trim();
@@ -41,8 +43,16 @@ export async function postIncidentUpdateAction(incidentId: string, rawBody: stri
   const incident = await getIncident(incidentId);
   if (!incident || incident.status !== "open") return { ok: false, error: GONE };
 
-  const tickets = (await listIncidentTickets(incidentId)).filter((t) => t.status !== "resolved" && t.status !== "closed");
-  if (tickets.length === 0) return { ok: false, error: "None of this incident's open tickets are yours to reply to." };
+  const open = (await listIncidentTickets(incidentId)).filter((t) => t.status !== "resolved" && t.status !== "closed");
+  if (open.length === 0) return { ok: false, error: "None of this incident's open tickets are yours to reply to." };
+  const already = await ticketsWithReply(
+    open.map((t) => t.id),
+    profile.id,
+    body
+  );
+  const tickets = open.filter((t) => !already.has(t.id));
+  const skippedNote = already.size ? ` ${plural(already.size, "ticket")} already had it.` : "";
+  if (tickets.length === 0) return { ok: true, message: `Every open ticket already has this update.` };
   let posted = 0;
   try {
     for (const ticket of tickets) {
@@ -52,14 +62,20 @@ export async function postIncidentUpdateAction(incidentId: string, rawBody: stri
   } catch (err) {
     refresh(incidentId);
     if (err instanceof RateLimitError) {
-      return { ok: false, error: `Posted to ${plural(posted, "ticket")}, then: ${RATE_LIMITED_MESSAGE}` };
+      return {
+        ok: false,
+        error: `Posted to ${plural(posted, "ticket")}, then: ${RATE_LIMITED_MESSAGE} Posting again later only sends it to the rest.`,
+      };
     }
     console.error(`Incident ${incidentId} update failed after ${posted} posts:`, err);
-    return { ok: false, error: `Posted to ${plural(posted, "ticket")}, then something went wrong. Try again for the rest.` };
+    return {
+      ok: false,
+      error: `Posted to ${plural(posted, "ticket")}, then something went wrong. Posting again only sends it to the rest.`,
+    };
   }
   await recordIncidentUpdatePosted(incidentId, profile.id, body);
   refresh(incidentId);
-  return { ok: true, message: `Posted the update to ${plural(posted, "ticket")}.` };
+  return { ok: true, message: `Posted the update to ${plural(posted, "ticket")}.${skippedNote}` };
 }
 
 // Resolves the incident; with `alsoResolveTickets`, also moves each of its

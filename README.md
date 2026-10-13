@@ -126,8 +126,9 @@ What this app puts first:
 - **Open about the AI:** each run shows its model and prompt version, plus its time and real
   billed cost where they were recorded. A failed run gives a plain reason, and a banner tells
   staff when the AI is off or failing.
-- **Incident detection:** when several customers report what looks like the same problem
-  within an hour, their tickets are grouped into one incident automatically. Staff get a banner
+- **Incident detection:** when several customers (at least two different ones, 3 tickets or
+  more) report what looks like the same problem within an hour, their tickets are grouped into one
+  incident automatically. Staff get a banner
   and an AI-drafted update, written without anyone's personal details, that they can post to all
   of those tickets at once.
 - **Sage:** a private assistant for each staff member that answers from their own notes and

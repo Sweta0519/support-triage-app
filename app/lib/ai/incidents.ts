@@ -3,7 +3,7 @@ import "server-only";
 import { completeJson, type JsonSchema } from "@/app/lib/ai/openrouter";
 import type { RetryPolicy } from "@/app/lib/ai/retry-policy";
 import { detectIncident, listIncidentSummaries, setIncidentAiText } from "@/app/lib/db/incidents";
-import { sanitizeIncidentUpdate } from "@/app/lib/incidents";
+import { sanitizeIncidentText } from "@/app/lib/incidents";
 
 // Incident detection after triage (SUP-42). Detection itself is pure vector
 // maths in ticketing.detect_incident(); the model is called only when an
@@ -12,7 +12,7 @@ import { sanitizeIncidentUpdate } from "@/app/lib/incidents";
 //
 // Privacy: the model sees only the AI's one-line *summaries* of the grouped
 // tickets, never their raw text, and the draft is written to contain no
-// customer-specific detail -- then sanitized (sanitizeIncidentUpdate), and
+// customer-specific detail -- then sanitized (sanitizeIncidentText), and
 // read and edited by staff before anything is posted. Summaries came from
 // customer text, so they're still treated as untrusted input.
 
@@ -53,6 +53,9 @@ export async function checkForIncident(ticketId: string, { retry = "background" 
   try {
     const found = await detectIncident(ticketId);
     if (!found) return;
+    // A ticket joining a dismissed incident is absorbed silently: no model
+    // call for a false alarm.
+    if (found.status !== "open") return;
     console.log(
       `[incident] ticket ${ticketId} ${found.created ? "opened" : "joined"} incident ${found.incidentId} (${found.ticketCount} tickets)`
     );
@@ -70,10 +73,13 @@ export async function checkForIncident(ticketId: string, { retry = "background" 
       maxTokens: 500,
       retry,
     });
+    // All three are shown to every staff member (the title in a banner on
+    // every page), and an agent may not see every grouped ticket: all three
+    // are scrubbed of customer-specific details, not just the draft.
     await setIncidentAiText(found.incidentId, {
-      title: data.title.trim().slice(0, 200) || "Possible incident",
-      summary: data.summary.trim().slice(0, 2000),
-      draft_update: sanitizeIncidentUpdate(data.customer_update),
+      title: sanitizeIncidentText(data.title, 200) || "Possible incident",
+      summary: sanitizeIncidentText(data.summary),
+      draft_update: sanitizeIncidentText(data.customer_update),
     });
   } catch (err) {
     console.error(`[incident] detection for ticket ${ticketId} failed:`, err instanceof Error ? err.message : err);

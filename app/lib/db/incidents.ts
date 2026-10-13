@@ -45,7 +45,7 @@ export type IncidentTicket = {
 
 export async function detectIncident(
   ticketId: string
-): Promise<{ incidentId: string; created: boolean; ticketCount: number } | null> {
+): Promise<{ incidentId: string; created: boolean; ticketCount: number; status: IncidentStatus } | null> {
   const supabase = createServiceSupabaseClient();
   const { data, error } = await supabase.rpc("detect_incident", {
     p_ticket_id: ticketId,
@@ -54,8 +54,8 @@ export async function detectIncident(
     p_min_tickets: INCIDENT_MIN_TICKETS,
   });
   if (error) throw new Error(error.message);
-  const row = (data as { incident_id: string; created: boolean; ticket_count: number }[] | null)?.[0];
-  return row ? { incidentId: row.incident_id, created: row.created, ticketCount: row.ticket_count } : null;
+  const row = (data as { incident_id: string; created: boolean; ticket_count: number; status: IncidentStatus }[] | null)?.[0];
+  return row ? { incidentId: row.incident_id, created: row.created, ticketCount: row.ticket_count, status: row.status } : null;
 }
 
 // The AI's own summaries of the grouped tickets (never their raw text), for
@@ -87,8 +87,19 @@ export async function setIncidentAiText(
   text: { title: string; summary: string; draft_update: string }
 ): Promise<void> {
   const supabase = createServiceSupabaseClient();
-  const { error } = await supabase.from("incidents").update(text).eq("id", incidentId).eq("status", "open");
+  const { draft_update, ...rest } = text;
+  const { error } = await supabase.from("incidents").update(rest).eq("id", incidentId).eq("status", "open");
   if (error) throw new Error(error.message);
+  // The draft only until staff have posted: after that, draft_update holds
+  // what customers were actually told, and a growing incident mustn't
+  // overwrite that record.
+  const { error: e } = await supabase
+    .from("incidents")
+    .update({ draft_update })
+    .eq("id", incidentId)
+    .eq("status", "open")
+    .is("update_posted_at", null);
+  if (e) throw new Error(e.message);
 }
 
 // Open incidents with their team-wide ticket counts, for the staff banner.
@@ -160,12 +171,13 @@ export async function openIncidentsForTickets(
   const result = new Map<string, Pick<Incident, "id" | "number" | "title">>();
   if (ticketIds.length === 0) return result;
   const supabase = await createServerSupabaseClient();
-  // Chunked: ids go in the URL (see listLabelsForTickets).
-  for (let i = 0; i < ticketIds.length; i += 50) {
-    const { data, error } = await supabase
-      .from("incident_tickets")
-      .select("ticket_id, incident:incidents(id, number, title, status)")
-      .in("ticket_id", ticketIds.slice(i, i + 50));
+  // Chunked (ids go in the URL, see listLabelsForTickets), in parallel.
+  const chunks: string[][] = [];
+  for (let i = 0; i < ticketIds.length; i += 50) chunks.push(ticketIds.slice(i, i + 50));
+  const responses = await Promise.all(
+    chunks.map((ids) => supabase.from("incident_tickets").select("ticket_id, incident:incidents(id, number, title, status)").in("ticket_id", ids))
+  );
+  for (const { data, error } of responses) {
     if (error) throw new Error(error.message);
     type Row = { ticket_id: string; incident: (Pick<Incident, "id" | "number" | "title"> & { status: string }) | null };
     for (const row of data as unknown as Row[]) {
@@ -196,7 +208,8 @@ export async function recordIncidentUpdatePosted(id: string, userId: string, tex
   const { error } = await supabase
     .from("incidents")
     .update({ draft_update: text, update_posted_at: new Date().toISOString(), update_posted_by: userId })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("status", "open");
   if (error) throw new Error(error.message);
 }
 
@@ -211,4 +224,20 @@ export async function listIncidentsSince(days: number): Promise<Pick<Incident, "
     .limit(1000);
   if (error) throw new Error(error.message);
   return data as Pick<Incident, "status" | "first_seen_at" | "opened_at">[];
+}
+
+// Of these tickets, the ones that already carry this exact public reply from
+// this author -- so a retried or repeated post never sends it twice.
+export async function ticketsWithReply(ticketIds: string[], authorId: string, body: string): Promise<Set<string>> {
+  if (ticketIds.length === 0) return new Set();
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("ticket_comments")
+    .select("ticket_id")
+    .in("ticket_id", ticketIds)
+    .eq("author_id", authorId)
+    .eq("is_internal", false)
+    .eq("body", body);
+  if (error) throw new Error(error.message);
+  return new Set((data as { ticket_id: string }[]).map((r) => r.ticket_id));
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { dismissIncidentAction, postIncidentUpdateAction, resolveIncidentAction, type IncidentActionResult } from "../actions";
 import { formatRelativeTime } from "@/app/lib/format";
@@ -24,6 +24,17 @@ export function IncidentActions({
 }) {
   const router = useRouter();
   const [body, setBody] = useState(draft);
+  // A newer AI draft (the incident grew) replaces the text -- unless the
+  // person has started editing it.
+  const [seenDraft, setSeenDraft] = useState(draft);
+  if (draft !== seenDraft) {
+    setSeenDraft(draft);
+    if (body === seenDraft) setBody(draft);
+  }
+  // The clicked button unmounts when its confirm step appears, and again
+  // after the action: move focus to what replaced it.
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const resultRef = useRef<HTMLParagraphElement>(null);
   const [confirming, setConfirming] = useState<"post" | "resolve" | null>(null);
   const [alsoResolve, setAlsoResolve] = useState(true);
   const [pending, setPending] = useState(false);
@@ -40,6 +51,13 @@ export function IncidentActions({
       router.refresh();
     }
   }
+
+  useEffect(() => {
+    if (confirming) confirmRef.current?.focus();
+  }, [confirming]);
+  useEffect(() => {
+    if (result) resultRef.current?.focus();
+  }, [result]);
 
   const plural = (n: number) => `${n} ticket${n === 1 ? "" : "s"}`;
 
@@ -69,6 +87,7 @@ export function IncidentActions({
         {confirming === "post" ? (
           <>
             <button
+              ref={confirmRef}
               type="button"
               disabled={pending || !body.trim()}
               onClick={() => run(() => postIncidentUpdateAction(incidentId, body))}
@@ -100,6 +119,7 @@ export function IncidentActions({
               Also resolve its tickets that are in progress
             </label>
             <button
+              ref={confirmRef}
               type="button"
               disabled={pending}
               onClick={() => run(() => resolveIncidentAction(incidentId, alsoResolve))}
@@ -134,7 +154,7 @@ export function IncidentActions({
       </div>
 
       {result ? (
-        <p role={result.ok ? "status" : "alert"} className={`text-xs ${result.ok ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+        <p ref={resultRef} tabIndex={-1} role={result.ok ? "status" : "alert"} className={`text-xs ${result.ok ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
           {result.ok ? result.message : result.error}
         </p>
       ) : null}

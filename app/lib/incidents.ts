@@ -25,18 +25,30 @@ export const INCIDENT_STATUS_LABEL: Record<IncidentStatus, string> = {
   dismissed: "Dismissed",
 };
 
-// The AI's draft update goes to every customer in the group, so nothing
-// that could belong to one of them may survive: email addresses, links and
-// long numbers (order, invoice or account references) are removed. Staff
-// still read and edit it before posting.
-export function sanitizeIncidentUpdate(text: string): string {
-  return text
-    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, "[removed]")
-    .replace(/\b(?:https?:\/\/|www\.)\S+/gi, "[removed]")
-    .replace(/\b[A-Z]{0,5}-?\d[\d-]{3,}\b/g, "[removed]")
-    .replace(/[ \t]+\n/g, "\n")
-    .trim()
-    .slice(0, INCIDENT_UPDATE_MAX_LENGTH);
+// The AI's incident text -- above all the draft update, which goes to
+// every customer in the group -- must not carry anything that could belong
+// to one of them. Removed: email addresses, links, phone numbers (any
+// spacing or brackets), reference codes like ORD-55120 or INV 20431,
+// money amounts, and any other run of 5+ digits. Kept: years, dates and
+// times ("2026", "2026-10-13", "14:00"), which describe the incident, not a
+// customer. Staff still read and edit the draft before posting.
+const SCRUB: RegExp[] = [
+  /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, // email
+  /\b(?:https?:\/\/|www\.)\S+/gi, // link
+  /(?:\+\d{1,3}[\s.-]?)?(?:\(\d{2,4}\)[\s.-]?)?\d{2,4}(?:[\s.-]\d{2,4}){2,}/g, // phone (3+ groups)
+  /\(\d{2,4}\)[\s.-]?\d{2,4}[\s.-]?\d{2,4}/g, // phone with an area code in brackets
+  /\b[A-Z]{2,6}[\s#:-]?\d{3,}\b/g, // reference code
+  /[$€£]\s?\d[\d.,]*|\b\d[\d.,]*\s?(?:USD|EUR|GBP)\b/gi, // money
+  /\b\d{5,}\b/g, // any other long number
+];
+
+export function sanitizeIncidentText(text: string, maxLength = INCIDENT_UPDATE_MAX_LENGTH): string {
+  // Dates and times are set aside first so the number rules can't eat them.
+  const kept: string[] = [];
+  let out = text.replace(/\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}\b/g, (m) => `\u0000${kept.push(m) - 1}\u0000`);
+  for (const pattern of SCRUB) out = out.replace(pattern, "[removed]");
+  out = out.replace(/\u0000(\d+)\u0000/g, (_, i) => kept[Number(i)]);
+  return out.replace(/[ \t]+\n/g, "\n").trim().slice(0, maxLength);
 }
 
 // For Analytics: incidents in a period, by outcome, and the median time from

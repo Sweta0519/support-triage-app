@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { formatRelativeTime } from "@/app/lib/format";
 import { incidentLabel } from "@/app/lib/incidents";
 
 export type BannerIncident = { id: string; number: number; title: string; first_seen_at: string; ticketCount: number };
@@ -9,7 +10,6 @@ export type BannerIncident = { id: string; number: number; title: string; first_
 // at once. Server component; the layout passes the open incidents in.
 export function IncidentBanner({ incidents }: { incidents: BannerIncident[] }) {
   if (incidents.length === 0) return null;
-  const since = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   return (
     <div
       role="region"
@@ -18,8 +18,8 @@ export function IncidentBanner({ incidents }: { incidents: BannerIncident[] }) {
     >
       {incidents.map((incident) => (
         <p key={incident.id} className="max-w-screen-2xl">
-          <span className="font-semibold">Possible incident:</span> {incident.title} · {incident.ticketCount} tickets since{" "}
-          {since(incident.first_seen_at)}.{" "}
+          <span className="font-semibold">Possible incident:</span> {incident.title} · {incident.ticketCount} tickets, the
+          first {formatRelativeTime(incident.first_seen_at)}.{" "}
           <Link href={`/incidents/${incident.id}`} className="font-medium underline underline-offset-2">
             View {incidentLabel(incident.number)}
           </Link>
