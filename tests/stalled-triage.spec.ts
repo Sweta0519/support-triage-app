@@ -102,3 +102,32 @@ test("a stalled run is shown as stalled and can be re-run; a live one can't", as
     await service().from("tickets").delete().in("id", [stalled.id, live.id]);
   }
 });
+
+// SUP-32: a failed run says why, in words, with no provider error text.
+test("a failed run shows staff why it failed", async ({ page }) => {
+  const ticket = await seedProcessing(`Failed triage probe ${Date.now()}`, 10_000);
+  try {
+    const { error } = await service()
+      .from("ticket_triage_state")
+      .update({ triage_status: "failed", failure_reason: "provider_unavailable" })
+      .eq("ticket_id", ticket.id);
+    expect(error).toBeNull();
+    await login(page, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
+    await page.goto(`/tickets/${ticket.id}`);
+    await expect(page.getByText("Triage failed. The AI provider was unavailable. You can re-run it.")).toBeVisible();
+    // A new run's claim clears the old reason (checked at the database).
+    const { error: claimError } = await service()
+      .from("ticket_triage_state")
+      .update({ triage_status: "processing", failure_reason: null })
+      .eq("ticket_id", ticket.id);
+    expect(claimError).toBeNull();
+    // An unknown reason can't be stored.
+    const { error: badReason } = await service()
+      .from("ticket_triage_state")
+      .update({ failure_reason: "OpenRouter said: secret details" })
+      .eq("ticket_id", ticket.id);
+    expect(badReason).not.toBeNull();
+  } finally {
+    await service().from("tickets").delete().eq("id", ticket.id);
+  }
+});

@@ -9,13 +9,14 @@ import { Badge } from "@/app/components/Badge";
 import { priorityBadgeClasses } from "@/app/lib/badges";
 import { secondaryButtonClass } from "@/app/lib/styles";
 import { ticketHref, type QueueFilterKey } from "@/app/lib/queue-filters";
-import { canRerunTriage, type EffectiveTriageStatus } from "@/app/lib/triage-status";
+import { canRerunTriage, triageFailedCopy, type EffectiveTriageStatus } from "@/app/lib/triage-status";
 
 const STATUS_COPY: Record<EffectiveTriageStatus, string> = {
   pending: "Queued -- the assessment usually lands within a few seconds. Refresh to check.",
   processing: "Running...",
   // Only if a completed run somehow left no result row.
   completed: "No assessment yet.",
+  // Shown through triageFailedCopy(), which adds the reason.
   failed: "Triage failed. You can re-run it.",
   stalled: "Triage stalled -- the run stopped before it finished. Re-run it.",
 };
@@ -84,12 +85,15 @@ export function TriagePanel({
         </div>
       </div>
 
-      {triage && triageStatus === "stalled" ? (
-        <p className="text-xs text-amber-700 dark:text-amber-400">{STATUS_COPY.stalled}</p>
+      {triage && (triageStatus === "stalled" || triageStatus === "failed") ? (
+        // A re-run that failed or stalled: the earlier result stays below.
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          {triageStatus === "failed" ? triageFailedCopy(triageState?.failure_reason) : STATUS_COPY.stalled}
+        </p>
       ) : null}
       {!triage ? (
         <p className="text-xs text-zinc-500 dark:text-zinc-500">
-          {STATUS_COPY[triageStatus]}
+          {triageStatus === "failed" ? triageFailedCopy(triageState?.failure_reason) : STATUS_COPY[triageStatus]}
         </p>
       ) : (
         <>
@@ -170,6 +174,7 @@ export function TriagePanel({
             {triage.model} · prompt {triage.prompt_version}
             {triage.latency_ms != null ? ` · ${triage.latency_ms} ms` : ""}
             {triage.cost_usd != null ? ` · ${formatCostUsd(triage.cost_usd)}` : ""}
+            {triage.retry_count > 0 ? ` · ${triage.retry_count} automatic retr${triage.retry_count === 1 ? "y" : "ies"}` : ""}
           </p>
         </>
       )}

@@ -5,7 +5,9 @@ import {
   embed,
   isAiConfigured,
   EMBEDDING_MODEL,
+  OpenRouterError,
 } from "@/app/lib/ai/openrouter";
+import { failureReason, type RetryPolicy, type TriageFailureReason } from "@/app/lib/ai/retry-policy";
 import {
   applyTriageToTicket,
   claimTicketForTriage,
@@ -31,9 +33,14 @@ import {
 // Runs the full triage pipeline for one ticket. Safe to call more than
 // once: the pending -> processing claim guarantees exactly one run does the
 // work. Never throws to its caller -- a triage failure must never break the
-// customer's submit or the agent's page -- it marks the ticket `failed` so a
-// human can re-run it.
-export async function runTriage(ticketId: string): Promise<void> {
+// customer's submit or the agent's page -- it marks the ticket `failed`
+// (with a reason) so a human can re-run it.
+//
+// `retry` (SUP-32): "background" for the run after a ticket is filed, which
+// nobody is watching -- transient provider errors get a short backoff;
+// "none" for a staff member's manual re-run, who sees the failure and
+// decides whether to try again.
+export async function runTriage(ticketId: string, { retry = "background" }: { retry?: RetryPolicy } = {}): Promise<void> {
   if (!isAiConfigured()) {
     return;
   }
@@ -46,9 +53,11 @@ export async function runTriage(ticketId: string): Promise<void> {
 
   const startedAt = Date.now();
   try {
-    const { vector: embedding, costUsd: embeddingCostUsd } = await embed(
-      `${ticket.subject.slice(0, 200)}\n\n${ticket.body.slice(0, MAX_BODY_CHARS)}`
-    );
+    const {
+      vector: embedding,
+      costUsd: embeddingCostUsd,
+      retries: embeddingRetries,
+    } = await embed(`${ticket.subject.slice(0, 200)}\n\n${ticket.body.slice(0, MAX_BODY_CHARS)}`, { retry });
     await upsertTicketEmbedding(ticket.id, embedding, EMBEDDING_MODEL);
 
     const candidates = await matchTickets(embedding, MAX_CANDIDATES, ticket.id);
@@ -59,8 +68,8 @@ export async function runTriage(ticketId: string): Promise<void> {
     // only this ticket (SUP-31).
     const requests = buildTriageRequests(ticket, candidates);
     const [assessmentResult, replyResult] = await Promise.allSettled([
-      completeJson<TriageAssessment>(requests.assessment),
-      completeJson<TriageReply>(requests.reply),
+      completeJson<TriageAssessment>({ ...requests.assessment, retry }),
+      completeJson<TriageReply>({ ...requests.reply, retry }),
     ]);
     if (assessmentResult.status === "rejected" || replyResult.status === "rejected") {
       // The run fails as a whole; log what the call that did succeed (and
@@ -74,6 +83,10 @@ export async function runTriage(ticketId: string): Promise<void> {
     }
     const assessment = assessmentResult.value;
     const reply = replyResult.value;
+    const retryCount = embeddingRetries + assessment.retries + reply.retries;
+    if (retryCount > 0) {
+      console.warn(`[triage] ticket ${ticket.id}: succeeded after ${retryCount} automatic retr${retryCount === 1 ? "y" : "ies"}`);
+    }
 
     const { output: assessed, needsHumanReview } = normalizeAssessment(assessment.data, new Set(candidateIds));
     const drafted = normalizeReply(reply.data, `${ticket.subject}\n${ticket.body}`);
@@ -110,6 +123,7 @@ export async function runTriage(ticketId: string): Promise<void> {
       completion_tokens: assessment.usage.completion_tokens + reply.usage.completion_tokens,
       latency_ms: Date.now() - startedAt,
       cost_usd: embeddingCostUsd + assessment.usage.cost_usd + reply.usage.cost_usd,
+      retry_count: retryCount,
     });
 
     const applied = await applyTriageToTicket(ticket.id, claimId, {
@@ -121,11 +135,12 @@ export async function runTriage(ticketId: string): Promise<void> {
       await insertTriageEvent(ticket.id, "triage_completed", output.priority);
     }
   } catch (err) {
-    console.error(`[triage] ticket ${ticket.id} failed:`, err instanceof Error ? err.message : err);
+    const reason = triageFailureReason(err);
+    console.error(`[triage] ticket ${ticket.id} failed (${reason}):`, err instanceof Error ? err.message : err);
     try {
       if (await ownsTriageClaim(ticket.id, claimId)) {
-        await markTriageFailed(ticket.id, claimId);
-        await insertTriageEvent(ticket.id, "triage_failed", null);
+        await markTriageFailed(ticket.id, claimId, reason);
+        await insertTriageEvent(ticket.id, "triage_failed", reason);
       }
     } catch (inner) {
       console.error(`[triage] could not mark ticket ${ticket.id} failed:`, inner);
@@ -137,5 +152,13 @@ export async function runTriage(ticketId: string): Promise<void> {
 // claim inside runTriage() can pick the ticket up again.
 export async function rerunTriage(ticketId: string): Promise<void> {
   await resetTriageStatus(ticketId);
-  await runTriage(ticketId);
+  await runTriage(ticketId, { retry: "none" });
+}
+
+// Coarse on purpose: staff see this, so no provider error text.
+function triageFailureReason(err: unknown): TriageFailureReason {
+  if (err instanceof OpenRouterError) return failureReason(err.failure);
+  // completeJson's own checks: an empty or non-JSON completion.
+  if (err instanceof Error && /empty completion|non-JSON/.test(err.message)) return "invalid_response";
+  return "error";
 }

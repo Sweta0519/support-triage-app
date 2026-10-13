@@ -3,10 +3,12 @@
 // stalled -- the function that ran it died (timeout, crash, a deploy
 // mid-run) -- and can be re-run.
 //
-// It must stay longer than the longest legitimate run: two model calls of
-// up to 2 x 45s each (app/lib/ai/openrouter.ts) is about 3-3.5 minutes,
-// inside Vercel's default 300s function limit. If either grows (a longer
-// maxDuration, more retries), raise this too, or a live run could be
+// It must stay longer than the longest legitimate run: an embedding, then
+// two model calls in parallel, each up to 45s, plus background retries that
+// never start more than 20s after a call's first attempt
+// (app/lib/ai/retry-policy.ts) -- about 2-2.5 minutes, inside Vercel's
+// default 300s function limit. If either grows (a longer timeout or retry
+// window, more retries), raise this too, or a live run could be
 // reset and race its re-run. Shared by the UI and the re-run path in
 // app/lib/db/triage.ts, so "stalled" means the same thing everywhere. No
 // server-only import: client components use it too.
@@ -39,4 +41,20 @@ export function effectiveTriageStatus(
 
 export function canRerunTriage(status: EffectiveTriageStatus): boolean {
   return status === "completed" || status === "failed" || status === "stalled";
+}
+
+// Why the latest run failed (ticket_triage_state.failure_reason, SUP-32),
+// in words for staff. A manual re-run is never retried automatically, so
+// these say what a retry would face.
+export const TRIAGE_FAILURE_COPY: Record<string, string> = {
+  rate_limited: "The AI provider was rate-limiting requests.",
+  provider_unavailable: "The AI provider was unavailable.",
+  timeout: "The AI provider took too long to answer.",
+  invalid_response: "The AI's answer couldn't be read.",
+  error: "Something went wrong while running it.",
+};
+
+export function triageFailedCopy(reason: string | null | undefined): string {
+  const why = reason ? TRIAGE_FAILURE_COPY[reason] : undefined;
+  return `Triage failed.${why ? ` ${why}` : ""} You can re-run it.`;
 }
