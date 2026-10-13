@@ -57,36 +57,76 @@ export class OpenRouterError extends Error {
   }
 }
 
+// The provider answered, but not with something we can use: an empty or
+// non-JSON completion, or a non-JSON body. Typed so triage can say
+// "invalid_response" without matching on message text.
+export class InvalidResponseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidResponseError";
+  }
+}
+
 // One request, retried only as `retry` allows (app/lib/ai/retry-policy.ts,
 // SUP-32): never for interactive calls, a little for background triage.
 // Returns how many retries it took, so triage can record it.
-async function post<T>(path: string, body: unknown, retry: RetryPolicy): Promise<{ value: T; retries: number }> {
+// `signal`: the caller gave up on this request (triage aborts the sibling
+// call once one of its two calls has failed). A cancelled request is never
+// retried and isn't a provider failure.
+async function post<T>(
+  path: string,
+  body: unknown,
+  retry: RetryPolicy,
+  signal?: AbortSignal
+): Promise<{ value: T; retries: number }> {
   return withRetries(path, retry, async () => {
-    let res: Response;
+    signal?.throwIfAborted();
+    // Everything up to and including reading the body is one attempt: a
+    // timeout or a reset mid-body is classified like one before headers.
+    let status = 0;
+    let retryAfter: string | null = null;
+    let text: string;
     try {
-      res = await fetch(`${BASE_URL}${path}`, {
+      const res = await fetch(`${BASE_URL}${path}`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
+      status = res.status;
+      retryAfter = res.headers.get("retry-after");
+      text = await res.text();
     } catch (err) {
+      if (signal?.aborted) throw err;
       const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
-      const failure: AttemptFailure = timedOut ? { kind: "timeout" } : { kind: "network" };
+      // Headers said 5xx but the body never came: still that HTTP failure.
+      const failure: AttemptFailure = timedOut
+        ? { kind: "timeout" }
+        : status >= 500
+          ? { kind: "http", status, retryAfter }
+          : { kind: "network" };
       throw new AttemptError(
         failure,
-        new OpenRouterError(`OpenRouter ${path} ${timedOut ? "timed out" : "network error"}: ${err instanceof Error ? err.message : err}`, 0, failure)
+        new OpenRouterError(
+          `OpenRouter ${path} ${timedOut ? "timed out" : "network error"}: ${err instanceof Error ? err.message : err}`,
+          status,
+          failure
+        )
       );
     }
-    if (res.ok) {
-      return (await res.json()) as T;
+    if (status < 200 || status >= 300) {
+      const failure: AttemptFailure = { kind: "http", status, retryAfter };
+      throw new AttemptError(
+        failure,
+        new OpenRouterError(`OpenRouter ${path} failed (${status}): ${text.slice(0, 500)}`, status, failure)
+      );
     }
-    const text = await res.text();
-    const failure: AttemptFailure = { kind: "http", status: res.status, retryAfter: res.headers.get("retry-after") };
-    throw new AttemptError(
-      failure,
-      new OpenRouterError(`OpenRouter ${path} failed (${res.status}): ${text.slice(0, 500)}`, res.status, failure)
-    );
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      // Not retried: a 200 with an unreadable body is not a transient error.
+      throw new InvalidResponseError(`OpenRouter ${path} returned a body that isn't JSON`);
+    }
   });
 }
 
@@ -171,6 +211,7 @@ export async function completeJson<T>(opts: {
   schema: JsonSchema;
   maxTokens: number;
   retry?: RetryPolicy;
+  signal?: AbortSignal;
 }): Promise<{ data: T; usage: Usage; model: string; retries: number }> {
   const { value: res, retries } = await post<ChatCompletionResponse>("/chat/completions", {
     model: TRIAGE_MODEL,
@@ -188,18 +229,18 @@ export async function completeJson<T>(opts: {
     provider: { require_parameters: true, data_collection: "deny" },
     max_tokens: opts.maxTokens,
     temperature: 0.2,
-  }, opts.retry ?? "none");
+  }, opts.retry ?? "none", opts.signal);
 
   const content = res.choices?.[0]?.message?.content;
   if (!content) {
-    throw new Error("OpenRouter returned an empty completion");
+    throw new InvalidResponseError("OpenRouter returned an empty completion");
   }
 
   let data: T;
   try {
     data = JSON.parse(content) as T;
   } catch {
-    throw new Error("OpenRouter returned non-JSON content despite json_schema response_format");
+    throw new InvalidResponseError("OpenRouter returned non-JSON content despite json_schema response_format");
   }
 
   return {

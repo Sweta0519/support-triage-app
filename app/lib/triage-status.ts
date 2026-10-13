@@ -13,6 +13,8 @@
 // app/lib/db/triage.ts, so "stalled" means the same thing everywhere. No
 // server-only import: client components use it too.
 
+import type { TriageFailureReason } from "@/app/lib/ai/retry-policy";
+
 export const STALE_TRIAGE_MS = 5 * 60_000;
 
 export type EffectiveTriageStatus = "pending" | "processing" | "completed" | "failed" | "stalled";
@@ -46,7 +48,7 @@ export function canRerunTriage(status: EffectiveTriageStatus): boolean {
 // Why the latest run failed (ticket_triage_state.failure_reason, SUP-32),
 // in words for staff. A manual re-run is never retried automatically, so
 // these say what a retry would face.
-export const TRIAGE_FAILURE_COPY: Record<string, string> = {
+export const TRIAGE_FAILURE_COPY: Record<TriageFailureReason, string> = {
   rate_limited: "The AI provider was rate-limiting requests.",
   provider_unavailable: "The AI provider was unavailable.",
   timeout: "The AI provider took too long to answer.",
@@ -55,6 +57,12 @@ export const TRIAGE_FAILURE_COPY: Record<string, string> = {
 };
 
 export function triageFailedCopy(reason: string | null | undefined): string {
-  const why = reason ? TRIAGE_FAILURE_COPY[reason] : undefined;
+  const why = reason && Object.hasOwn(TRIAGE_FAILURE_COPY, reason) ? TRIAGE_FAILURE_COPY[reason as TriageFailureReason] : undefined;
   return `Triage failed.${why ? ` ${why}` : ""} You can re-run it.`;
+}
+
+// "1 automatic retry" / "2 automatic retries": the panel and the log say
+// the same thing.
+export function retriesLabel(n: number): string {
+  return `${n} automatic retr${n === 1 ? "y" : "ies"}`;
 }

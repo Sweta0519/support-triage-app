@@ -89,6 +89,10 @@ test("Retry-After is honoured when short, refused when long", async () => {
   const now = Date.parse("2026-10-13T10:00:00Z");
   expect(parseRetryAfter("Tue, 13 Oct 2026 10:00:05 GMT", now)).toBe(5_000);
   expect(parseRetryAfter("soon", now)).toBeNull();
+  // Not delta-seconds or an HTTP date: ignored, never "retry now".
+  expect(parseRetryAfter("1.5", now)).toBeNull();
+  expect(retryDelayMs("background", http(429, "1.5"), 0)).toBeNull();
+  expect(retryDelayMs("background", http(503, "1.5"), 0, { random: () => 0 })).toBe(500);
   expect(parseRetryAfter(null, now)).toBeNull();
 });
 

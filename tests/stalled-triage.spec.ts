@@ -115,12 +115,20 @@ test("a failed run shows staff why it failed", async ({ page }) => {
     await login(page, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
     await page.goto(`/tickets/${ticket.id}`);
     await expect(page.getByText("Triage failed. The AI provider was unavailable. You can re-run it.")).toBeVisible();
-    // A new run's claim clears the old reason (checked at the database).
-    const { error: claimError } = await service()
+    // Leaving "failed" clears the reason, whoever writes the row: a manual
+    // re-run's reset to pending doesn't mention failure_reason at all.
+    const { error: resetError } = await service()
       .from("ticket_triage_state")
-      .update({ triage_status: "processing", failure_reason: null })
+      .update({ triage_status: "pending" })
       .eq("ticket_id", ticket.id);
-    expect(claimError).toBeNull();
+    expect(resetError).toBeNull();
+    const { data: after } = await service()
+      .from("ticket_triage_state")
+      .select("failure_reason")
+      .eq("ticket_id", ticket.id)
+      .single();
+    expect(after).toEqual({ failure_reason: null });
+    await service().from("ticket_triage_state").update({ triage_status: "failed" }).eq("ticket_id", ticket.id);
     // An unknown reason can't be stored.
     const { error: badReason } = await service()
       .from("ticket_triage_state")

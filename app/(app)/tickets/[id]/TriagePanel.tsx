@@ -9,15 +9,14 @@ import { Badge } from "@/app/components/Badge";
 import { priorityBadgeClasses } from "@/app/lib/badges";
 import { secondaryButtonClass } from "@/app/lib/styles";
 import { ticketHref, type QueueFilterKey } from "@/app/lib/queue-filters";
-import { canRerunTriage, triageFailedCopy, type EffectiveTriageStatus } from "@/app/lib/triage-status";
+import { canRerunTriage, retriesLabel, triageFailedCopy, type EffectiveTriageStatus } from "@/app/lib/triage-status";
 
-const STATUS_COPY: Record<EffectiveTriageStatus, string> = {
+// "failed" says why, through triageFailedCopy().
+const STATUS_COPY: Record<Exclude<EffectiveTriageStatus, "failed">, string> = {
   pending: "Queued -- the assessment usually lands within a few seconds. Refresh to check.",
   processing: "Running...",
   // Only if a completed run somehow left no result row.
   completed: "No assessment yet.",
-  // Shown through triageFailedCopy(), which adds the reason.
-  failed: "Triage failed. You can re-run it.",
   stalled: "Triage stalled -- the run stopped before it finished. Re-run it.",
 };
 
@@ -174,7 +173,7 @@ export function TriagePanel({
             {triage.model} · prompt {triage.prompt_version}
             {triage.latency_ms != null ? ` · ${triage.latency_ms} ms` : ""}
             {triage.cost_usd != null ? ` · ${formatCostUsd(triage.cost_usd)}` : ""}
-            {triage.retry_count > 0 ? ` · ${triage.retry_count} automatic retr${triage.retry_count === 1 ? "y" : "ies"}` : ""}
+            {triage.retry_count > 0 ? ` · ${retriesLabel(triage.retry_count)}` : ""}
           </p>
         </>
       )}

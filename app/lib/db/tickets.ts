@@ -34,7 +34,8 @@ export type TriageState = {
   // (app/lib/triage-status.ts).
   updated_at: string;
   claimed_at: string | null;
-  // Why the latest run failed (SUP-32); null unless triage_status is failed.
+  // Why the latest run failed (SUP-32); null unless triage_status is failed
+  // (a trigger clears it on any other status).
   failure_reason: string | null;
 };
 

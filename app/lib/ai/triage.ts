@@ -5,9 +5,11 @@ import {
   embed,
   isAiConfigured,
   EMBEDDING_MODEL,
+  InvalidResponseError,
   OpenRouterError,
 } from "@/app/lib/ai/openrouter";
 import { failureReason, type RetryPolicy, type TriageFailureReason } from "@/app/lib/ai/retry-policy";
+import { retriesLabel } from "@/app/lib/triage-status";
 import {
   applyTriageToTicket,
   claimTicketForTriage,
@@ -67,9 +69,17 @@ export async function runTriage(ticketId: string, { retry = "background" }: { re
     // link duplicates; the summary and reply come from a call that sees
     // only this ticket (SUP-31).
     const requests = buildTriageRequests(ticket, candidates);
+    // Once either call fails for good the run has failed: cancel the other
+    // rather than let it keep retrying (and billing) for nothing.
+    const sibling = new AbortController();
+    const orCancel = <T>(call: Promise<T>) =>
+      call.catch((err) => {
+        sibling.abort();
+        throw err;
+      });
     const [assessmentResult, replyResult] = await Promise.allSettled([
-      completeJson<TriageAssessment>({ ...requests.assessment, retry }),
-      completeJson<TriageReply>({ ...requests.reply, retry }),
+      orCancel(completeJson<TriageAssessment>({ ...requests.assessment, retry, signal: sibling.signal })),
+      orCancel(completeJson<TriageReply>({ ...requests.reply, retry, signal: sibling.signal })),
     ]);
     if (assessmentResult.status === "rejected" || replyResult.status === "rejected") {
       // The run fails as a whole; log what the call that did succeed (and
@@ -79,13 +89,15 @@ export async function runTriage(ticketId: string, { retry = "background" }: { re
         (assessmentResult.status === "fulfilled" ? assessmentResult.value.usage.cost_usd : 0) +
         (replyResult.status === "fulfilled" ? replyResult.value.usage.cost_usd : 0);
       console.error(`[triage] ticket ${ticket.id}: a model call failed after spending $${spent.toFixed(6)}`);
-      throw assessmentResult.status === "rejected" ? assessmentResult.reason : (replyResult as PromiseRejectedResult).reason;
+      throw mostTellingFailure(
+        [assessmentResult, replyResult].flatMap((r) => (r.status === "rejected" ? [r.reason] : []))
+      );
     }
     const assessment = assessmentResult.value;
     const reply = replyResult.value;
     const retryCount = embeddingRetries + assessment.retries + reply.retries;
     if (retryCount > 0) {
-      console.warn(`[triage] ticket ${ticket.id}: succeeded after ${retryCount} automatic retr${retryCount === 1 ? "y" : "ies"}`);
+      console.warn(`[triage] ticket ${ticket.id}: succeeded after ${retriesLabel(retryCount)}`);
     }
 
     const { output: assessed, needsHumanReview } = normalizeAssessment(assessment.data, new Set(candidateIds));
@@ -155,10 +167,18 @@ export async function rerunTriage(ticketId: string): Promise<void> {
   await runTriage(ticketId, { retry: "none" });
 }
 
+// Of the calls that failed, the error that says most: not the one we
+// cancelled ourselves, and a specific reason (rate-limited, unavailable...)
+// over a generic one.
+function mostTellingFailure(errors: unknown[]): unknown {
+  const real = errors.filter((err) => !(err instanceof Error && err.name === "AbortError"));
+  const candidates = real.length > 0 ? real : errors;
+  return candidates.find((err) => triageFailureReason(err) !== "error") ?? candidates[0];
+}
+
 // Coarse on purpose: staff see this, so no provider error text.
 function triageFailureReason(err: unknown): TriageFailureReason {
   if (err instanceof OpenRouterError) return failureReason(err.failure);
-  // completeJson's own checks: an empty or non-JSON completion.
-  if (err instanceof Error && /empty completion|non-JSON/.test(err.message)) return "invalid_response";
+  if (err instanceof InvalidResponseError) return "invalid_response";
   return "error";
 }

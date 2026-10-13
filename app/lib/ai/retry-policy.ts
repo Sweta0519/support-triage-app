@@ -29,12 +29,17 @@ export type AttemptFailure =
   | { kind: "network" }
   | { kind: "timeout" };
 
-// Retry-After as milliseconds: delta-seconds or an HTTP date. null when
-// absent or unreadable.
+// Retry-After as milliseconds: delta-seconds or an HTTP date
+// (IMF-fixdate, "Tue, 13 Oct 2026 10:00:05 GMT"). null when absent or
+// anything else -- "1.5" must not reach Date.parse, which reads it as a
+// date in 2001 and so "retry now".
+const HTTP_DATE = /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/;
+
 export function parseRetryAfter(value: string | null, now = Date.now()): number | null {
   if (!value) return null;
   const trimmed = value.trim();
   if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1_000;
+  if (!HTTP_DATE.test(trimmed)) return null;
   const at = Date.parse(trimmed);
   return Number.isNaN(at) ? null : Math.max(0, at - now);
 }
@@ -76,9 +81,8 @@ export type RetryLog = {
   delayMs: number;
 };
 
-// Runs `send` until it succeeds or the policy says stop. `send` resolves
-// with the parsed body or throws `{ failure, error }` (see AttemptError).
-// Returns how many retries it took, so callers can record it.
+// What `send` throws for a failed attempt: how it failed, and the error
+// to surface if it isn't retried.
 export class AttemptError extends Error {
   constructor(
     readonly failure: AttemptFailure,
@@ -89,6 +93,9 @@ export class AttemptError extends Error {
   }
 }
 
+// Runs `send` until it succeeds or the policy says stop. Anything `send`
+// throws that isn't an AttemptError is surfaced at once. Returns how many
+// retries it took, so callers can record it.
 export async function withRetries<T>(
   endpoint: string,
   policy: RetryPolicy,
@@ -123,7 +130,7 @@ export async function withRetries<T>(
   }
 }
 
-export function describeFailure(failure: AttemptFailure): string {
+function describeFailure(failure: AttemptFailure): string {
   return failure.kind === "http" ? `HTTP ${failure.status}` : failure.kind;
 }
 
