@@ -69,6 +69,11 @@ test("create, add and remove labels on a ticket; they show on the card", async (
   await page.goto(`/tickets/${ticket.id}`);
   await panel.getByRole("button", { name: `Remove label ${name}` }).click();
   await expect(panel.getByRole("button", { name: `Remove label ${name}` })).toHaveCount(0);
+  // The chip goes at once (optimistic); wait for the save itself before
+  // leaving, or under load the queue can render before it commits.
+  await expect
+    .poll(async () => (await service().from("ticket_labels").select("label_id").eq("ticket_id", ticket.id)).data?.length)
+    .toBe(0);
   await page.goto(`/queue?filter=all&q=${encodeURIComponent(`#${ticket.number}`)}`);
   await expect(card.getByText(name, { exact: true })).toHaveCount(0);
 });
@@ -183,6 +188,9 @@ test("labels are edited right on the card: click them, or hover and press L (que
   await expect(picker).toHaveCount(0);
   await expect(edit).toBeFocused();
   await expect(card.getByText(vip, { exact: true })).toBeVisible();
+  // The new label is a pill in the label button itself, never pushed out
+  // of sight by the AI's read (SUP-41).
+  await expect(card.getByRole("button", { name: new RegExp(`^${vip}: edit labels for ${n}`) })).toBeVisible();
   // Still on the queue: editing labels never opened the ticket.
   await expect(page).toHaveURL(/\/queue/);
 

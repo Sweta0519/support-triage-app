@@ -5,7 +5,6 @@
 
 import { statusLabel } from "@/app/lib/badges";
 import { capitalize } from "@/app/lib/format";
-import { labelDot } from "@/app/lib/labels";
 import { fieldLabel } from "@/app/lib/triage-fields";
 
 const srOnly = "sr-only";
@@ -79,32 +78,61 @@ export function UnassignedIcon({ size = 20 }: { size?: number }) {
 
 export type CardLabel = { text: string; dot: string; title?: string };
 
-// The card's labels in order of importance -- the first two are shown:
-// escalation risk and "AI unsure" (the AI asking not to be trusted) first,
-// so they're never hidden behind "+N" (SUP-38); then the labels the team
-// put on the ticket (SUP-39), the AI's category, frustration, and
-// "AI unreviewed".
-export function cardLabels(input: {
-  teamLabels?: { name: string; color: string }[];
+// The AI's read of a ticket, most important first: escalation risk and
+// "AI unsure" (the AI asking not to be trusted), then the AI's category,
+// frustration, and "AI unreviewed". Shown apart from the team's labels
+// (SUP-41): the labels are the team's and clickable, this is the AI's
+// opinion and read-only.
+export function aiSignals(input: {
   category: string | null;
   escalation: boolean;
   frustrated: boolean;
   review?: "unsure" | "unreviewed" | null;
 }): CardLabel[] {
-  const labels: CardLabel[] = [];
-  if (input.escalation) labels.push({ text: "Escalation risk", dot: "bg-red-500" });
+  const signals: CardLabel[] = [];
+  if (input.escalation) signals.push({ text: "Escalation risk", dot: "bg-red-500" });
   if (input.review === "unsure") {
-    labels.push({ text: "AI unsure", dot: "bg-amber-500", title: "The AI flagged its own triage for a human to check" });
+    signals.push({ text: "AI unsure", dot: "bg-amber-500", title: "The AI flagged its own triage for a human to check" });
   }
-  for (const l of input.teamLabels ?? []) labels.push({ text: l.name, dot: labelDot(l.color) });
-  if (input.category) {
-    labels.push({ text: capitalize(fieldLabel(input.category)), dot: "bg-zinc-400" });
-  }
-  if (input.frustrated) labels.push({ text: "Frustrated", dot: "bg-orange-500" });
+  if (input.category) signals.push({ text: capitalize(fieldLabel(input.category)), dot: "bg-zinc-400" });
+  if (input.frustrated) signals.push({ text: "Frustrated", dot: "bg-orange-500" });
   if (input.review === "unreviewed") {
-    labels.push({ text: "AI unreviewed", dot: "bg-zinc-300 dark:bg-zinc-600", title: "Nobody has confirmed or corrected the AI's triage yet" });
+    signals.push({ text: "AI unreviewed", dot: "bg-zinc-300 dark:bg-zinc-600", title: "Nobody has confirmed or corrected the AI's triage yet" });
   }
-  return labels;
+  return signals;
+}
+
+// The AI's read on a card: the most important signal as faint text after a
+// ✦ (never a pill, so it doesn't read as a clickable label), and "+N" whose
+// tooltip names the rest. "AI unsure" -- the AI asking a human to check --
+// is never hidden behind "+N" (SUP-38), so it shows beside escalation risk
+// when both apply. Not interactive.
+export function AiSignal({ signals }: { signals: CardLabel[] }) {
+  if (signals.length === 0) return null;
+  const shown = signals.filter((s, i) => i === 0 || s.text === "AI unsure").slice(0, 2);
+  const rest = signals.filter((s) => !shown.includes(s));
+  const all = signals.map((s) => s.text).join(", ");
+  // The tooltip also says what "AI unsure" / "AI unreviewed" mean.
+  const explained = signals.map((s) => (s.title ? `${s.text} (${s.title})` : s.text)).join(", ");
+  return (
+    <span
+      title={`AI's read of this ticket: ${explained}`}
+      className="inline-flex min-w-0 items-center gap-1 text-[11px] text-zinc-500 dark:text-zinc-400"
+    >
+      <span aria-hidden className="text-indigo-400 dark:text-indigo-300">
+        ✦
+      </span>
+      {shown.map((s, i) => (
+        <span key={s.text} aria-hidden className="inline-flex min-w-0 items-center gap-1">
+          {i > 0 ? <span className="text-zinc-300 dark:text-zinc-600">·</span> : null}
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${s.dot}`} />
+          <span className="truncate">{s.text}</span>
+        </span>
+      ))}
+      {rest.length > 0 ? <span aria-hidden className="shrink-0">+{rest.length}</span> : null}
+      <span className={srOnly}>AI&apos;s read: {all}</span>
+    </span>
+  );
 }
 
 // Up to `max` thin outlined labels with a coloured dot, then "+N" whose
@@ -116,13 +144,15 @@ export function LabelRow({ labels, max = 2 }: { labels: CardLabel[]; max?: numbe
     <span className="flex min-w-0 flex-wrap items-center gap-1">
       {shown.map((label, i) => (
         <span
-          // Team label names are free text and can repeat an AI label's.
+          // Index-prefixed: label names are free text, so keys stay unique
+          // even if a name repeats.
           key={`${i}:${label.text}`}
           title={label.title}
-          className="inline-flex items-center gap-1 rounded-full border border-black/[.1] px-2 py-0.5 text-[11px] text-zinc-600 dark:border-white/[.15] dark:text-zinc-300"
+          // Capped so two long names can't push a narrow board column wide.
+          className="inline-flex min-w-0 max-w-[9rem] items-center gap-1 rounded-full border border-black/[.1] px-2 py-0.5 text-[11px] text-zinc-600 dark:border-white/[.15] dark:text-zinc-300"
         >
           <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${label.dot}`} />
-          {label.text}
+          <span className="truncate">{label.text}</span>
         </span>
       ))}
       {hidden.length > 0 ? (
