@@ -53,3 +53,6 @@ next-env.d.ts
 
 # JetBrains
 .idea/
+
+# Backups written by scripts/backdate-demo.mjs (live demo data)
+/.demo-backups/

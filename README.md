@@ -169,6 +169,26 @@ update ticketing.profiles set role = 'admin' where email = 'you@example.com';
 Without `OPENROUTER_API_KEY` the app still runs, but tickets stay `pending` triage, and staff
 see the "AI triage is off" banner. As described above, that leaves a plain ticket inbox.
 
+## Demo data
+
+The live database holds a set of demo tickets (#1472-#1483). Before a demo, re-date them into a
+realistic spread: resolved tickets from the past two weeks, and open ones with a mix of SLA states.
+
+```bash
+node --env-file=.env.local scripts/backdate-demo.mjs            # dry run: shows the new dates
+node --env-file=.env.local scripts/backdate-demo.mjs --apply    # writes; backup in .demo-backups/
+node --env-file=.env.local scripts/backdate-demo.mjs --restore .demo-backups/<file>.json   # undo
+```
+
+Ages are relative to the moment it runs, so run it shortly before the demo; the "at risk" tickets
+go overdue within the hour.
+- **It writes the live database** with the service-role key, but only ever those ticket numbers.
+  `--restore` refuses a file that names any other ticket.
+- **Backups:** every timestamp it changes is saved before writing.
+- **Not covered:** `updated_at`. A trigger stamps it on every write, so it can't be set or
+  restored.
+- **If a run fails part-way,** it prints the `--restore` command to undo it.
+
 ## Tests
 
 ```bash
