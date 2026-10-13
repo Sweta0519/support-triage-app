@@ -10,6 +10,7 @@ import {
 } from "@/app/lib/ai/openrouter";
 import { failureReason, type RetryPolicy, type TriageFailureReason } from "@/app/lib/ai/retry-policy";
 import { retriesLabel } from "@/app/lib/triage-status";
+import { checkForIncident } from "@/app/lib/ai/incidents";
 import {
   applyTriageToTicket,
   claimTicketForTriage,
@@ -146,6 +147,9 @@ export async function runTriage(ticketId: string, { retry = "background" }: { re
     if (applied) {
       await insertTriageEvent(ticket.id, "triage_completed", output.priority);
     }
+    // Part of a burst of similar tickets? (SUP-42). Uses the embedding just
+    // stored; never throws.
+    await checkForIncident(ticket.id, { retry });
   } catch (err) {
     const reason = triageFailureReason(err);
     console.error(`[triage] ticket ${ticket.id} failed (${reason}):`, err instanceof Error ? err.message : err);

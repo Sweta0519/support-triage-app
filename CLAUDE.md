@@ -73,6 +73,11 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
   is never stored without its index; an edit deletes and re-embeds all of its chunks.
 - Triage output is strictly advisory: it must never auto-change `ticketing.tickets.status` and
   must never send a reply to the customer without an agent/admin action.
+- Incident detection (`docs/incidents.md`) follows the same rules:
+  - an incident never changes ticket status by itself;
+  - its update is posted only when staff press the button;
+  - the incident note's model call sees only the grouped tickets' AI summaries, never raw ticket
+    text, and the draft customer update is sanitized of customer-specific details.
 - Ticket bodies are untrusted input to the model (prompt injection risk). The triage prompt must
   keep instructions and untrusted ticket content clearly delimited, use `response_format:
   json_schema` with `strict: true`, and restrict any duplicate/related-ticket IDs the model can

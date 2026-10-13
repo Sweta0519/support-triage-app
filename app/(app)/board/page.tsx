@@ -9,6 +9,7 @@ import { isFrustrated, sortQueue } from "@/app/lib/queue";
 import { widePageClass } from "@/app/lib/styles";
 import { listMyFlaggedTicketIds } from "@/app/lib/db/flags";
 import { listLabels, listLabelsForTickets } from "@/app/lib/db/labels";
+import { openIncidentsForTickets } from "@/app/lib/db/incidents";
 import { Board, type BoardCard } from "./Board";
 
 // The staff triage board: the same tickets as the queue (RLS-scoped, no
@@ -23,7 +24,10 @@ export default async function BoardPage() {
     listMyFlaggedTicketIds(),
     listLabels(),
   ]);
-  const ticketLabels = await listLabelsForTickets(queue.map((t) => t.id));
+  const [ticketLabels, ticketIncidents] = await Promise.all([
+    listLabelsForTickets(queue.map((t) => t.id)),
+    openIncidentsForTickets(queue.map((t) => t.id)),
+  ]);
   const tickets = sortQueue(queue, "sla", now);
   // Only admins see others' tickets, so only they need the staff list.
   const staff = new Map(
@@ -44,6 +48,7 @@ export default async function BoardPage() {
       priority: t.triage_state?.priority ?? null,
       category: t.triage_state?.category ?? null,
       teamLabels: ticketLabels.get(t.id) ?? [],
+      incident: ticketIncidents.get(t.id) ?? null,
       sla: sla ? { label: slaBadgeLabel(sla), state: sla.state } : null,
       escalation: t.latest_triage?.is_escalation_risk ?? false,
       frustrated: isFrustrated(t.latest_triage?.frustration ?? null),

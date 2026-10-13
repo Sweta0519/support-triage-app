@@ -32,6 +32,8 @@ import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { effectiveTriageStatus } from "@/app/lib/triage-status";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { FlagIcon } from "@/app/components/FlagIcon";
+import { IncidentMark } from "@/app/components/IncidentMark";
+import { openIncidentsForTickets } from "@/app/lib/db/incidents";
 import { CardLabels } from "@/app/components/CardLabels";
 import { PriorityIcon, SlaText, StatusDot, UnassignedIcon } from "@/app/components/CardBits";
 import { computeSla, slaBadgeLabel } from "@/app/lib/sla";
@@ -116,6 +118,7 @@ function TicketCard({
   now,
   aiConfigured,
   returnTo,
+  incident,
 }: {
   ticket: QueueTicketSummary;
   filter: QueueFilterKey;
@@ -132,6 +135,8 @@ function TicketCard({
   allLabels: TeamLabel[];
   now: Date;
   aiConfigured: boolean;
+  // The open incident this ticket is part of (SUP-42), if any.
+  incident: { number: number; title: string } | null;
   // This queue view's URL, for a claim that loses the race to come back to.
   returnTo: string;
 }) {
@@ -193,6 +198,7 @@ function TicketCard({
             {formatRelativeTime(ticket.created_at)}
           </span>
           <span className="ml-auto flex items-center gap-1.5">
+            {incident ? <IncidentMark incident={incident} /> : null}
             {flagged ? <FlagIcon /> : null}
             {unassigned ? (
               <UnassignedIcon />
@@ -261,7 +267,10 @@ export default async function QueuePage({
     profile.role === "admin" ? listStaffProfiles() : Promise.resolve([]),
     listLabels(),
   ]);
-  const ticketLabels = await listLabelsForTickets(tickets.map((t) => t.id));
+  const [ticketLabels, ticketIncidents] = await Promise.all([
+    listLabelsForTickets(tickets.map((t) => t.id)),
+    openIncidentsForTickets(tickets.map((t) => t.id)),
+  ]);
   const staff = new Map(staffList.map((s) => [s.id, s]));
 
   const staffOptions = [...staff.values()].map((s) => ({ id: s.id, label: profileName(s) }));
@@ -476,6 +485,7 @@ export default async function QueuePage({
               labels={ticketLabels.get(ticket.id)}
               allLabels={allLabels}
               flagged={flagged.has(ticket.id)}
+              incident={ticketIncidents.get(ticket.id) ?? null}
               isAdmin={profile.role === "admin"}
               staffOptions={staffOptions}
               now={now}
