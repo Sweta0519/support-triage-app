@@ -201,6 +201,11 @@ test("staff see the banner and markers, post one update to every ticket, then re
   // The last action's message goes as soon as the next one starts (SUP-45).
   await expect(page.getByText("Every open ticket already has this update.")).toHaveCount(0);
   await expect(page.getByRole("status")).toContainText("Resolved the incident and 1 ticket.", { timeout: 20_000 });
+  // Once the refresh lands the actions are gone, and the confirmation stays,
+  // with focus (SUP-45: the closed incident used to unmount it).
+  await expect(page.getByRole("button", { name: "Resolve…" })).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("Resolved the incident and 1 ticket.");
+  await expect(page.getByRole("status")).toBeFocused();
   expect((await db.from("tickets").select("status").eq("id", created[0]).single()).data!.status).toBe("resolved");
   expect((await db.from("incidents").select("status").eq("id", incidentId).single()).data!.status).toBe("resolved");
   // Ours leaves the banner. (Others may be open: the suite's own probe
@@ -221,6 +226,9 @@ test("a dismissed incident goes quiet and absorbs later look-alikes", async ({ p
   await page.goto(`/incidents/${opened!.incident_id}`);
   await page.getByRole("button", { name: "Not one problem -- dismiss" }).click();
   await expect(page.getByRole("status")).toHaveText("Dismissed as a false alarm.");
+  await expect(page.getByRole("button", { name: "Not one problem -- dismiss" })).toHaveCount(0);
+  await expect(page.getByRole("status")).toHaveText("Dismissed as a false alarm.");
+  await expect(page.getByRole("status")).toBeFocused();
 
   // A fourth look-alike joins the dismissed incident instead of opening a new one.
   const late = await seed("Incident probe dismiss late", similar(base, 50));
