@@ -13,11 +13,15 @@ import { inputClass, primaryButtonClass, secondaryButtonClass } from "@/app/lib/
 // tickets at once.
 export function IncidentActions({
   incidentId,
+  status,
+  closedAt,
   draft,
   openTicketCount,
   updatePostedAt,
 }: {
   incidentId: string;
+  status: string;
+  closedAt: string | null;
   draft: string;
   openTicketCount: number;
   updatePostedAt: string | null;
@@ -43,8 +47,13 @@ export function IncidentActions({
   async function run(action: () => Promise<IncidentActionResult>) {
     if (pending) return;
     setPending(true);
+    // The last action's message would otherwise stay up while this one runs
+    // (resolving moves each ticket in turn, which can take a few seconds).
+    setResult(null);
     try {
       setResult(await action());
+    } catch {
+      setResult({ ok: false, error: "That didn't work. Try again." });
     } finally {
       setPending(false);
       setConfirming(null);
@@ -60,6 +69,25 @@ export function IncidentActions({
   }, [result]);
 
   const plural = (n: number) => `${n} ticket${n === 1 ? "" : "s"}`;
+
+  const resultMessage = result ? (
+    <p ref={resultRef} tabIndex={-1} role={result.ok ? "status" : "alert"} className={`text-xs ${result.ok ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+      {result.ok ? result.message : result.error}
+    </p>
+  ) : null;
+
+  // Closed: no actions, but the message of the action that closed it stays.
+  if (status !== "open") {
+    return (
+      <div className="flex flex-col gap-1">
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          {status === "resolved" ? "Resolved" : "Dismissed as a false alarm"}
+          {closedAt ? ` ${formatRelativeTime(closedAt)}` : ""}.
+        </p>
+        {resultMessage}
+      </div>
+    );
+  }
 
   return (
     <section aria-labelledby="incident-update" className="flex flex-col gap-3 rounded-xl border border-black/[.08] p-4 dark:border-white/[.145]">
@@ -93,7 +121,7 @@ export function IncidentActions({
               onClick={() => run(() => postIncidentUpdateAction(incidentId, body))}
               className={`${primaryButtonClass} !px-3 !py-1 !text-xs`}
             >
-              Post to {plural(openTicketCount)}
+              {pending ? "Posting…" : `Post to ${plural(openTicketCount)}`}
             </button>
             <button type="button" onClick={() => setConfirming(null)} className={`${secondaryButtonClass} !px-3 !py-1 !text-xs`}>
               Cancel
@@ -125,7 +153,7 @@ export function IncidentActions({
               onClick={() => run(() => resolveIncidentAction(incidentId, alsoResolve))}
               className={`${primaryButtonClass} !px-3 !py-1 !text-xs`}
             >
-              Resolve incident
+              {pending ? "Resolving…" : "Resolve incident"}
             </button>
             <button type="button" onClick={() => setConfirming(null)} className={`${secondaryButtonClass} !px-3 !py-1 !text-xs`}>
               Cancel
@@ -153,11 +181,7 @@ export function IncidentActions({
         )}
       </div>
 
-      {result ? (
-        <p ref={resultRef} tabIndex={-1} role={result.ok ? "status" : "alert"} className={`text-xs ${result.ok ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-          {result.ok ? result.message : result.error}
-        </p>
-      ) : null}
+      {resultMessage}
     </section>
   );
 }

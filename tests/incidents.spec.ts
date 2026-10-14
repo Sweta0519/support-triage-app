@@ -183,11 +183,12 @@ test("staff see the banner and markers, post one update to every ticket, then re
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
   await page.getByRole("button", { name: "Post update…" }).click();
   await page.getByRole("button", { name: "Post to 4 tickets" }).click();
-  await expect(page.getByRole("status")).toHaveText("Posted the update to 4 tickets.");
+  // These act on each ticket in turn: give them longer than the default 5 s.
+  await expect(page.getByRole("status")).toHaveText("Posted the update to 4 tickets.", { timeout: 20_000 });
   // Posting again sends nothing twice.
   await page.getByRole("button", { name: "Post update…" }).click();
   await page.getByRole("button", { name: "Post to 4 tickets" }).click();
-  await expect(page.getByRole("status")).toHaveText("Every open ticket already has this update.");
+  await expect(page.getByRole("status")).toHaveText("Every open ticket already has this update.", { timeout: 20_000 });
   const { data: comments } = await db
     .from("ticket_comments")
     .select("ticket_id, is_internal, body")
@@ -197,7 +198,9 @@ test("staff see the banner and markers, post one update to every ticket, then re
 
   await page.getByRole("button", { name: "Resolve…" }).click();
   await page.getByRole("button", { name: "Resolve incident" }).click();
-  await expect(page.getByRole("status")).toContainText("Resolved the incident and 1 ticket.");
+  // The last action's message goes as soon as the next one starts (SUP-45).
+  await expect(page.getByText("Every open ticket already has this update.")).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("Resolved the incident and 1 ticket.", { timeout: 20_000 });
   expect((await db.from("tickets").select("status").eq("id", created[0]).single()).data!.status).toBe("resolved");
   expect((await db.from("incidents").select("status").eq("id", incidentId).single()).data!.status).toBe("resolved");
   // Ours leaves the banner. (Others may be open: the suite's own probe
