@@ -164,7 +164,19 @@ test("only similar, corrected, non-excluded tickets are used, at most the limit"
   const admin = await signedIn(requireEnv("TEST_ADMIN_EMAIL"), requireEnv("TEST_ADMIN_PASSWORD"));
   expect((await admin.rpc("set_learning_excluded", { p_ticket_id: c1.id, p_excluded: true })).error).toBeNull();
   expect(await match(probe, newTicket.id)).toEqual([c2.id]);
-  await admin.rpc("set_learning_excluded", { p_ticket_id: c1.id, p_excluded: false });
+  // The exclusion is recorded in the ticket's history...
+  const { data: events } = await service().from("ticket_events").select("event_type").eq("ticket_id", c1.id).eq("event_type", "learning_excluded");
+  expect(events).toHaveLength(1);
+  // ...and belongs to that review: a new review of the ticket clears it.
+  await service().from("ticket_triage_state").update({ reviewed_at: new Date().toISOString() }).eq("ticket_id", c1.id);
+  expect((await match(probe, newTicket.id)).sort()).toEqual([c1.id, c2.id].sort());
+  // Only a reviewed ticket can be excluded.
+  const { error: unreviewed } = await admin.rpc("set_learning_excluded", { p_ticket_id: newTicket.id, p_excluded: true });
+  expect(unreviewed?.code).toBe("P0002");
+  // Analytics' count uses the same rule over every ticket (and needs admin).
+  const { data: count } = await admin.rpc("learnable_correction_count");
+  expect(count as number).toBeGreaterThanOrEqual(2);
+  expect((await agent.rpc("learnable_correction_count")).error).not.toBeNull();
 
   // Customers can't run the match at all.
   const customer = await signedIn(requireEnv("TEST_USER_EMAIL"), requireEnv("TEST_USER_PASSWORD"));
@@ -185,12 +197,18 @@ test("the triage panel says what the AI learned from; admins can stop it learnin
   const c1 = await seed("Learning panel SSO 1", similar(sso, 11), ai, fixed);
   const c2 = await seed("Learning panel SSO 2", similar(sso, 12), ai, fixed);
   const target = await seed("Learning panel SSO new", similar(sso, 13), fixed);
-  await db.from("triage_results").update({ learned_from: [c1.id, c2.id] }).eq("ticket_id", target.id);
+  await db
+    .from("triage_results")
+    .update({
+      learned_from: [c1.id, c2.id],
+      learned_examples: [c1, c2].map((c) => ({ ticket_id: c.id, ai, corrected: fixed })),
+    })
+    .eq("ticket_id", target.id);
   await db.from("ticket_triage_state").update({ triage_status: "completed" }).eq("ticket_id", target.id);
 
   await login(page, requireEnv("TEST_ADMIN_EMAIL"), requireEnv("TEST_ADMIN_PASSWORD"));
   await page.goto(`/tickets/${target.id}`);
-  const learned = page.getByText("✦ Learned from 2 past corrections");
+  const learned = page.getByText("✦ Used 2 past corrections as examples");
   await expect(learned).toBeVisible();
   await learned.click();
   await expect(page.getByRole("link", { name: new RegExp(`#${c1.number} Learning panel SSO 1`) })).toBeVisible();
@@ -206,7 +224,7 @@ test("the triage panel says what the AI learned from; admins can stop it learnin
   const agentPage = await (await page.context().browser()!.newContext()).newPage();
   await login(agentPage, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
   await agentPage.goto(`/tickets/${target.id}`);
-  await agentPage.getByText("✦ Learned from 2 past corrections").click();
-  await expect(agentPage.getByText("and 1 on a ticket you can't open")).toBeVisible();
+  await agentPage.getByText("✦ Used 2 past corrections as examples").click();
+  await expect(agentPage.getByText("and 1 more on a ticket you can't open, or that no longer exist")).toBeVisible();
   await expect(agentPage.getByRole("button", { name: "Don't learn from this" })).toHaveCount(0);
 });

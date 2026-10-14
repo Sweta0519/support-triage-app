@@ -29,7 +29,7 @@ import { addComment, COMMENT_MAX_LENGTH } from "@/app/lib/db/comments";
 import { checkRateLimit, RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/db/rate-limit";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { rerunTriage, runTriage } from "@/app/lib/ai/triage";
-import { getLatestTriageResult, reviewTriage, TriageReviewError , setLearningExcluded } from "@/app/lib/db/triage";
+import { getLatestTriageResult, reviewTriage, TriageReviewError, setLearningExcluded } from "@/app/lib/db/triage";
 import { publishTicketSummary, revokeShare } from "@/app/lib/db/shares";
 import { parseQueueFilter, safeQueueReturn, ticketHref } from "@/app/lib/queue-filters";
 import { moveTicketAs, type MoveResult } from "@/app/lib/ticket-moves";
@@ -462,9 +462,9 @@ export async function setLearningExcludedAction(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireStaff();
   if (!isUuid(ticketId) || typeof excluded !== "boolean") return { ok: false, error: "That change isn't possible." };
-  if (!(await setLearningExcluded(ticketId, excluded))) {
-    return { ok: false, error: "Only admins can change what the AI learns from." };
-  }
+  const result = await setLearningExcluded(ticketId, excluded);
+  if (result === "not_admin") return { ok: false, error: "Only admins can change what the AI learns from." };
+  if (result === "not_a_correction") return { ok: false, error: "That ticket has no review to learn from." };
   revalidatePath(`/tickets/${ticketId}`);
   return { ok: true };
 }

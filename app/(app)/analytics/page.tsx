@@ -29,7 +29,8 @@ import { Stars } from "@/app/components/Stars";
 import { listIncidentsSince } from "@/app/lib/db/incidents";
 import { summarizeIncidents } from "@/app/lib/incidents";
 import { acceptanceByCategory, acceptanceByWeek } from "@/app/lib/learning";
-import { learningRows } from "@/app/lib/analytics";
+import { acceptanceRows } from "@/app/lib/analytics";
+import { learnableCorrectionCount } from "@/app/lib/db/triage";
 
 const LEARNING_WEEKS = 8;
 
@@ -353,18 +354,19 @@ function SentimentBreakdown({ sentiment: s }: { sentiment: Sentiment }) {
 
 export default async function AnalyticsPage() {
   await requireAdmin();
-  const [{ recent, open, sampled: ticketsSampled }, staff, { ratings, sampled: ratingsSampled }, incidentRows] = await Promise.all([
+  const [{ recent, open, sampled: ticketsSampled }, staff, { ratings, sampled: ratingsSampled }, incidentRows, usableCorrections] = await Promise.all([
     listAnalyticsTickets(),
     listStaffProfiles(),
     listRatingsForAnalytics(),
     listIncidentsSince(INCIDENT_ANALYTICS_DAYS),
+    learnableCorrectionCount(),
   ]);
   const incidents = summarizeIncidents(incidentRows);
-  const learning = learningRows(recent);
-  const weekly = acceptanceByWeek(learning.acceptance, LEARNING_WEEKS, new Date());
-  const byCategory = acceptanceByCategory(learning.acceptance);
-  const sampled = ticketsSampled || ratingsSampled;
   const now = new Date();
+  const acceptance = acceptanceRows(recent);
+  const weekly = acceptanceByWeek(acceptance, LEARNING_WEEKS, now);
+  const byCategory = acceptanceByCategory(acceptance);
+  const sampled = ticketsSampled || ratingsSampled;
   const a = computeAnalytics(recent, now, open);
   const team = computeTeamPerformance({
     open,
@@ -499,9 +501,10 @@ export default async function AnalyticsPage() {
         <div>
           <h2 className={sectionTitleClasses}>Is the AI learning?</h2>
           <p className={`mt-1 ${mutedClasses}`}>
-            How often staff accepted the AI&apos;s triage as it was, by the week of the review and by category. Every
-            correction becomes an example the AI sees on similar tickets later; {learning.usableCorrections}{" "}
-            {learning.usableCorrections === 1 ? "correction is" : "corrections are"} available to learn from now.
+            How often staff accepted the AI&apos;s triage as it was, by the week of the review and by category
+            {ticketsSampled ? " (over the most recent tickets)" : ""}. Every correction becomes an example the AI sees on
+            similar tickets later; {usableCorrections} {usableCorrections === 1 ? "correction is" : "corrections are"}{" "}
+            available to learn from now.
           </p>
         </div>
         <div className="grid gap-6 lg:grid-cols-2">

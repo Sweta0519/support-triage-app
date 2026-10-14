@@ -36,7 +36,7 @@ import { effectiveTriageStatus } from "@/app/lib/triage-status";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { FlagIcon } from "@/app/components/FlagIcon";
 import { IncidentMark } from "@/app/components/IncidentMark";
-import { LearnedFrom } from "./LearnedFrom";
+import { LearnedFrom, type LearnedExample } from "./LearnedFrom";
 import { listCorrections } from "@/app/lib/db/triage";
 import { openIncidentsForTickets } from "@/app/lib/db/incidents";
 import { incidentLabel } from "@/app/lib/incidents";
@@ -152,7 +152,27 @@ export default async function TicketDetailPage({
   const customerCard = people.get(ticket.customer_id);
   // The past corrections this run learned from (SUP-43): the ones this
   // viewer can open, under their RLS.
-  const learnedFrom = isStaff && triage && triage.learned_from.length > 0 ? await listCorrections(triage.learned_from) : [];
+  // Best effort: the panel is optional, so a failed read shows the
+  // snapshot without links rather than breaking the page.
+  const learnedTickets =
+    isStaff && triage && triage.learned_examples.length > 0
+      ? await listCorrections(triage.learned_examples.map((e) => e.ticket_id)).catch(() => [])
+      : [];
+  const reviewers = await getPersonCards(learnedTickets.map((c) => c.reviewed_by)).catch(() => new Map());
+  const learnedExamples: LearnedExample[] = (triage?.learned_examples ?? []).map((e) => {
+    const t = learnedTickets.find((c) => c.ticket_id === e.ticket_id);
+    return {
+      ...e,
+      ticket: t
+        ? {
+            number: t.number,
+            subject: t.subject,
+            excluded: t.excluded,
+            reviewer: (t.reviewed_by && reviewers.get(t.reviewed_by)?.display_name) || null,
+          }
+        : null,
+    };
+  });
 
   const ticketBody = (
     <div className="flex flex-col gap-2">
@@ -386,9 +406,7 @@ export default async function TicketDetailPage({
               currentUserId={profile.id}
               fromFilter={fromFilter}
               learned={
-                triage && triage.learned_from.length > 0 ? (
-                  <LearnedFrom total={triage.learned_from.length} corrections={learnedFrom} isAdmin={profile.role === "admin"} />
-                ) : null
+                learnedExamples.length > 0 ? <LearnedFrom examples={learnedExamples} isAdmin={profile.role === "admin"} /> : null
               }
             />
             <SharePanel

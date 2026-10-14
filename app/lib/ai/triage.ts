@@ -148,6 +148,7 @@ export async function runTriage(ticketId: string, { retry = "background" }: { re
       cost_usd: embeddingCostUsd + assessment.usage.cost_usd + reply.usage.cost_usd,
       retry_count: retryCount,
       learned_from: corrections.map((c) => c.ticket_id),
+      learned_examples: corrections.map(({ ticket_id, ai, corrected }) => ({ ticket_id, ai, corrected })),
     });
 
     const applied = await applyTriageToTicket(ticket.id, claimId, {

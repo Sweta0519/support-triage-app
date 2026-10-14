@@ -8,7 +8,7 @@ import type { TicketStatus } from "@/app/lib/db/tickets";
 import { STALE_TRIAGE_MS, type FinishedTriageRun } from "@/app/lib/triage-status";
 import type { TriageReviewFields } from "@/app/lib/triage-fields";
 import type { TriageFailureReason } from "@/app/lib/ai/retry-policy";
-import type { CorrectionExample } from "@/app/lib/learning";
+import type { CorrectionExample, TriageValues } from "@/app/lib/learning";
 
 export type TriageResult = {
   id: string;
@@ -34,13 +34,15 @@ export type TriageResult = {
   cost_usd: number | null;
   // Automatic retries the run's model calls needed (SUP-32).
   retry_count: number;
-  // Tickets whose staff corrections this run was shown (SUP-43).
+  // Tickets whose staff corrections this run was shown (SUP-43), and each
+  // correction exactly as shown (it may be reviewed again later).
   learned_from: string[];
+  learned_examples: { ticket_id: string; ai: TriageValues; corrected: TriageValues }[];
   created_at: string;
 };
 
 const TRIAGE_RESULT_COLUMNS =
-  "id, ticket_id, model, prompt_version, summary, category, priority, priority_reason, team, frustration, is_escalation_risk, duplicate_of, related_ticket_ids, suggested_reply, missing_info, confidence, needs_human_review, prompt_tokens, completion_tokens, latency_ms, cost_usd, retry_count, learned_from, created_at";
+  "id, ticket_id, model, prompt_version, summary, category, priority, priority_reason, team, frustration, is_escalation_risk, duplicate_of, related_ticket_ids, suggested_reply, missing_info, confidence, needs_human_review, prompt_tokens, completion_tokens, latency_ms, cost_usd, retry_count, learned_from, learned_examples, created_at";
 
 // ---- Reads on behalf of the signed-in user (RLS: staff-only) ------------
 
@@ -395,6 +397,8 @@ export type LearnedCorrection = {
   ai: { priority: string | null; category: string | null; team: string | null };
   corrected: { priority: string | null; category: string | null; team: string | null };
   excluded: boolean;
+  // Who made the correction, so a pattern of bad ones can be traced.
+  reviewed_by: string | null;
 };
 
 export async function listCorrections(ticketIds: string[]): Promise<LearnedCorrection[]> {
@@ -403,7 +407,7 @@ export async function listCorrections(ticketIds: string[]): Promise<LearnedCorre
   const { data, error } = await supabase
     .from("ticket_triage_state")
     .select(
-      "ticket_id, priority, category, team, learning_excluded_at, ticket:tickets(number, subject), ai:triage_results!reviewed_result_id(priority, category, team)"
+      "ticket_id, priority, category, team, reviewed_by, learning_excluded_at, ticket:tickets(number, subject), ai:triage_results!reviewed_result_id(priority, category, team)"
     )
     .in("ticket_id", ticketIds);
   if (error) throw new Error(error.message);
@@ -413,6 +417,7 @@ export async function listCorrections(ticketIds: string[]): Promise<LearnedCorre
     category: string | null;
     team: string | null;
     learning_excluded_at: string | null;
+    reviewed_by: string | null;
     ticket: { number: number; subject: string } | null;
     ai: { priority: string | null; category: string | null; team: string | null } | null;
   };
@@ -426,6 +431,7 @@ export async function listCorrections(ticketIds: string[]): Promise<LearnedCorre
             ai: r.ai,
             corrected: { priority: r.priority, category: r.category, team: r.team },
             excluded: r.learning_excluded_at !== null,
+            reviewed_by: r.reviewed_by,
           },
         ]
       : []
@@ -433,13 +439,26 @@ export async function listCorrections(ticketIds: string[]): Promise<LearnedCorre
 }
 
 // Admins only (the function checks): stop or resume learning from one
-// ticket's correction.
-export async function setLearningExcluded(ticketId: string, excluded: boolean): Promise<boolean> {
+// ticket's correction. "not_a_correction": the ticket has no review.
+export async function setLearningExcluded(
+  ticketId: string,
+  excluded: boolean
+): Promise<"ok" | "not_admin" | "not_a_correction"> {
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase.rpc("set_learning_excluded", { p_ticket_id: ticketId, p_excluded: excluded });
+  const { error } = await supabase.rpc("set_learning_excluded", { p_ticket_id: ticketId, p_excluded: excluded });
   if (error) {
-    if (error.code === "42501") return false;
+    if (error.code === "42501") return "not_admin";
+    if (error.code === "P0002") return "not_a_correction";
     throw new Error(error.message);
   }
-  return data === true;
+  return "ok";
+}
+
+// Admins only: how many corrections the AI can learn from right now --
+// the same rule the matcher uses, over every ticket.
+export async function learnableCorrectionCount(): Promise<number> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("learnable_correction_count");
+  if (error) throw new Error(error.message);
+  return data as number;
 }

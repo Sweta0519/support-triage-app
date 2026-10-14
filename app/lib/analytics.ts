@@ -2,6 +2,7 @@
 // that app/lib/db/analytics.ts fetches, so the numbers can be tested
 // without a database.
 
+import type { AcceptanceRow } from "@/app/lib/learning";
 import type { TicketStatus } from "@/app/lib/db/tickets";
 import { isFrustrated } from "@/app/lib/queue";
 import { computeSla } from "@/app/lib/sla";
@@ -356,21 +357,19 @@ export function formatRate(part: number, whole: number): string {
 }
 
 // SUP-43: each reviewed ticket with an AI run, as the reviewer's values
-// against the AI's, for the week-by-week and per-category acceptance; and
-// how many corrections the AI can currently learn from.
-export function learningRows(rows: AnalyticsTicketRow[]): {
-  acceptance: { reviewed_at: string; ai: TriageFields; corrected: TriageFields }[];
-  usableCorrections: number;
-} {
-  const acceptance: { reviewed_at: string; ai: TriageFields; corrected: TriageFields }[] = [];
-  let usableCorrections = 0;
-  for (const row of rows) {
+// against the AI's, for the week-by-week and per-category acceptance. (How
+// many corrections the AI can learn from comes from the database:
+// learnableCorrectionCount, over every ticket, not this sample.)
+export function acceptanceRows(rows: AnalyticsTicketRow[]): AcceptanceRow[] {
+  return rows.flatMap((row) => {
     const state = row.triage_state;
-    if (!state?.reviewed_at || !state.reviewed_result) continue;
-    const corrected = { priority: state.priority, category: state.category, team: state.team };
-    acceptance.push({ reviewed_at: state.reviewed_at, ai: state.reviewed_result, corrected });
-    const changed = FIELDS.some((f) => state.reviewed_result![f] !== corrected[f]);
-    if (changed && !state.learning_excluded_at) usableCorrections += 1;
-  }
-  return { acceptance, usableCorrections };
+    if (!state?.reviewed_at || !state.reviewed_result) return [];
+    return [
+      {
+        reviewed_at: state.reviewed_at,
+        ai: state.reviewed_result,
+        corrected: { priority: state.priority, category: state.category, team: state.team },
+      },
+    ];
+  });
 }

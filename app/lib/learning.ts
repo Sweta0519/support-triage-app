@@ -23,6 +23,11 @@ export type CorrectionExample = {
 
 const FIELDS = ["priority", "category", "team"] as const;
 
+// The AI's values left exactly as they were.
+export function sameTriage(a: TriageValues, b: TriageValues): boolean {
+  return FIELDS.every((f) => a[f] === b[f]);
+}
+
 // "priority High → Urgent, team Support → Engineering": only what staff
 // changed.
 export function describeCorrection(ai: TriageValues, corrected: TriageValues): string {
@@ -57,7 +62,7 @@ export function acceptanceByWeek(rows: AcceptanceRow[], weeks: number, now: Date
     const bucket = out.get(weekStart(row.reviewed_at));
     if (!bucket) continue;
     bucket.reviewed += 1;
-    if (FIELDS.every((f) => row.ai[f] === row.corrected[f])) bucket.accepted += 1;
+    if (sameTriage(row.ai, row.corrected)) bucket.accepted += 1;
   }
   return [...out.entries()].map(([week, v]) => ({ week, ...v }));
 }
@@ -68,7 +73,7 @@ export function acceptanceByCategory(rows: AcceptanceRow[]): { category: string;
     const category = row.corrected.category ?? "none";
     const bucket = out.get(category) ?? { accepted: 0, reviewed: 0 };
     bucket.reviewed += 1;
-    if (FIELDS.every((f) => row.ai[f] === row.corrected[f])) bucket.accepted += 1;
+    if (sameTriage(row.ai, row.corrected)) bucket.accepted += 1;
     out.set(category, bucket);
   }
   return [...out.entries()].map(([category, v]) => ({ category, ...v })).sort((a, b) => b.reviewed - a.reviewed);
