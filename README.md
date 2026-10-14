@@ -253,7 +253,19 @@ It needs dedicated test accounts in `.env.local` (`TEST_USER_*` customer A, `TES
 customer B, `TEST_AGENT_*`, `TEST_ADMIN_*`, `TEST_ROLEFLIP_EMAIL`; they aren't in `.env.example`,
 so add them by hand) -- create them with the Supabase
 Admin API (`auth.admin.createUser` with `email_confirm: true`) and set roles via the service role.
-About 100 tests in 29 spec files. Feature PRs add their own tests. Highlights:
+About 120 tests in 32 spec files. Feature PRs add their own tests.
+
+- **The last four projects** (`settings`, `people`, `ai-health`, `incidents`) change shared test
+  accounts, so they run one after another. To rerun them without the main suite, keep them in order
+  with one worker:
+  `npx playwright test --project=settings --project=people --project=ai-health --project=incidents --no-deps --workers=1`.
+  With `--no-deps` and several workers they run at the same time, and `settings` can reset the agent's
+  display name while `people` is checking it.
+- **Before a release,** run the suite once against the production build as well (`npm run build &&
+  npm run start`, then `npx playwright test`). That is what Vercel serves, and it can be slower than
+  the dev server.
+
+Highlights:
 - **Isolation:**
   - customer B gets a 404 for customer A's ticket;
   - an agent gets a 404 for another staff member's ticket;

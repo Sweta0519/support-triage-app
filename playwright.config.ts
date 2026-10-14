@@ -46,6 +46,8 @@ export default defineConfig({
       // names, so it runs after the main suite rather than alongside it (if a main-suite
       // test fails, this shows as "did not run"). On its own:
       // npx playwright test --project=settings --no-deps
+      // To rerun several of these last projects, add --workers=1: --no-deps
+      // drops their ordering, and in parallel they race on the shared accounts.
       name: "settings",
       use: { ...devices["Desktop Chrome"] },
       dependencies: ["chromium"],

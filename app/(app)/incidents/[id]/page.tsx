@@ -70,19 +70,21 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
         </ul>
       </section>
 
-      {incident.status === "open" ? (
-        <IncidentActions
-          incidentId={incident.id}
-          draft={incident.draft_update ?? ""}
-          openTicketCount={openTickets.length}
-          updatePostedAt={incident.update_posted_at}
-        />
-      ) : (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          {incident.status === "resolved" ? "Resolved" : "Dismissed as a false alarm"}
-          {incident.closed_at ? ` ${formatRelativeTime(incident.closed_at)}` : ""}.
-        </p>
-      )}
+      {/* Mounted for a closed incident too, so the confirmation of the
+          resolve/dismiss that closed it survives the refresh (SUP-45). */}
+      <IncidentActions
+        incidentId={incident.id}
+        open={incident.status === "open"}
+        closedNote={
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            {incident.status === "resolved" ? "Resolved" : "Dismissed as a false alarm"}
+            {incident.closed_at ? ` ${formatRelativeTime(incident.closed_at)}` : ""}.
+          </p>
+        }
+        draft={incident.draft_update ?? ""}
+        openTicketCount={openTickets.length}
+        updatePostedAt={incident.update_posted_at}
+      />
     </div>
   );
 }
