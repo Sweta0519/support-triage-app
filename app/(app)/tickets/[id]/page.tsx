@@ -36,6 +36,8 @@ import { effectiveTriageStatus } from "@/app/lib/triage-status";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { FlagIcon } from "@/app/components/FlagIcon";
 import { IncidentMark } from "@/app/components/IncidentMark";
+import { LearnedFrom } from "./LearnedFrom";
+import { listCorrections } from "@/app/lib/db/triage";
 import { openIncidentsForTickets } from "@/app/lib/db/incidents";
 import { incidentLabel } from "@/app/lib/incidents";
 import { listMyFlaggedTicketIds } from "@/app/lib/db/flags";
@@ -148,6 +150,9 @@ export default async function TicketDetailPage({
     isStaff ? openIncidentsForTickets([ticket.id]).then((m) => m.get(ticket.id) ?? null) : Promise.resolve(null),
   ]);
   const customerCard = people.get(ticket.customer_id);
+  // The past corrections this run learned from (SUP-43): the ones this
+  // viewer can open, under their RLS.
+  const learnedFrom = isStaff && triage && triage.learned_from.length > 0 ? await listCorrections(triage.learned_from) : [];
 
   const ticketBody = (
     <div className="flex flex-col gap-2">
@@ -380,6 +385,11 @@ export default async function TicketDetailPage({
               triageState={ticket.triage_state}
               currentUserId={profile.id}
               fromFilter={fromFilter}
+              learned={
+                triage && triage.learned_from.length > 0 ? (
+                  <LearnedFrom total={triage.learned_from.length} corrections={learnedFrom} isAdmin={profile.role === "admin"} />
+                ) : null
+              }
             />
             <SharePanel
               ticketId={ticket.id}

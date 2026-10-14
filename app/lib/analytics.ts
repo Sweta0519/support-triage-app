@@ -19,6 +19,8 @@ export type AnalyticsTicketRow = {
   triage_state:
     | (TriageFields & {
         reviewed_at: string | null;
+        // Set when an admin stopped the AI learning from this correction (SUP-43).
+        learning_excluded_at?: string | null;
         // The AI run the reviewer was shown; null for a review made with no
         // AI run (a "manual" triage) or for an unreviewed ticket.
         reviewed_result: TriageFields | null;
@@ -351,4 +353,24 @@ export function formatRate(part: number, whole: number): string {
   if (pct === 100 && part < whole) return ">99%";
   if (pct === 0 && part > 0) return "<1%";
   return `${pct}%`;
+}
+
+// SUP-43: each reviewed ticket with an AI run, as the reviewer's values
+// against the AI's, for the week-by-week and per-category acceptance; and
+// how many corrections the AI can currently learn from.
+export function learningRows(rows: AnalyticsTicketRow[]): {
+  acceptance: { reviewed_at: string; ai: TriageFields; corrected: TriageFields }[];
+  usableCorrections: number;
+} {
+  const acceptance: { reviewed_at: string; ai: TriageFields; corrected: TriageFields }[] = [];
+  let usableCorrections = 0;
+  for (const row of rows) {
+    const state = row.triage_state;
+    if (!state?.reviewed_at || !state.reviewed_result) continue;
+    const corrected = { priority: state.priority, category: state.category, team: state.team };
+    acceptance.push({ reviewed_at: state.reviewed_at, ai: state.reviewed_result, corrected });
+    const changed = FIELDS.some((f) => state.reviewed_result![f] !== corrected[f]);
+    if (changed && !state.learning_excluded_at) usableCorrections += 1;
+  }
+  return { acceptance, usableCorrections };
 }

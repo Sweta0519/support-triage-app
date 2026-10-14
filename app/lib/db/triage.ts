@@ -8,6 +8,7 @@ import type { TicketStatus } from "@/app/lib/db/tickets";
 import { STALE_TRIAGE_MS, type FinishedTriageRun } from "@/app/lib/triage-status";
 import type { TriageReviewFields } from "@/app/lib/triage-fields";
 import type { TriageFailureReason } from "@/app/lib/ai/retry-policy";
+import type { CorrectionExample } from "@/app/lib/learning";
 
 export type TriageResult = {
   id: string;
@@ -33,11 +34,13 @@ export type TriageResult = {
   cost_usd: number | null;
   // Automatic retries the run's model calls needed (SUP-32).
   retry_count: number;
+  // Tickets whose staff corrections this run was shown (SUP-43).
+  learned_from: string[];
   created_at: string;
 };
 
 const TRIAGE_RESULT_COLUMNS =
-  "id, ticket_id, model, prompt_version, summary, category, priority, priority_reason, team, frustration, is_escalation_risk, duplicate_of, related_ticket_ids, suggested_reply, missing_info, confidence, needs_human_review, prompt_tokens, completion_tokens, latency_ms, cost_usd, retry_count, created_at";
+  "id, ticket_id, model, prompt_version, summary, category, priority, priority_reason, team, frustration, is_escalation_risk, duplicate_of, related_ticket_ids, suggested_reply, missing_info, confidence, needs_human_review, prompt_tokens, completion_tokens, latency_ms, cost_usd, retry_count, learned_from, created_at";
 
 // ---- Reads on behalf of the signed-in user (RLS: staff-only) ------------
 
@@ -257,6 +260,41 @@ export async function matchTickets(
   return (data ?? []) as MatchedTicket[];
 }
 
+// The most similar past tickets whose AI triage staff corrected (SUP-43),
+// for the assessment prompt. Service role: the pipeline runs with no
+// signed-in user, and only summaries and field values come back.
+export async function matchCorrections(
+  embedding: number[],
+  excludeTicketId: string,
+  threshold: number,
+  limit: number
+): Promise<CorrectionExample[]> {
+  const supabase = createServiceSupabaseClient();
+  const { data, error } = await supabase.rpc("match_triage_corrections", {
+    p_embedding: embedding,
+    p_exclude_ticket_id: excludeTicketId,
+    p_threshold: threshold,
+    p_limit: limit,
+  });
+  if (error) throw new Error(error.message);
+  type Row = {
+    ticket_id: string;
+    summary: string;
+    ai_priority: string | null;
+    ai_category: string | null;
+    ai_team: string | null;
+    priority: string | null;
+    category: string | null;
+    team: string | null;
+  };
+  return ((data ?? []) as Row[]).map((r) => ({
+    ticket_id: r.ticket_id,
+    summary: r.summary,
+    ai: { priority: r.ai_priority, category: r.ai_category, team: r.ai_team },
+    corrected: { priority: r.priority, category: r.category, team: r.team },
+  }));
+}
+
 export type NewTriageResult = Omit<TriageResult, "id" | "created_at"> & {
   raw: unknown;
 };
@@ -345,4 +383,63 @@ export async function insertTriageEvent(
   if (error) {
     throw new Error(error.message);
   }
+}
+
+// The corrections behind "Learned from N past corrections" (SUP-43), under
+// the caller's RLS: staff see only the tickets they could open, so the
+// panel can link those and just count the rest.
+export type LearnedCorrection = {
+  ticket_id: string;
+  number: number;
+  subject: string;
+  ai: { priority: string | null; category: string | null; team: string | null };
+  corrected: { priority: string | null; category: string | null; team: string | null };
+  excluded: boolean;
+};
+
+export async function listCorrections(ticketIds: string[]): Promise<LearnedCorrection[]> {
+  if (ticketIds.length === 0) return [];
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("ticket_triage_state")
+    .select(
+      "ticket_id, priority, category, team, learning_excluded_at, ticket:tickets(number, subject), ai:triage_results!reviewed_result_id(priority, category, team)"
+    )
+    .in("ticket_id", ticketIds);
+  if (error) throw new Error(error.message);
+  type Row = {
+    ticket_id: string;
+    priority: string | null;
+    category: string | null;
+    team: string | null;
+    learning_excluded_at: string | null;
+    ticket: { number: number; subject: string } | null;
+    ai: { priority: string | null; category: string | null; team: string | null } | null;
+  };
+  return (data as unknown as Row[]).flatMap((r) =>
+    r.ticket && r.ai
+      ? [
+          {
+            ticket_id: r.ticket_id,
+            number: r.ticket.number,
+            subject: r.ticket.subject,
+            ai: r.ai,
+            corrected: { priority: r.priority, category: r.category, team: r.team },
+            excluded: r.learning_excluded_at !== null,
+          },
+        ]
+      : []
+  );
+}
+
+// Admins only (the function checks): stop or resume learning from one
+// ticket's correction.
+export async function setLearningExcluded(ticketId: string, excluded: boolean): Promise<boolean> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("set_learning_excluded", { p_ticket_id: ticketId, p_excluded: excluded });
+  if (error) {
+    if (error.code === "42501") return false;
+    throw new Error(error.message);
+  }
+  return data === true;
 }
