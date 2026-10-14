@@ -1,4 +1,4 @@
-# Support Triage: demo video script (draft 2, every feature)
+# Support Triage: demo video script (every feature)
 
 Target length: about 2:45. The headline features get full scenes with narration; every
 other feature appears in a fast captioned montage (scene 11), so nothing is left out.
@@ -13,9 +13,9 @@ louder in the montage.
 | 4 | 0:45–0:58 | Agent corrects the priority and confirms; claims the ticket; edits and sends the draft reply. | It never acts on its own. An agent confirms or corrects it in one click, and nothing reaches the customer until a person sends it. |
 | 5 | 0:58–1:10 | Queue: SLA stat cards, "at risk" and "overdue" badges, urgent first, tabs and filters, search. | The queue puts what's urgent first, with live response-time targets, so nothing quietly goes overdue. |
 | 6 | 1:10–1:20 | Board: drag a card from New to In progress. Card menu (⋯), follow-up flag, team label picker with the L key. | Prefer a board? Drag tickets between columns, flag them for follow-up, and label them right on the card. |
-| 7 | 1:20–1:37 | Ticket #4190: "✦ Used 2 past corrections as examples" expands to #4188 and #4189, who corrected them; admin's "Don't learn from this". | And it learns. When the team corrects the AI, those corrections become examples for the next similar ticket. The panel shows exactly which ones it used and who made them, and an admin can exclude a bad one. |
+| 7 | 1:20–1:37 | Ticket #4190: "✦ Used 2 past corrections as examples" expands to #4188 and #4189, who corrected them; admin's "Don't learn from this". | And it learns. When the team corrects the AI, those corrections become examples for the next similar ticket. The panel shows exactly which ones it used, and an admin can exclude a bad one. |
 | 8 | 1:37–1:55 | Incident banner → /incidents → INC-30: three tickets, two customers, AI note and draft update → "Post update to all tickets". | When several customers report the same problem at once, it spots the incident, groups the tickets, and drafts one update for all of them, sent only when the team says so. |
-| 9 | 1:55–2:10 | Sage widget: ask "what does my note say about refunds?", answer cites the note. Notes page. | Every agent also has Sage, a private assistant that answers from their own notes and says which note it used. |
+| 9 | 1:55–2:10 | Admin writes a "Refund policy" note, then asks Sage on the demo ticket; the answer cites the note. | Every agent also has Sage, a private assistant that answers from their own notes and says which note it used. |
 | 10 | 2:10–2:22 | Analytics: SLA, triage acceptance, "Is the AI learning?", agent workload, sentiment, CSAT per staff member. | Analytics show SLA performance, how often the team accepts the AI, whether that's improving, and how customers rate the help they got. |
 | 11 | 2:22–2:40 | **Montage, ~1.5 s each, caption on screen** (music up, one line of narration over it). See list below. | And everything a real help desk needs is already here. |
 | 12 | 2:40–2:48 | Closing card: **Support Triage**, "AI does the reading. Your team does the helping." | Support Triage. The AI does the reading, so your team can do the helping. |
@@ -23,15 +23,17 @@ louder in the montage.
 ## Scene 11 montage (caption per shot)
 
 1. "Staff file tickets for customers": staff New ticket on a customer's behalf
-2. "Customers rate resolved tickets": CSAT stars on a resolved ticket
-3. "Shareable status page": the public read-only status link
+2. "Customers rate resolved tickets": the customer rates the demo ticket 5 stars
+3. "A shareable status page": the public read-only status page
 4. "Team labels": /labels page
-5. "Stalled AI runs can be re-run": stalled triage + Re-run
-6. "Banner when the AI is off or failing": the AI health banner
-7. "Admin: roles and people": admin page, role change
-8. "Your settings, your theme": account settings, dark mode toggle
-9. "Secure by default": sign-in throttling message / RLS line in a caption
-10. "Live on Vercel, tested end to end": Playwright run passing (terminal), then the live URL
+5. "Re-run the AI on any ticket": the card menu's "Re-run AI triage"
+6. "Admin overview, roles and people": /admin (not /admin/users, which lists real emails)
+7. "Your settings, your theme": account settings, dark theme (put back afterwards)
+8. "Secure by default: RLS, CSRF, rate limits": the sign-in page
+9. "Tested end to end, live on Vercel": the Playwright HTML report
+
+Not shown: the "AI triage is off/failing" banner (it needs a real outage or seeded
+failures across the team) and a stalled run (needs a crashed run).
 
 ## Before recording
 

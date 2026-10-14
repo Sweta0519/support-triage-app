@@ -1,14 +1,17 @@
 """Assembles the demo video (SUP-44) from the frames record.mjs captured.
 
-    python3 demo-video/build.py            # -> demo-video/build/support-triage-demo.mp4
+    /usr/bin/python3 demo-video/build.py   # -> demo-video/build/support-triage-demo.mp4
+
+(/usr/bin/python3 because it has Pillow; ffmpeg must be on PATH.)
 
 Steps: narration with macOS `say`, title cards and captions with Pillow,
 each scene's frames into a clip fitted to its narration, crossfades between
 scenes, and a generated ambient music bed that ducks under the voice.
-Needs ffmpeg and Pillow. The shot list is in script.md.
+Needs ffmpeg (ffprobe is not used) and Pillow. The shot list is in script.md.
 """
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -29,7 +32,7 @@ SCENES = [
     {"id": "01-title", "card": ("Support Triage", "Every ticket, understood in seconds."),
      "say": "Support teams lose the first minutes of every ticket just working out what it is: "
             "how urgent it is, who should take it, and whether it's already been reported."},
-    {"id": "02-customer", "clips": ["02-customer"],
+    {"id": "02-customer", "clips": ["02-customer"], "max_speed": 3.0,
      "say": "A customer files a ticket, the usual way."},
     {"id": "03-triage", "clips": ["03-triage"],
      "say": "Support Triage reads every new ticket the moment it arrives. In seconds, the AI suggests a "
@@ -49,7 +52,7 @@ SCENES = [
     {"id": "08-incident", "clips": ["08-incident"],
      "say": "When several customers report the same problem at once, it spots the incident, groups the "
             "tickets, and drafts one update for all of them, sent only when the team says so."},
-    {"id": "09-sage", "clips": ["09a-note", "09b-sage"],
+    {"id": "09-sage", "clips": ["09a-note", "09b-sage"], "max_speed": 4.0,  # mostly waiting for the answer
      "say": "Every agent also has Sage, a private assistant that answers from their own notes, and says which note it used."},
     {"id": "10-analytics", "clips": ["10-analytics"],
      "say": "Analytics show SLA performance, how often the team accepts the AI, whether that's improving, "
@@ -63,13 +66,14 @@ SCENES = [
         ("11-m07-admin", "Admin overview, roles and people"),
         ("11-m08-settings", "Your settings, your theme"),
         ("11-m09-security", "Secure by default: RLS, CSRF, rate limits"),
-        ("11-m10-tests", "Tested end to end, live on Vercel"),
+        ("11-m10-tests", "120 automated tests, live on Vercel"),
      ],
      "say": "And everything a real help desk needs is already here."},
     {"id": "12-close", "card": ("Support Triage", "The AI does the reading. Your team does the helping."),
      "say": "Support Triage. The AI does the reading, so your team can do the helping."},
 ]
 SHOT = 1.9  # seconds per montage shot
+MAX_STILL = 3.0
 
 
 def run(*args):
@@ -81,9 +85,10 @@ def ffmpeg(*args):
 
 
 def duration(path):
-    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
-                         check=True, capture_output=True, text=True).stdout
-    return float(out.strip())
+    # From ffmpeg's own header line, so ffprobe isn't needed.
+    err = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(path)], capture_output=True, text=True).stderr
+    h, m, s = re.search(r"Duration: (\d+):(\d+):([\d.]+)", err).groups()
+    return int(h) * 3600 + int(m) * 60 + float(s)
 
 
 def font(size, bold=False):
@@ -136,7 +141,8 @@ def frames_to_clip(name, out):
     lines = []
     for i, fr in enumerate(frames):
         nxt = frames[i + 1]["t"] if i + 1 < len(frames) else end
-        lines += [f"file '{FRAMES / name / fr['file']}'", f"duration {max(nxt - fr['t'], 1 / FPS):.4f}"]
+        # A still screen (e.g. waiting on the model) is held at most MAX_STILL.
+        lines += [f"file '{FRAMES / name / fr['file']}'", f"duration {min(max(nxt - fr['t'], 1 / FPS), MAX_STILL):.4f}"]
     lines.append(f"file '{FRAMES / name / frames[-1]['file']}'")
     listfile = WORK / f"{name}.txt"
     listfile.write_text("\n".join(lines) + "\n")
@@ -146,10 +152,16 @@ def frames_to_clip(name, out):
     return duration(out)
 
 
-def fit(src, length, target, out, extra_vf=None):
-    """Speeds a clip up to fit `target` seconds (at most 2.2x), else holds its last frame."""
-    speed = min(max(length / target, 1.0), 2.2)
-    vf = [f"setpts=PTS/{speed:.4f}", f"tpad=stop_mode=clone:stop_duration={target + 1}", f"trim=duration={target:.3f}",
+MAX_SPEED = 2.0
+
+
+def fit(src, length, target, out, extra_vf=None, tail=False, max_speed=MAX_SPEED):
+    """Speeds a clip up to fit `target` seconds (at most max_speed), else holds its last frame.
+    With tail=True, a clip that still doesn't fit keeps its end (a montage shot's payoff)."""
+    speed = min(max(length / target, 1.0), max_speed)
+    start = max(0.0, length / speed - target) if tail else 0.0
+    vf = [f"setpts=PTS/{speed:.4f}", f"tpad=stop_mode=clone:stop_duration={target + 1}",
+          f"trim=start={start:.3f}:duration={target:.3f}",
           "setpts=PTS-STARTPTS", f"fps={FPS}", "format=yuv420p"]
     args = ["-i", src]
     if extra_vf:
@@ -204,7 +216,7 @@ def main():
                 cap = WORK / f"{name}-cap.png"
                 caption_png(text, cap)
                 shot = WORK / f"{name}.mp4"
-                fit(raw, length, SHOT, shot, extra_vf=cap)
+                fit(raw, length, SHOT, shot, extra_vf=cap, tail=True)
                 shots.append(shot)
             concat(shots, out)
         else:
@@ -215,7 +227,10 @@ def main():
                 parts.append(raw)
             joined = WORK / f"{sid}-joined.mp4"
             length = concat(parts, joined)
-            fit(joined, length, target, out)
+            # A scene runs at least as long as its narration, and longer (music
+            # only) when the action can't be sped up enough to fit.
+            max_speed = scene.get("max_speed", MAX_SPEED)
+            fit(joined, length, max(target, length / max_speed), out, max_speed=max_speed)
         clips.append((out, duration(out)))
         voices.append(wav)
         print(f"{sid}: {clips[-1][1]:.1f} s (narration {said:.1f} s)")

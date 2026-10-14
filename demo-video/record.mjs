@@ -22,7 +22,10 @@ const BASE = "http://localhost:3000";
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const BUILD = join(ROOT, "build");
 const STATE = join(BUILD, "state.json");
-const VIEWPORT = { width: 1536, height: 864 }; // x1.25 = 1920x1080 frames
+// The screencast captures CSS pixels, so the page is laid out at 1920x1080
+// and zoomed 1.5x: the layout of a 1280x720 window with sharp, large text.
+const VIEWPORT = { width: 1920, height: 1080 };
+const ZOOM = 1.5;
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
   db: { schema: "ticketing" },
@@ -94,7 +97,12 @@ async function moveTo(page, locator) {
 
 async function click(page, locator) {
   await moveTo(page, locator);
-  await locator.click();
+  try {
+    await locator.click({ timeout: 4000 });
+  } catch {
+    // Page zoom can make Playwright think a popup item is off screen.
+    await locator.evaluate((el) => el.click());
+  }
   await pause(page, 400);
 }
 
@@ -136,9 +144,12 @@ async function scrollToLocator(page, locator, ms) {
   await page.evaluate((el) => el.removeAttribute("data-demo-scroll"), handle);
 }
 
+// Signs in once per run (a saved session goes stale between runs).
+const signedIn = new Set();
 async function signIn(browser, role) {
   const file = join(BUILD, "auth", `${role}.json`);
-  if (existsSync(file)) return file;
+  if (signedIn.has(role)) return file;
+  signedIn.add(role);
   mkdirSync(dirname(file), { recursive: true });
   const [emailVar, passwordVar] = ACCOUNTS[role];
   const context = await browser.newContext();
@@ -153,14 +164,19 @@ async function signIn(browser, role) {
   return file;
 }
 
-// Runs setup unrecorded, then records run() as frames.
-async function record(browser, id, role, { setup, run }) {
+// Runs setup unrecorded, records run() as frames, then runs teardown unrecorded.
+async function record(browser, id, role, { setup, run, teardown }) {
   const context = await browser.newContext({
     viewport: VIEWPORT,
-    deviceScaleFactor: 1.25,
+    deviceScaleFactor: 1,
     storageState: role ? await signIn(browser, role) : undefined,
     colorScheme: "light",
   });
+  await context.addInitScript((zoom) => {
+    const apply = () => (document.documentElement.style.zoom = String(zoom));
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", apply);
+    else apply();
+  }, ZOOM);
   await context.addInitScript(cursorScript);
   const page = await context.newPage();
   page.setDefaultTimeout(30_000);
@@ -178,7 +194,7 @@ async function record(browser, id, role, { setup, run }) {
     frames.push({ file, t: metadata.timestamp });
     await cdp.send("Page.screencastFrameAck", { sessionId }).catch(() => {});
   });
-  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 92, maxWidth: 1920, maxHeight: 1080 });
+  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 92 });
   // Nudge one frame out even if the page is still.
   await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height / 2);
   const started = Date.now() / 1000;
@@ -186,6 +202,7 @@ async function record(browser, id, role, { setup, run }) {
   await pause(page, 900);
   const ended = Date.now() / 1000;
   await cdp.send("Page.stopScreencast");
+  if (teardown) await teardown(page);
   writeFileSync(join(dir, "frames.json"), JSON.stringify({ started, ended, frames }, null, 1));
   console.log(`${id}: ${frames.length} frames, ${(ended - started).toFixed(1)} s`);
   await context.close();
@@ -305,7 +322,14 @@ const SCENES = {
   }],
 
   "06-board": ["agent", {
-    setup: (page) => page.goto(`${BASE}/board`),
+    setup: async (page) => {
+      // A re-take starts from "assigned" (as after scene 04's claim).
+      const { data: t } = await db.from("tickets").select("id").eq("number", state.ticketNumber).single();
+      await db.from("tickets").update({ status: "assigned" }).eq("id", t.id).eq("status", "in_progress");
+      await db.from("ticket_flags").delete().eq("ticket_id", t.id);
+      await db.from("ticket_labels").delete().eq("ticket_id", t.id);
+      await page.goto(`${BASE}/board`);
+    },
     run: async (page) => {
       const n = state.ticketNumber;
       const card = page.locator("article", { hasText: DEMO_TICKET.subject }).first();
@@ -410,7 +434,9 @@ const SCENES = {
       // Show it as a fresh chat: hide this account's earlier (test) turns.
       await page.getByTestId("assistant-widget-message").first().waitFor().catch(() => {});
       await page.evaluate(() => {
-        for (const m of document.querySelectorAll('[data-testid="assistant-widget-message"]')) m.style.display = "none";
+        const first = document.querySelector('[data-testid="assistant-widget-message"]');
+        const list = first?.closest("ul, ol, [role='log']") ?? first?.parentElement?.parentElement;
+        for (const child of list ? [...list.children] : []) child.style.display = "none";
       });
       await pause(page, 600);
       await type(page, page.getByPlaceholder("Message Sage..."), "What do my notes say about refunding a duplicate charge?", 30);
@@ -525,7 +551,8 @@ const SCENES = {
   "11-m08-settings": ["agent", {
     setup: async (page) => {
       await page.goto(`${BASE}/account`);
-      state.agentTheme = await page.getByLabel("Theme").inputValue();
+      // The first take's value is the original (a failed take may have left "dark").
+      state.agentTheme ??= await page.getByLabel("Theme").inputValue();
       saveState();
     },
     run: async (page) => {
@@ -535,10 +562,11 @@ const SCENES = {
       await click(page, page.getByRole("button", { name: "Save settings" }));
       await page.getByText("Settings saved.").waitFor();
       await pause(page, 1200);
-      // Put the agent's theme back (still recording, but the shot is cut before this).
-      await theme.selectOption(state.agentTheme);
-      await page.getByRole("button", { name: "Save settings" }).click();
-      await page.getByText("Settings saved.").waitFor();
+    },
+    // Put the agent's theme back (directly: the form's save can race the page closing).
+    teardown: async () => {
+      const { error } = await db.from("profiles").update({ theme: state.agentTheme }).eq("email", process.env.TEST_AGENT_EMAIL.toLowerCase());
+      if (error) throw new Error(`Theme not restored: ${error.message}`);
     },
   }],
 
