@@ -1,18 +1,31 @@
-"""Assembles the demo video (SUP-44) from the frames record.mjs captured.
+"""Renders the demo video (SUP-44) from what record.mjs captured.
 
     /usr/bin/python3 demo-video/build.py   # -> demo-video/build/support-triage-demo.mp4
 
 (/usr/bin/python3 because it has Pillow; ffmpeg must be on PATH.)
 
-Steps: narration with macOS `say`, title cards and captions with Pillow,
-each scene's frames into a clip fitted to its narration, crossfades between
-scenes, and a generated ambient music bed that ducks under the voice.
-Needs ffmpeg (ffprobe is not used) and Pillow. The shot list is in script.md.
+The look of a product video, made from the raw screen recording:
+- the app sits as a floating window (rounded corners, soft shadow) on a
+  gradient, and the camera glides in to what matters and back out, from
+  the cam() keyframes record.mjs logged;
+- each section opens with a headline caption, the montage captions every shot;
+- frames captured mid-scroll (which can tear) are replaced by a dissolve;
+- the cursor and click ripples are drawn here from record.mjs's mouse log, so
+  they move smoothly at 30 fps whatever rate the screen was captured at;
+- animated title and closing cards;
+- macOS text-to-speech narration, crossfades, and a generated music bed
+  (pad, plucked arpeggio, soft kick and hats) that ducks under the voice.
+The shot list is in script.md.
 """
 
+import bisect
 import json
+import math
+import random
 import re
+import struct
 import subprocess
+import wave
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -24,56 +37,69 @@ WORK = BUILD / "work"
 OUT = BUILD / "support-triage-demo.mp4"
 
 W, H, FPS = 1920, 1080, 30
-XFADE = 0.5  # seconds of crossfade between scenes
-VOICE, RATE = "Samantha", 172
+XFADE = 0.6  # seconds of crossfade between scenes
+VOICE, RATE = "Samantha", 168
 FONT = "/System/Library/Fonts/HelveticaNeue.ttc"
+# The cursor and camera are drawn here, so a still capture doesn't mean
+# nothing is happening: stills are only capped in scenes that wait on the
+# model (`max_still`), where nothing moves meanwhile.
+MAX_SPEED = 2.0
+MOVE = 0.9  # seconds a camera move takes, in the finished video
+INSET = 0.86  # the window's size on the gradient when the camera is all the way out
+SHOT = 2.1  # seconds per montage shot
 
 SCENES = [
     {"id": "01-title", "card": ("Support Triage", "Every ticket, understood in seconds."),
-     "say": "Support teams lose the first minutes of every ticket just working out what it is: "
-            "how urgent it is, who should take it, and whether it's already been reported."},
+     "say": "Every support ticket starts with the same questions. What is this? How urgent is it? "
+            "And who should take it? Support Triage answers them in seconds."},
     {"id": "02-customer", "clips": ["02-customer"], "max_speed": 3.0,
-     "say": "A customer files a ticket, the usual way."},
+     "caption": ("THE CUSTOMER", "A ticket comes in"),
+     "say": "A customer writes in."},
     {"id": "03-triage", "clips": ["03-triage"],
-     "say": "Support Triage reads every new ticket the moment it arrives. In seconds, the AI suggests a "
-            "category, a priority with its reason, the right team, related and duplicate tickets, how "
-            "frustrated the customer is, and whether it might escalate. It drafts a first reply, and lists "
-            "what's still needed from the customer. Every run shows its model, prompt version and cost."},
-    {"id": "04-review", "clips": ["04-review"],
-     "say": "It never acts on its own. An agent confirms or corrects it in one click, and nothing reaches "
-            "the customer until a person sends it."},
-    {"id": "05-queue", "clips": ["05-queue"],
-     "say": "The queue puts what's urgent first, with live response-time targets, so nothing quietly goes overdue."},
-    {"id": "06-board", "clips": ["06-board"],
-     "say": "Prefer a board? Drag tickets between columns, flag them for follow-up, and label them right on the card."},
-    {"id": "07-learning", "clips": ["07-learning"],
-     "say": "And it learns. When the team corrects the AI, those corrections become examples for the next "
-            "similar ticket. The panel shows exactly which ones it used, and an admin can exclude a bad one."},
-    {"id": "08-incident", "clips": ["08-incident"],
-     "say": "When several customers report the same problem at once, it spots the incident, groups the "
-            "tickets, and drafts one update for all of them, sent only when the team says so."},
-    {"id": "09-sage", "clips": ["09a-note", "09b-sage"], "max_speed": 4.0,  # mostly waiting for the answer
-     "say": "Every agent also has Sage, a private assistant that answers from their own notes, and says which note it used."},
+     "caption": ("AI TRIAGE", "Understood in seconds"),
+     "say": "Before anyone opens it, the AI has read it. Category, priority, and the reason why. The right team. "
+            "How frustrated the customer is. What's still missing. And a first reply, already drafted. "
+            "Every run shows its model, and what it cost."},
+    {"id": "04-sage", "clips": ["04-sage"], "max_speed": 2.5, "max_still": 1.5,  # the wait for Sage's answer
+     "caption": ("SAGE", "Your private AI assistant"),
+     "say": "Need the policy? Ask Sage, your private assistant. It answers from your own notes, and shows which one it used."},
+    {"id": "05-review", "clips": ["05-review"],
+     "caption": ("HUMAN IN THE LOOP", "AI suggests. People decide."),
+     "say": "The AI only suggests. An agent corrects it in one click, claims the ticket, and sends the reply. "
+            "Nothing reaches a customer without a person."},
+    {"id": "06-queue", "clips": ["06-queue"],
+     "caption": ("THE QUEUE", "Nothing goes overdue"),
+     "say": "The queue keeps the team on time, with live response targets, urgent work first, "
+            "and every action one click away."},
+    {"id": "07-board", "clips": ["07-board"],
+     "caption": ("THE BOARD", "Drag. Drop. Done."),
+     "say": "Prefer a board? Drag and drop."},
+    {"id": "08-learning", "clips": ["08-learning"],
+     "caption": ("LEARNING", "It learns from your team"),
+     "say": "And it learns. Every correction becomes an example for the next similar ticket, "
+            "and you can see exactly which ones it used."},
+    {"id": "09-incident", "clips": ["09-incident"],
+     "caption": ("INCIDENTS", "One problem. One update."),
+     "say": "When many customers hit the same problem, it spots the incident, and drafts one update for all of them. "
+            "Your team decides when it goes out."},
     {"id": "10-analytics", "clips": ["10-analytics"],
-     "say": "Analytics show SLA performance, how often the team accepts the AI, whether that's improving, "
-            "and how customers rate the help they got."},
+     "caption": ("ANALYTICS", "Know it's working"),
+     "say": "Analytics show response times, customer satisfaction, and whether the AI is getting better."},
     {"id": "11-montage", "montage": [
-        ("11-m01-on-behalf", "Staff file tickets for customers"),
-        ("11-m02-csat", "Customers rate resolved tickets"),
-        ("11-m03-share", "A shareable status page"),
+        ("11-m01-on-behalf", "File tickets for customers"),
+        ("11-m02-csat", "Customers rate the help they got"),
+        ("11-m03-share", "Shareable status pages"),
         ("11-m04-labels", "Team labels"),
-        ("11-m05-rerun", "Re-run the AI on any ticket"),
-        ("11-m07-admin", "Admin overview, roles and people"),
-        ("11-m08-settings", "Your settings, your theme"),
-        ("11-m09-security", "Secure by default: RLS, CSRF, rate limits"),
-        ("11-m10-tests", "120 automated tests, live on Vercel"),
+        ("11-m05-rerun", "Re-run the AI any time"),
+        ("11-m07-admin", "Admin overview"),
+        ("11-m08-settings", "Light and dark themes"),
+        ("11-m09-security", "Secure by default"),
+        ("11-m10-tests", "120 automated tests"),
      ],
-     "say": "And everything a real help desk needs is already here."},
+     "say": "And everything else a modern help desk needs, built in."},
     {"id": "12-close", "card": ("Support Triage", "The AI does the reading. Your team does the helping."),
-     "say": "Support Triage. The AI does the reading, so your team can do the helping."},
+     "say": "Support Triage. The AI does the reading. Your team does the helping."},
 ]
-SHOT = 1.9  # seconds per montage shot
-MAX_STILL = 3.0
 
 
 def run(*args):
@@ -91,8 +117,13 @@ def duration(path):
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 
-def font(size, bold=False):
-    return ImageFont.truetype(FONT, size, index=1 if bold else 0)
+def font(size, weight="regular"):
+    return ImageFont.truetype(FONT, size, index={"regular": 0, "bold": 1, "light": 7}[weight])
+
+
+def ease(p):
+    p = max(0.0, min(1.0, p))
+    return 4 * p ** 3 if p < 0.5 else 1 - (-2 * p + 2) ** 3 / 2
 
 
 def narrate(scene):
@@ -102,6 +133,41 @@ def narrate(scene):
     return wav, duration(wav)
 
 
+# ---- looks -------------------------------------------------------------
+
+def background():
+    """Deep indigo with two soft glows."""
+    img = Image.new("RGB", (W, H), "#0a0a1a")
+    glow = Image.new("RGB", (W, H), "#0a0a1a")
+    d = ImageDraw.Draw(glow)
+    d.ellipse((-300, -400, 1100, 700), fill="#3b2a9e")
+    d.ellipse((1000, 500, 2300, 1500), fill="#7b2f8f")
+    return Image.blend(img, glow.filter(ImageFilter.GaussianBlur(260)), 0.75)
+
+
+BG = None
+_shadow_cache, _mask_cache = {}, {}
+
+
+def shadow(size):
+    if size not in _shadow_cache:
+        sw, sh = size
+        s = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        x0, y0 = (W - sw) // 2, (H - sh) // 2 + 18
+        ImageDraw.Draw(s).rounded_rectangle((x0, y0, x0 + sw, y0 + sh), radius=24, fill=(0, 0, 0, 150))
+        _shadow_cache[size] = s.filter(ImageFilter.GaussianBlur(36))
+    return _shadow_cache[size]
+
+
+def round_mask(size, radius):
+    key = (size, radius)
+    if key not in _mask_cache:
+        m = Image.new("L", size, 0)
+        ImageDraw.Draw(m).rounded_rectangle((0, 0, size[0] - 1, size[1] - 1), radius=radius, fill=255)
+        _mask_cache[key] = m
+    return _mask_cache[key]
+
+
 def logo(size):
     png = WORK / f"logo-{size}.png"
     if not png.exists():
@@ -109,133 +175,340 @@ def logo(size):
     return Image.open(png).convert("RGBA")
 
 
-def card_image(title, subtitle):
-    img = Image.new("RGB", (W, H), "#0b0b14")
-    glow = Image.new("RGB", (W, H), "#0b0b14")
-    ImageDraw.Draw(glow).ellipse((W / 2 - 700, H / 2 - 420, W / 2 + 700, H / 2 + 420), fill="#2a1f6b")
-    img = Image.blend(img, glow.filter(ImageFilter.GaussianBlur(220)), 0.9)
-    mark = logo(150)
-    img.paste(mark, ((W - 150) // 2, 300), mark)
-    d = ImageDraw.Draw(img)
-    d.text((W / 2, 540), title, font=font(96, True), fill="white", anchor="mm")
-    d.text((W / 2, 640), subtitle, font=font(44), fill="#c9c6ff", anchor="mm")
-    return img
+def caption_card(eyebrow, headline):
+    """A dark glass card: small spaced eyebrow over a big headline."""
+    fe, fh = font(26, "bold"), font(64, "bold")
+    eyebrow = " ".join(eyebrow)  # letter-spaced
+    d0 = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    ew = d0.textbbox((0, 0), eyebrow, font=fe)[2]
+    hw = d0.textbbox((0, 0), headline, font=fh)[2]
+    cw, ch = max(ew, hw) + 96, 180
+    card = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+    d = ImageDraw.Draw(card)
+    d.rounded_rectangle((0, 0, cw - 1, ch - 1), radius=28, fill=(14, 12, 30, 225), outline=(255, 255, 255, 40), width=2)
+    d.text((48, 34), eyebrow, font=fe, fill=(167, 160, 255, 255))
+    d.text((48, 74), headline, font=fh, fill=(255, 255, 255, 255))
+    return card
 
 
-def caption_png(text, path):
-    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    f = font(46, True)
-    box = d.textbbox((0, 0), text, font=f)
-    tw, th = box[2] - box[0], box[3] - box[1]
-    x0, y0 = (W - tw) / 2 - 36, H - 170
-    d.rounded_rectangle((x0, y0, x0 + tw + 72, y0 + th + 44), radius=22, fill=(17, 17, 27, 225))
-    d.text((W / 2, y0 + (th + 44) / 2), text, font=f, fill="white", anchor="mm")
-    img.save(path)
+def pill(text):
+    f = font(44, "bold")
+    d0 = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    tw = d0.textbbox((0, 0), text, font=f)[2]
+    p = Image.new("RGBA", (tw + 80, 92), (0, 0, 0, 0))
+    d = ImageDraw.Draw(p)
+    d.rounded_rectangle((0, 0, tw + 79, 91), radius=46, fill=(14, 12, 30, 230), outline=(255, 255, 255, 40), width=2)
+    d.text(((tw + 80) / 2, 46), text, font=f, fill="white", anchor="mm")
+    return p
 
 
-def frames_to_clip(name, out):
-    """A screencast frame set -> constant-30fps 1080p clip (frames last until the next one)."""
-    meta = json.loads((FRAMES / name / "frames.json").read_text())
-    frames, end = meta["frames"], meta["ended"]
-    lines = []
-    for i, fr in enumerate(frames):
-        nxt = frames[i + 1]["t"] if i + 1 < len(frames) else end
-        # A still screen (e.g. waiting on the model) is held at most MAX_STILL.
-        lines += [f"file '{FRAMES / name / fr['file']}'", f"duration {min(max(nxt - fr['t'], 1 / FPS), MAX_STILL):.4f}"]
-    lines.append(f"file '{FRAMES / name / frames[-1]['file']}'")
-    listfile = WORK / f"{name}.txt"
-    listfile.write_text("\n".join(lines) + "\n")
-    ffmpeg("-f", "concat", "-safe", "0", "-i", listfile,
-           "-vf", f"scale={W}:{H}:flags=lanczos,fps={FPS},format=yuv420p",
-           "-c:v", "libx264", "-crf", "16", "-preset", "medium", out)
-    return duration(out)
+def overlay(frame, img, xy, alpha):
+    if alpha <= 0:
+        return
+    a = img.getchannel("A").point(lambda v: int(v * alpha))
+    frame.paste(img, xy, a)
 
 
-MAX_SPEED = 2.0
+# ---- timeline ----------------------------------------------------------
+
+class Clip:
+    """One recorded shot: its frames on a timeline with long stills capped,
+    and its camera keyframes on the same timeline."""
+
+    def __init__(self, name, max_still=None):
+        d = FRAMES / name
+        meta = json.loads((d / "frames.json").read_text())
+        self.dir = d
+        self.src = (meta["size"]["width"], meta["size"]["height"]) if "size" in meta else (W, H)
+        frames, end = meta["frames"], meta["ended"]
+        self.files, self.starts = [], []
+        real, comp = [], []
+        c = 0.0
+        for i, fr in enumerate(frames):
+            nxt = frames[i + 1]["t"] if i + 1 < len(frames) else end
+            self.files.append(fr["file"])
+            self.starts.append(c)
+            real.append(fr["t"])
+            comp.append(c)
+            gap = max(nxt - fr["t"], 0.0)
+            c += min(gap, max_still) if max_still else gap
+        self.length = c
+        self._real, self._comp, self._max_still = real, comp, max_still
+        cam_file = d / "camera.json"
+        keys = json.loads(cam_file.read_text()) if cam_file.exists() else []
+        sx, sy = self.src
+        if not keys:
+            keys = [{"t": meta["started"], "x": sx / 2, "y": sy / 2, "zoom": 1}]
+        self.keys = [(self.to_comp(k["t"]), k["x"], k["y"], k["zoom"]) for k in keys]
+        self._cache = (None, None)
+        mouse_file = d / "mouse.json"
+        moves = json.loads(mouse_file.read_text()) if mouse_file.exists() else []
+        self.mouse = [(self.to_comp(m["t"]), m["x"], m["y"]) for m in moves if not m.get("click")]
+        self.clicks = [self.to_comp(m["t"]) for m in moves if m.get("click")]
+        scroll_file = d / "scrolls.json"
+        spans = json.loads(scroll_file.read_text()) if scroll_file.exists() else []
+        self.scrolls = [(self.to_comp(sp["from"]), self.to_comp(sp["to"])) for sp in spans]
+
+    def to_comp(self, t):
+        i = bisect.bisect_right(self._real, t) - 1
+        if i < 0:
+            return 0.0
+        into = t - self._real[i]
+        if self._max_still:
+            into = min(into, self._max_still)
+        return min(self._comp[i] + into, self._comp[i + 1] if i + 1 < len(self._comp) else self.length)
+
+    def cursor_at(self, c):
+        """Where the cursor is at time c (None if this shot has no mouse log)."""
+        if not self.mouse:
+            return None
+        times = [m[0] for m in self.mouse]
+        i = bisect.bisect_right(times, c) - 1
+        if i < 0:
+            return self.mouse[0][1:]
+        if i + 1 >= len(self.mouse):
+            return self.mouse[-1][1:]
+        (t0, x0, y0), (t1, x1, y1) = self.mouse[i], self.mouse[i + 1]
+        p = ease((c - t0) / (t1 - t0)) if t1 > t0 else 1
+        return x0 + (x1 - x0) * p, y0 + (y1 - y0) * p
+
+    def frame_at(self, c):
+        # Mid-scroll captures can tear: dissolve from before the scroll to after it.
+        for c0, c1 in self.scrolls:
+            if c0 < c < c1:
+                # A quick 0.25 s blend at the middle, so text doesn't ghost for long.
+                mid = (c0 + c1) / 2
+                a, b = self._frame(c0 - 0.01).copy(), self._frame(c1)
+                return Image.blend(a, b, ease((c - mid) / 0.25 + 0.5))
+        return self._frame(c)
+
+    def _frame(self, c):
+        i = max(0, bisect.bisect_right(self.starts, c) - 1)
+        if self._cache[0] != i:
+            self._cache = (i, Image.open(self.dir / self.files[i]).convert("RGB"))
+        return self._cache[1]
+
+    def camera_at(self, c, move):
+        """(x, y, zoom) at time c: each keyframe eases from where the camera was."""
+        starts = []
+        for k, (ck, x, y, z) in enumerate(self.keys):
+            if k == 0:
+                starts.append((x, y, z))
+                continue
+            starts.append(self._eval(ck, k - 1, starts, move))
+        last = max(0, bisect.bisect_right([k[0] for k in self.keys], c) - 1)
+        return self._eval(c, last, starts, move)
+
+    def _eval(self, c, k, starts, move):
+        ck, x, y, z = self.keys[k]
+        x0, y0, z0 = starts[k]
+        p = ease((c - ck) / move) if move > 0 else 1
+        zl = math.exp(math.log(z0) + (math.log(z) - math.log(z0)) * p)
+        return x0 + (x - x0) * p, y0 + (y - y0) * p, zl
 
 
-def fit(src, length, target, out, extra_vf=None, tail=False, max_speed=MAX_SPEED):
-    """Speeds a clip up to fit `target` seconds (at most max_speed), else holds its last frame.
-    With tail=True, a clip that still doesn't fit keeps its end (a montage shot's payoff)."""
-    speed = min(max(length / target, 1.0), max_speed)
-    start = max(0.0, length / speed - target) if tail else 0.0
-    vf = [f"setpts=PTS/{speed:.4f}", f"tpad=stop_mode=clone:stop_duration={target + 1}",
-          f"trim=start={start:.3f}:duration={target:.3f}",
-          "setpts=PTS-STARTPTS", f"fps={FPS}", "format=yuv420p"]
-    args = ["-i", src]
-    if extra_vf:
-        args += ["-i", extra_vf]
-        filt = f"[0:v]{','.join(vf)}[v];[v][1:v]overlay=0:0,format=yuv420p"
-        ffmpeg(*args, "-filter_complex", filt, "-an", "-c:v", "libx264", "-crf", "16", out)
-    else:
-        ffmpeg(*args, "-vf", ",".join(vf), "-an", "-c:v", "libx264", "-crf", "16", out)
+def compose(src, cam):
+    """The source frame seen through the camera, as a floating window on the gradient."""
+    x, y, z = cam
+    sw, sh = src.size
+    cw, ch = sw / z, sh / z
+    x = min(max(x, cw / 2), sw - cw / 2)
+    y = min(max(y, ch / 2), sh - ch / 2)
+    s = INSET + (1 - INSET) * ease((z - 1) / 0.45)
+    if s >= 0.999:
+        s = 1.0
+    ww, wh = (W, H) if s == 1.0 else (int(W * s) // 2 * 2, int(H * s) // 2 * 2)
+    view = src.resize((ww, wh), Image.BICUBIC, box=(x - cw / 2, y - ch / 2, x + cw / 2, y + ch / 2))
+    # Maps a source point to the output frame.
+    ox, oy, k = (W - ww) // 2, (H - wh) // 2, ww / cw
+    to_out = lambda px, py: (ox + (px - (x - cw / 2)) * k, oy + (py - (y - ch / 2)) * k)
+    if s == 1.0:
+        return view, to_out, k
+    frame = BG.copy()
+    frame.paste(shadow((ww, wh)), (0, 0), shadow((ww, wh)))
+    frame.paste(view, (ox, oy), round_mask((ww, wh), int(22 * s / INSET)))
+    return frame, to_out, k
 
 
-def concat(parts, out):
-    listfile = WORK / f"{out.stem}-parts.txt"
-    listfile.write_text("".join(f"file '{p}'\n" for p in parts))
-    ffmpeg("-f", "concat", "-safe", "0", "-i", listfile, "-c", "copy", out)
-    return duration(out)
+_cursor_cache = {}
 
 
-def music(seconds, out):
-    """A soft ambient pad: four slow chords (Cmaj7, Am7, Fmaj7, G6), 4 s each, echoed and low-passed."""
-    chords = [[261.63, 329.63, 392.0, 493.88], [220.0, 261.63, 329.63, 392.0],
-              [174.61, 220.0, 261.63, 329.63], [196.0, 246.94, 293.66, 329.63]]
-    terms = []
-    for i, ch in enumerate(chords):
-        tone = "+".join(f"sin(2*PI*{f}*t)+0.35*sin(2*PI*{f * 2}*t)" for f in ch)
-        terms.append(f"(between(mod(t,16),{i * 4},{i * 4 + 4})*({tone}))")
-    expr = f"0.05*({'+'.join(terms)})*(0.75+0.25*sin(2*PI*0.25*t))"
-    ffmpeg("-f", "lavfi", "-i", f"aevalsrc='{expr}':s=48000:d={seconds:.2f}",
-           "-af", "lowpass=f=1400,aecho=0.8:0.7:120|260:0.35|0.25,afade=t=in:d=2,"
-                  f"afade=t=out:st={seconds - 3:.2f}:d=3,aformat=channel_layouts=stereo",
-           out)
+def cursor_img(size):
+    """The arrow cursor, drawn 4x and scaled down for smooth edges."""
+    size = max(12, int(size))
+    if size not in _cursor_cache:
+        S = 4 * size
+        img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        pts = [(0.17, 0.08), (0.83, 0.48), (0.54, 0.54), (0.40, 0.83)]
+        poly = [(px * S, py * S) for px, py in pts]
+        shadow_layer = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+        ImageDraw.Draw(shadow_layer).polygon([(px + S * 0.03, py + S * 0.04) for px, py in poly], fill=(0, 0, 0, 90))
+        img = Image.alpha_composite(img, shadow_layer.filter(ImageFilter.GaussianBlur(S * 0.03)))
+        d = ImageDraw.Draw(img)
+        d.polygon(poly, fill=(17, 17, 17, 255), outline=(255, 255, 255, 255), width=max(2, int(S * 0.06)))
+        _cursor_cache[size] = img.resize((size, size), Image.LANCZOS)
+    return _cursor_cache[size]
 
+
+def draw_pointer(frame, clip, c, to_out, k, speed):
+    """The cursor, and a ripple for half a second after each click."""
+    pos = clip.cursor_at(c)
+    if pos is None:
+        return
+    cx, cy = to_out(*pos)
+    layer = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    for tc in clip.clicks:
+        age = (c - tc) / speed  # in finished-video seconds
+        if 0 <= age < 0.55:
+            r = (14 + 60 * ease(age / 0.55)) * k
+            a = int(140 * (1 - age / 0.55))
+            d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(99, 102, 241, a))
+    frame.paste(layer, (0, 0), layer)
+    pressed = any(0 <= (c - tc) / speed < 0.15 for tc in clip.clicks)
+    img = cursor_img(46 * k * (0.85 if pressed else 1))
+    frame.paste(img, (int(cx - img.width * 0.17), int(cy - img.height * 0.08)), img)
+
+
+class Encoder:
+    def __init__(self, out):
+        self.p = subprocess.Popen(
+            ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+             "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-", "-c:v", "libx264", "-crf", "17", "-preset", "medium",
+             "-pix_fmt", "yuv420p", str(out)],
+            stdin=subprocess.PIPE)
+
+    def write(self, img):
+        self.p.stdin.write(img.convert("RGB").tobytes())
+
+    def close(self):
+        self.p.stdin.close()
+        self.p.wait()
+
+
+def render_clip(enc, clip, seconds, speed, caption=None, pill_img=None, tail=False):
+    """Writes `seconds` of the clip at `speed`, holding the last frame if it runs out."""
+    n = int(round(seconds * FPS))
+    offset = max(0.0, clip.length - seconds * speed) if tail else 0.0
+    move = MOVE * speed
+    for k in range(n):
+        u = k / FPS
+        c = min(offset + u * speed, clip.length)
+        frame, to_out, k_scale = compose(clip.frame_at(c), clip.camera_at(c, move))
+        draw_pointer(frame, clip, c, to_out, k_scale, speed)
+        if caption is not None:
+            # In over 0.5 s at 0.3 s, out at 3.6 s, rising 20 px.
+            a = ease((u - 0.3) / 0.5) * (1 - ease((u - 3.6) / 0.5))
+            overlay(frame, caption, (90, H - caption.height - 80 + int(20 * (1 - a))), a)
+        if pill_img is not None:
+            a = ease(u / 0.3) * (1 - ease((u - seconds + 0.25) / 0.25))
+            overlay(frame, pill_img, ((W - pill_img.width) // 2, H - pill_img.height - 70), a)
+        enc.write(frame)
+
+
+def render_card(enc, title, subtitle, seconds):
+    mark = logo(170)
+    ft, fs = font(110, "bold"), font(46)
+    n = int(round(seconds * FPS))
+    for k in range(n):
+        u = k / FPS
+        frame = BG.copy()
+        # A slow push-in on the background.
+        z = 1 + 0.03 * u / seconds
+        frame = frame.resize((int(W * z), int(H * z)), Image.BICUBIC).crop(
+            (int(W * (z - 1) / 2), int(H * (z - 1) / 2), int(W * (z - 1) / 2) + W, int(H * (z - 1) / 2) + H))
+        layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(layer)
+        a1, a2, a3 = (ease((u - t0) / 0.7) for t0 in (0.1, 0.45, 0.8))
+        m = mark.copy()
+        m.putalpha(m.getchannel("A").point(lambda v: int(v * a1)))
+        layer.paste(m, ((W - 170) // 2, 280 + int(24 * (1 - a1))), m)
+        d.text((W / 2, 560 + 24 * (1 - a2)), title, font=ft, fill=(255, 255, 255, int(255 * a2)), anchor="mm")
+        d.text((W / 2, 670 + 24 * (1 - a3)), subtitle, font=fs, fill=(201, 198, 255, int(255 * a3)), anchor="mm")
+        frame.paste(layer, (0, 0), layer)
+        enc.write(frame)
+
+
+# ---- music -------------------------------------------------------------
+
+def music(seconds, out, sr=44100):
+    """A calm, modern bed at 96 BPM: a soft chord pad, a plucked arpeggio,
+    a low kick and quiet hats, in A minor / C / F / G."""
+    bpm = 96
+    beat = 60 / bpm
+    bar = 4 * beat
+    chords = [[220.0, 261.63, 329.63], [261.63, 329.63, 392.0], [174.61, 220.0, 261.63], [196.0, 246.94, 293.66]]
+    n = int(seconds * sr)
+    rnd = random.Random(7)
+    noise = [rnd.uniform(-1, 1) for _ in range(4096)]
+    two_pi = 2 * math.pi
+    frames = bytearray()
+    for i in range(n):
+        t = i / sr
+        ch = chords[int(t / bar) % 4]
+        # Pad: detuned sines with a slow swell per bar.
+        pb = (t % bar) / bar
+        swell = 0.6 + 0.4 * math.sin(math.pi * pb)
+        pad = sum(math.sin(two_pi * f * t) + 0.5 * math.sin(two_pi * f * 1.003 * t) for f in ch) * 0.045 * swell
+        # Arpeggio: eighth notes up the chord, an octave up, plucked.
+        step = int(t / (beat / 2))
+        tn = t % (beat / 2)
+        f = ch[step % 3] * 2
+        arp = math.sin(two_pi * f * t) * math.exp(-tn * 9) * 0.10
+        # Kick on beats 1 and 3, hats on the off-beats.
+        tb = t % beat
+        kick = 0.0
+        if int(t / beat) % 2 == 0:
+            kick = math.sin(two_pi * (45 + 70 * math.exp(-tb * 30)) * tb) * math.exp(-tb * 9) * 0.32
+        th = (t + beat / 2) % beat
+        hat = noise[i % 4096] * math.exp(-th * 60) * 0.035
+        # The pad and arpeggio duck a little on each kick (a gentle pump).
+        duck = 1 - 0.35 * math.exp(-tb * 6) if int(t / beat) % 2 == 0 else 1.0
+        v = (pad + arp) * duck + kick + hat
+        # Fade in and out.
+        v *= min(1.0, t / 2.0, (seconds - t) / 3.0)
+        s = int(max(-1.0, min(1.0, v)) * 32000)
+        frames += struct.pack("<hh", s, s)
+    with wave.open(str(out), "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(bytes(frames))
+
+
+# ---- main --------------------------------------------------------------
 
 def main():
+    global BG
     WORK.mkdir(parents=True, exist_ok=True)
+    BG = background()
     clips, voices = [], []
     for scene in SCENES:
         sid = scene["id"]
         wav, said = narrate(scene)
-        target = said + 1.2  # breathing room after the line
+        target = said + 1.3  # breathing room after the line
         out = WORK / f"{sid}.mp4"
+        enc = Encoder(out)
         if "card" in scene:
-            png = WORK / f"{sid}.png"
-            card_image(*scene["card"]).save(png)
-            ffmpeg("-loop", "1", "-i", png, "-t", f"{target + 0.6:.2f}", "-vf",
-                   f"zoompan=z='1+0.0004*on':d=1:s={W}x{H}:fps={FPS},format=yuv420p",
-                   "-c:v", "libx264", "-crf", "16", out)
+            render_card(enc, *scene["card"], target + 0.8)
         elif "montage" in scene:
-            shots = []
             for name, text in scene["montage"]:
-                raw = WORK / f"{name}-raw.mp4"
-                length = frames_to_clip(name, raw)
-                cap = WORK / f"{name}-cap.png"
-                caption_png(text, cap)
-                shot = WORK / f"{name}.mp4"
-                fit(raw, length, SHOT, shot, extra_vf=cap, tail=True)
-                shots.append(shot)
-            concat(shots, out)
+                clip = Clip(name)
+                speed = min(max(clip.length / SHOT, 1.0), 3.0)
+                render_clip(enc, clip, SHOT, speed, pill_img=pill(text), tail=True)
         else:
-            parts = []
-            for name in scene["clips"]:
-                raw = WORK / f"{name}-raw.mp4"
-                frames_to_clip(name, raw)
-                parts.append(raw)
-            joined = WORK / f"{sid}-joined.mp4"
-            length = concat(parts, joined)
-            # A scene runs at least as long as its narration, and longer (music
-            # only) when the action can't be sped up enough to fit.
+            clip = Clip(scene["clips"][0], scene.get("max_still"))
             max_speed = scene.get("max_speed", MAX_SPEED)
-            fit(joined, length, max(target, length / max_speed), out, max_speed=max_speed)
+            speed = min(max(clip.length / target, 1.0), max_speed)
+            seconds = max(target, clip.length / speed)
+            render_clip(enc, clip, seconds, speed, caption=caption_card(*scene["caption"]))
+        enc.close()
         clips.append((out, duration(out)))
         voices.append(wav)
-        print(f"{sid}: {clips[-1][1]:.1f} s (narration {said:.1f} s)")
+        print(f"{sid}: {clips[-1][1]:.1f} s (narration {said:.1f} s)", flush=True)
 
-    # Crossfade the scenes; each scene's narration starts 0.4 s into it.
+    # Crossfade the scenes; each scene's narration starts 0.5 s into it.
     inputs, vf, starts = [], [], []
     t, label = 0.0, "0:v"
     for i, (clip, length) in enumerate(clips):
@@ -252,13 +525,14 @@ def main():
     for wav in voices:
         inputs += ["-i", wav]
     inputs += ["-i", music_wav]
-    af = [f"[{n + i}:a]adelay={int((starts[i] + 0.4) * 1000)}|{int((starts[i] + 0.4) * 1000)}[v{i}]" for i in range(n)]
+    af = [f"[{n + i}:a]adelay={int((starts[i] + 0.5) * 1000)}|{int((starts[i] + 0.5) * 1000)}[v{i}]" for i in range(n)]
     af.append("".join(f"[v{i}]" for i in range(n)) + f"amix=inputs={n}:normalize=0,apad[voice]")
     af.append("[voice]asplit[vo][key]")
-    af.append(f"[{2 * n}:a][key]sidechaincompress=threshold=0.02:ratio=8:attack=60:release=600[bed]")
-    af.append(f"[vo][bed]amix=inputs=2:normalize=0,atrim=duration={total:.3f},loudnorm=I=-16:TP=-1.5[a]")
+    af.append(f"[{2 * n}:a]aresample=48000,volume=0.9[mus]")
+    af.append("[mus][key]sidechaincompress=threshold=0.03:ratio=6:attack=80:release=700[bed]")
+    af.append(f"[vo][bed]amix=inputs=2:normalize=0,atrim=duration={total:.3f},loudnorm=I=-16:TP=-1.5,aresample=48000[a]")
     ffmpeg(*inputs, "-filter_complex", ";".join(vf + af), "-map", f"[{label}]", "-map", "[a]",
-           "-c:v", "libx264", "-crf", "18", "-preset", "slow", "-pix_fmt", "yuv420p",
+           "-c:v", "libx264", "-crf", "18", "-preset", "slow", "-pix_fmt", "yuv420p", "-color_range", "tv",
            "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", OUT)
     print(f"\n{OUT} ({duration(OUT):.1f} s)")
 
