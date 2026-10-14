@@ -36,6 +36,8 @@ import { effectiveTriageStatus } from "@/app/lib/triage-status";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { FlagIcon } from "@/app/components/FlagIcon";
 import { IncidentMark } from "@/app/components/IncidentMark";
+import { LearnedFrom, type LearnedExample } from "./LearnedFrom";
+import { listCorrections } from "@/app/lib/db/triage";
 import { openIncidentsForTickets } from "@/app/lib/db/incidents";
 import { incidentLabel } from "@/app/lib/incidents";
 import { listMyFlaggedTicketIds } from "@/app/lib/db/flags";
@@ -148,6 +150,29 @@ export default async function TicketDetailPage({
     isStaff ? openIncidentsForTickets([ticket.id]).then((m) => m.get(ticket.id) ?? null) : Promise.resolve(null),
   ]);
   const customerCard = people.get(ticket.customer_id);
+  // The past corrections this run learned from (SUP-43): the ones this
+  // viewer can open, under their RLS.
+  // Best effort: the panel is optional, so a failed read shows the
+  // snapshot without links rather than breaking the page.
+  const learnedTickets =
+    isStaff && triage && triage.learned_examples.length > 0
+      ? await listCorrections(triage.learned_examples.map((e) => e.ticket_id)).catch(() => [])
+      : [];
+  const reviewers = await getPersonCards(learnedTickets.map((c) => c.reviewed_by)).catch(() => new Map());
+  const learnedExamples: LearnedExample[] = (triage?.learned_examples ?? []).map((e) => {
+    const t = learnedTickets.find((c) => c.ticket_id === e.ticket_id);
+    return {
+      ...e,
+      ticket: t
+        ? {
+            number: t.number,
+            subject: t.subject,
+            excluded: t.excluded,
+            reviewer: (t.reviewed_by && reviewers.get(t.reviewed_by)?.display_name) || null,
+          }
+        : null,
+    };
+  });
 
   const ticketBody = (
     <div className="flex flex-col gap-2">
@@ -380,6 +405,9 @@ export default async function TicketDetailPage({
               triageState={ticket.triage_state}
               currentUserId={profile.id}
               fromFilter={fromFilter}
+              learned={
+                learnedExamples.length > 0 ? <LearnedFrom examples={learnedExamples} isAdmin={profile.role === "admin"} /> : null
+              }
             />
             <SharePanel
               ticketId={ticket.id}

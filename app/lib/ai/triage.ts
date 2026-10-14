@@ -11,6 +11,7 @@ import {
 import { failureReason, type RetryPolicy, type TriageFailureReason } from "@/app/lib/ai/retry-policy";
 import { retriesLabel } from "@/app/lib/triage-status";
 import { checkForIncident } from "@/app/lib/ai/incidents";
+import { LEARNING_MAX_EXAMPLES, LEARNING_SIMILARITY } from "@/app/lib/learning";
 import {
   applyTriageToTicket,
   claimTicketForTriage,
@@ -19,6 +20,7 @@ import {
   markTriageFailed,
   ownsTriageClaim,
   matchTickets,
+  matchCorrections,
   resetTriageStatus,
   upsertTicketEmbedding,
 } from "@/app/lib/db/triage";
@@ -63,13 +65,21 @@ export async function runTriage(ticketId: string, { retry = "background" }: { re
     } = await embed(`${ticket.subject.slice(0, 200)}\n\n${ticket.body.slice(0, MAX_BODY_CHARS)}`, { retry });
     await upsertTicketEmbedding(ticket.id, embedding, EMBEDDING_MODEL);
 
-    const candidates = await matchTickets(embedding, MAX_CANDIDATES, ticket.id);
+    // Duplicate candidates, and the team's past corrections on similar
+    // tickets (SUP-43) -- examples only; a failed lookup just means none.
+    const [candidates, corrections] = await Promise.all([
+      matchTickets(embedding, MAX_CANDIDATES, ticket.id),
+      matchCorrections(embedding, ticket.id, LEARNING_SIMILARITY, LEARNING_MAX_EXAMPLES).catch((err) => {
+        console.error(`[triage] ticket ${ticket.id}: past corrections lookup failed:`, err instanceof Error ? err.message : err);
+        return [];
+      }),
+    ]);
     const candidateIds = candidates.map((c) => c.ticket_id);
 
     // Two calls, in parallel: the assessment sees the candidate tickets to
     // link duplicates; the summary and reply come from a call that sees
     // only this ticket (SUP-31).
-    const requests = buildTriageRequests(ticket, candidates);
+    const requests = buildTriageRequests(ticket, candidates, corrections);
     // Once either call fails for good the run has failed: cancel the other
     // rather than let it keep retrying (and billing) for nothing.
     const sibling = new AbortController();
@@ -137,6 +147,8 @@ export async function runTriage(ticketId: string, { retry = "background" }: { re
       latency_ms: Date.now() - startedAt,
       cost_usd: embeddingCostUsd + assessment.usage.cost_usd + reply.usage.cost_usd,
       retry_count: retryCount,
+      learned_from: corrections.map((c) => c.ticket_id),
+      learned_examples: corrections.map(({ ticket_id, ai, corrected }) => ({ ticket_id, ai, corrected })),
     });
 
     const applied = await applyTriageToTicket(ticket.id, claimId, {

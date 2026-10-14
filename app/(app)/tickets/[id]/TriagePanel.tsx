@@ -47,6 +47,7 @@ export function TriagePanel({
   triageState,
   currentUserId,
   fromFilter,
+  learned,
 }: {
   ticketId: string;
   // Effective: a run stuck in pending/processing shows as "stalled".
@@ -61,6 +62,8 @@ export function TriagePanel({
   // The queue tab the agent arrived from, carried onto the duplicate/related
   // links so hopping between tickets doesn't lose the way back.
   fromFilter: QueueFilterKey;
+  // "Learned from N past corrections" (SUP-43), when this run used any.
+  learned?: React.ReactNode;
 }) {
   // With no key a re-run can't do anything (runTriage returns at once).
   const canRerun = aiConfigured && canRerunTriage(triageStatus);
@@ -189,6 +192,7 @@ export function TriagePanel({
               </p>
             </div>
           ) : null}
+          {learned}
           <p className="text-[10px] text-zinc-400 dark:text-zinc-600">
             {triage.model} · prompt {triage.prompt_version}
             {triage.latency_ms != null ? ` · ${triage.latency_ms} ms` : ""}

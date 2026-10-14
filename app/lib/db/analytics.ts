@@ -7,7 +7,7 @@ import { MAX_ROWS } from "@/app/lib/db/admin";
 const COLUMNS = `status, created_at, first_response_at, assignee_id,
   latest_triage:triage_results!ticket_id(frustration, is_escalation_risk),
   triage_state:ticket_triage_state(
-    priority, category, team, reviewed_at,
+    priority, category, team, reviewed_at, learning_excluded_at,
     reviewed_result:triage_results!reviewed_result_id(priority, category, team)
   )`;
 

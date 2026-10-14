@@ -73,6 +73,9 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
   is never stored without its index; an edit deletes and re-embeds all of its chunks.
 - Triage output is strictly advisory: it must never auto-change `ticketing.tickets.status` and
   must never send a reply to the customer without an agent/admin action.
+- Learning from corrections (`docs/learning.md`) feeds the assessment call past staff
+  corrections of similar tickets. It passes only scrubbed AI summaries and field values, never
+  another ticket's text or id, and never passes them to the reply call.
 - Incident detection (`docs/incidents.md`) follows the same rules:
   - an incident never changes ticket status by itself;
   - its update is posted only when staff press the button;

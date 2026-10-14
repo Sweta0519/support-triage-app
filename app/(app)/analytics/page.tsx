@@ -22,12 +22,17 @@ import { listStaffProfiles } from "@/app/lib/db/profiles";
 import { profileName } from "@/app/lib/people";
 import { MAX_ROWS } from "@/app/lib/db/admin";
 import { formatDuration, SLA_TARGET_MS } from "@/app/lib/sla";
-import { TRIAGE_PRIORITIES } from "@/app/lib/triage-fields";
+import { fieldLabel, TRIAGE_PRIORITIES } from "@/app/lib/triage-fields";
 import { linkClass, widePageClass } from "@/app/lib/styles";
-import { formatTicketNumber } from "@/app/lib/format";
+import { capitalize, formatTicketNumber } from "@/app/lib/format";
 import { Stars } from "@/app/components/Stars";
 import { listIncidentsSince } from "@/app/lib/db/incidents";
 import { summarizeIncidents } from "@/app/lib/incidents";
+import { acceptanceByCategory, acceptanceByWeek } from "@/app/lib/learning";
+import { acceptanceRows } from "@/app/lib/analytics";
+import { learnableCorrectionCount } from "@/app/lib/db/triage";
+
+const LEARNING_WEEKS = 8;
 
 const INCIDENT_ANALYTICS_DAYS = 30;
 
@@ -349,15 +354,19 @@ function SentimentBreakdown({ sentiment: s }: { sentiment: Sentiment }) {
 
 export default async function AnalyticsPage() {
   await requireAdmin();
-  const [{ recent, open, sampled: ticketsSampled }, staff, { ratings, sampled: ratingsSampled }, incidentRows] = await Promise.all([
+  const [{ recent, open, sampled: ticketsSampled }, staff, { ratings, sampled: ratingsSampled }, incidentRows, usableCorrections] = await Promise.all([
     listAnalyticsTickets(),
     listStaffProfiles(),
     listRatingsForAnalytics(),
     listIncidentsSince(INCIDENT_ANALYTICS_DAYS),
+    learnableCorrectionCount(),
   ]);
   const incidents = summarizeIncidents(incidentRows);
-  const sampled = ticketsSampled || ratingsSampled;
   const now = new Date();
+  const acceptance = acceptanceRows(recent);
+  const weekly = acceptanceByWeek(acceptance, LEARNING_WEEKS, now);
+  const byCategory = acceptanceByCategory(acceptance);
+  const sampled = ticketsSampled || ratingsSampled;
   const a = computeAnalytics(recent, now, open);
   const team = computeTeamPerformance({
     open,
@@ -486,6 +495,76 @@ export default async function AnalyticsPage() {
             </div>
           </div>
         )}
+      </section>
+
+      <section className={`${cardClasses} flex flex-col gap-3`}>
+        <div>
+          <h2 className={sectionTitleClasses}>Is the AI learning?</h2>
+          <p className={`mt-1 ${mutedClasses}`}>
+            How often staff accepted the AI&apos;s triage as it was, by the week of the review and by category
+            {ticketsSampled ? " (over the most recent tickets)" : ""}. Every correction becomes an example the AI sees on
+            similar tickets later; {usableCorrections} {usableCorrections === 1 ? "correction is" : "corrections are"}{" "}
+            available to learn from now.
+          </p>
+        </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <table className="text-xs">
+            <caption className="sr-only">Acceptance by week of review</caption>
+            <thead>
+              <tr className="text-left text-zinc-500">
+                <th className="py-1 font-medium">Week of</th>
+                <th className="py-1 font-medium">Accepted as is</th>
+              </tr>
+            </thead>
+            <tbody>
+              {weekly.map((w) => (
+                <tr key={w.week} className="border-t border-black/[.06] dark:border-white/[.08]">
+                  <td className="py-1.5 tabular-nums">{w.week}</td>
+                  <td className="py-1.5">
+                    {w.reviewed === 0 ? (
+                      <span className="text-zinc-400">no reviews</span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <RateBar part={w.accepted} whole={w.reviewed} />
+                        <span className="tabular-nums">{formatRate(w.accepted, w.reviewed)} ({w.accepted}/{w.reviewed})</span>
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <table className="text-xs">
+            <caption className="sr-only">Acceptance by category</caption>
+            <thead>
+              <tr className="text-left text-zinc-500">
+                <th className="py-1 font-medium">Category</th>
+                <th className="py-1 font-medium">Accepted as is</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byCategory.length === 0 ? (
+                <tr>
+                  <td colSpan={2} className="py-1.5 text-zinc-400">
+                    No reviews yet.
+                  </td>
+                </tr>
+              ) : (
+                byCategory.map((c) => (
+                  <tr key={c.category} className="border-t border-black/[.06] dark:border-white/[.08]">
+                    <td className="py-1.5">{capitalize(fieldLabel(c.category))}</td>
+                    <td className="py-1.5">
+                      <span className="flex items-center gap-2">
+                        <RateBar part={c.accepted} whole={c.reviewed} />
+                        <span className="tabular-nums">{formatRate(c.accepted, c.reviewed)} ({c.accepted}/{c.reviewed})</span>
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className={`${cardClasses} flex flex-col gap-3`}>

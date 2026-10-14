@@ -2,6 +2,7 @@
 // that app/lib/db/analytics.ts fetches, so the numbers can be tested
 // without a database.
 
+import type { AcceptanceRow } from "@/app/lib/learning";
 import type { TicketStatus } from "@/app/lib/db/tickets";
 import { isFrustrated } from "@/app/lib/queue";
 import { computeSla } from "@/app/lib/sla";
@@ -19,6 +20,8 @@ export type AnalyticsTicketRow = {
   triage_state:
     | (TriageFields & {
         reviewed_at: string | null;
+        // Set when an admin stopped the AI learning from this correction (SUP-43).
+        learning_excluded_at?: string | null;
         // The AI run the reviewer was shown; null for a review made with no
         // AI run (a "manual" triage) or for an unreviewed ticket.
         reviewed_result: TriageFields | null;
@@ -351,4 +354,22 @@ export function formatRate(part: number, whole: number): string {
   if (pct === 100 && part < whole) return ">99%";
   if (pct === 0 && part > 0) return "<1%";
   return `${pct}%`;
+}
+
+// SUP-43: each reviewed ticket with an AI run, as the reviewer's values
+// against the AI's, for the week-by-week and per-category acceptance. (How
+// many corrections the AI can learn from comes from the database:
+// learnableCorrectionCount, over every ticket, not this sample.)
+export function acceptanceRows(rows: AnalyticsTicketRow[]): AcceptanceRow[] {
+  return rows.flatMap((row) => {
+    const state = row.triage_state;
+    if (!state?.reviewed_at || !state.reviewed_result) return [];
+    return [
+      {
+        reviewed_at: state.reviewed_at,
+        ai: state.reviewed_result,
+        corrected: { priority: state.priority, category: state.category, team: state.team },
+      },
+    ];
+  });
 }

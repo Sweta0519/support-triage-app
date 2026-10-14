@@ -98,6 +98,7 @@ Built since the core above, each through a reviewed PR (see Development process)
 | Team labels, editable on the ticket and on the cards | #42, #43 |
 | Model retries: none for interactive calls, bounded backoff for background triage, and the failure reason shown | #44 |
 | **Incident detection:** a burst of similar tickets is grouped into one incident, with a staff banner, an incident page and an AI-drafted update posted to every ticket on staff action (`docs/incidents.md`) | #52 |
+| **Learning from corrections:** staff corrections become examples the AI sees on similar tickets; the panel shows what it learned from, admins can exclude one, and Analytics tracks acceptance by week (`docs/learning.md`) | #53 |
 | Staff banner when AI triage is off or failing; untriaged tickets marked as needing manual triage | #48 |
 
 ## How it compares
@@ -131,6 +132,9 @@ What this app puts first:
   incident automatically. Staff get a banner
   and an AI-drafted update, written without anyone's personal details, that they can post to all
   of those tickets at once.
+- **It learns from the team's corrections:** each time staff correct the AI's triage, the AI is
+  shown that correction on similar tickets later, as an AI summary, never the ticket's text. The
+  panel says which corrections it used, and Analytics shows acceptance week by week.
 - **Sage:** a private assistant for each staff member that answers from their own notes and
   cites them. Nobody else's notes can reach it.
 
