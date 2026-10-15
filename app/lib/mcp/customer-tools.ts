@@ -22,8 +22,7 @@ import {
 } from "@/app/lib/db/tickets";
 import { formatTicketNumber } from "@/app/lib/format";
 import type { PersonCard } from "@/app/lib/people";
-import { SITE_URL } from "@/app/lib/site-url";
-import { guarded, toolError, toolResult, untrusted } from "./results";
+import { guarded, ticketNumberInput, ticketUrl, toolError, toolResult, untrusted } from "./results";
 
 // The customer's tools (SUP-55): the same four things the web app lets a
 // customer do with their tickets, through the same app/lib/db/ functions,
@@ -36,11 +35,6 @@ import { guarded, toolError, toolResult, untrusted } from "./results";
 const STATUS_FILTERS = ["open", ...TICKET_STATUSES] as const;
 const LIST_LIMIT = 50;
 
-const ticketNumber = z
-  .number()
-  .int()
-  .positive()
-  .describe("The ticket's number, without the #: 1042 for ticket #1042.");
 
 // Who wrote a reply, as the web page shows it to the customer ("You",
 // "Sam (Support)", "Support team"). A display name is chosen by its owner,
@@ -90,7 +84,7 @@ export function registerCustomerTools(server: McpServer, profile: Profile) {
       return toolResult({
         number: formatTicketNumber(ticket.number),
         status: "new",
-        url: `${SITE_URL}/tickets/${ticket.id}`,
+        url: ticketUrl(ticket.id),
       });
     })
   );
@@ -131,7 +125,7 @@ export function registerCustomerTools(server: McpServer, profile: Profile) {
       description:
         "One of the signed-in customer's tickets: its status, description and the conversation with support, " +
         "as the customer sees it on the web.",
-      inputSchema: { number: ticketNumber },
+      inputSchema: { number: ticketNumberInput },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     guarded(async ({ number }) => {
@@ -153,7 +147,7 @@ export function registerCustomerTools(server: McpServer, profile: Profile) {
           at: c.created_at,
           message: untrusted(c.body),
         })),
-        url: `${SITE_URL}/tickets/${ticket.id}`,
+        url: ticketUrl(ticket.id),
       });
     })
   );
@@ -166,7 +160,7 @@ export function registerCustomerTools(server: McpServer, profile: Profile) {
         "Adds a reply from the signed-in customer to one of their tickets, visible to the support team, " +
         "as on the web. Closed tickets can't be replied to: file a new ticket instead.",
       inputSchema: {
-        number: ticketNumber,
+        number: ticketNumberInput,
         message: z.string().describe(`The reply (at most ${COMMENT_MAX_LENGTH.toLocaleString()} characters).`),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -190,7 +184,7 @@ export function registerCustomerTools(server: McpServer, profile: Profile) {
         if (err instanceof RateLimitError) return toolError(RATE_LIMITED_MESSAGE);
         throw err;
       }
-      return toolResult({ replied_to: formatTicketNumber(number), url: `${SITE_URL}/tickets/${ticket.id}` });
+      return toolResult({ replied_to: formatTicketNumber(number), url: ticketUrl(ticket.id) });
     })
   );
 }

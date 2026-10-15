@@ -492,7 +492,8 @@ export default async function WelcomePage() {
                 ))}
               </ol>
               <p className={`mt-8 max-w-xl text-[15px] leading-[1.6] ${graphite}`}>
-                Customers can file, follow and reply to their tickets today. Tools for support agents are coming next.
+                Customers file, follow and reply to their tickets. Support agents work the queue: read a ticket with the
+                AI&apos;s triage, claim it, reply, and move it on. The AI&apos;s draft reply is only ever a suggestion.
               </p>
             </div>
             <div className="min-w-0">

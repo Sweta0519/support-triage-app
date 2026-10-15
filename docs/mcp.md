@@ -155,12 +155,37 @@ their own tickets, through the same `app/lib/db/` functions, validation and rate
 - **Never triage or internal notes.** The tools don't ask for them, and RLS wouldn't return them
   to a customer anyway.
 - **Staff don't get these tools.** Filing a ticket is the customer's action on the web too.
-  Staff tools come in SUP-56.
 
 - **Statuses** come back as the values the filter accepts (`in_progress`, not "in progress"), so
   an assistant can pass what it read straight back.
 - **Reply authors** are `{"role": "you" | "support" | "deleted account"}`, and a staff member's
   chosen display name, when there is one, is in `name`, wrapped as untrusted.
+
+**Agents and admins (SUP-56, `app/lib/mcp/staff-tools.ts`)** get the queue and the actions on a
+ticket, through the same functions as the web app. As there, RLS decides what they see: agents
+their own and unassigned tickets, admins every ticket.
+
+| Tool | Does |
+|---|---|
+| `list_queue(tab?, status?, sort?, search?)` | The queue as on `/queue`: tabs `all`, `unassigned`, `mine`, `flagged`; a status; sort `sla` (most urgent), `newest` or `oldest`; search by `#number`, subject, AI summary, category or team. Each ticket has its SLA state and the AI's flags. 50 at most, with `more`. |
+| `get_ticket(number)` | The staff view: the description, the whole conversation including internal notes, team labels, and the AI's triage (priority and why, category, team, duplicate and related tickets as numbers, escalation risk, what's still needed, and the draft reply marked `suggestion_only`). |
+| `claim_ticket(number)` | The atomic claim (`UPDATE ... WHERE assignee_id IS NULL`): a lost race says so. |
+| `post_reply(number, message, internal?)` | A comment as the staff member, like "Add comment". Public goes to the customer; `internal: true` is a staff-only note. |
+| `set_status(number, status)` | The board's move (`moveTicketAs`): allowed transitions only, and moving an unassigned ticket to assigned or in progress claims it. |
+| `review_triage(number, assessment_id, reviewed_at, priority?, category?, team?, confirm?)` | Confirms or corrects the fields, as the triage panel does. It takes back the `assessment_id` and `reviewed_at` that `get_ticket` returned, as the web form does with what it showed, so a newer AI run or someone else's review since then is refused rather than overwritten. Fields left out keep their values; with none, `confirm: true` is required. |
+
+- **Triage stays advisory.** Reading a ticket, draft reply included, sends nothing. Only
+  `post_reply`, an explicit staff action, reaches the customer.
+- **Not available means not yours.** A ticket an agent can't see gets the same answer as one that
+  doesn't exist.
+- **Admin-only actions** (role changes, learning exclusions) aren't offered.
+- **Every role, every request.** The tool set is built from the role in `profiles` on each
+  request, so a demoted agent loses the staff tools on their next call. Only `agent` and `admin`
+  get them; any other role gets none.
+- **People** are `{"you": true}`, `{"name": {untrusted_text}}` (or `null` when they have no display
+  name), or `{"deleted_account": true}`.
+- **`reviewed`** is true only when the current AI assessment has been reviewed. A newer run
+  makes it false again.
 
 **Errors.** Refusals the person can act on (a validation message, a rate limit, a closed ticket,
 a ticket that isn't theirs) come back as tool errors in words (`isError`). If a tool fails on our

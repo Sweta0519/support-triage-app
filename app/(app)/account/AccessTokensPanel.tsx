@@ -27,11 +27,9 @@ function tokenState(t: AccessToken): "revoked" | "expired" | "active" {
 // secret is shown once, here), see when each was last used, revoke them.
 export function AccessTokensPanel({
   tokens,
-  isStaff,
   mcpEndpoint,
 }: {
   tokens: AccessToken[];
-  isStaff: boolean;
   mcpEndpoint: string;
 }) {
   const [state, action, pending] = useActionState(createAccessTokenAction, undefined);
@@ -54,9 +52,6 @@ export function AccessTokensPanel({
             the homepage
           </Link>
           ).{" "}
-          {isStaff
-            ? "For now the tools are for customers: tools for working the queue are coming soon, so a staff token can only say who you are. "
-            : null}
           Treat a token like a password, and revoke it if it may have leaked.
         </p>
       </div>
