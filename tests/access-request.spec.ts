@@ -121,6 +121,37 @@ test("the first sign-in files exactly one access-request ticket, as the customer
   }
 });
 
+test("signing up through Request access files the request straight away when the email is confirmed automatically", async ({ page }) => {
+  // This project confirms emails automatically, so sign-up signs the person
+  // in at once and no email is sent (SUP-69).
+  const email = `e2e-access-signup-${Date.now()}-${randomUUID().slice(0, 8)}@example.com`;
+  const admin = service();
+  try {
+    await page.goto("/signup?access=1");
+    await page.getByPlaceholder("Email").fill(email);
+    await page.getByPlaceholder("Password").fill(`Pw-${randomUUID()}`);
+    await page.getByLabel("Team or company name").fill("Globex Support");
+    await page.getByLabel("Team size").selectOption("21-100");
+    await page.getByLabel("What would you use it for?").fill("Triage a busy inbox.");
+    await page.getByRole("button", { name: "Request access" }).click();
+
+    await expect(page).toHaveURL(/\/tickets\?requested=1$/, { timeout: 15_000 });
+    await expect(page.getByRole("status")).toContainText("Thanks, we've got your request.");
+    const { data: profile } = await admin.from("profiles").select("id, role, access_request_status").eq("email", email).single();
+    expect(profile).toMatchObject({ role: "customer", access_request_status: "pending" });
+    const { data: tickets } = await admin.from("tickets").select("subject, body").eq("customer_id", profile!.id);
+    expect(tickets).toEqual([
+      expect.objectContaining({ subject: "Access request: Globex Support", body: expect.stringContaining("Team size: 21-100") }),
+    ]);
+  } finally {
+    const { data: profile } = await admin.from("profiles").select("id").eq("email", email).maybeSingle();
+    if (profile) {
+      await admin.from("tickets").delete().eq("customer_id", profile.id);
+      await admin.auth.admin.deleteUser(profile.id);
+    }
+  }
+});
+
 test("the email confirmation link files it too", async ({ page }) => {
   const user = await newAccount({ access_request: { team: "", size: "", purpose: "" } });
   try {
