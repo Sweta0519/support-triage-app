@@ -148,6 +148,29 @@ const ALSO = [
   { name: "Customer ratings", text: "Customers rate resolved tickets, and admins see the results for each person on the team." },
 ];
 
+// "Safe by design" (SUP-63): each line is how the app actually works
+// (CLAUDE.md: advisory triage, RLS on every table, untrusted ticket text in
+// a delimited prompt with strict JSON-schema output). CLAUDE.md points back
+// here, so a change to any of those keeps this copy true.
+const SAFETY = [
+  {
+    title: "The AI only suggests",
+    text: "It never changes a ticket's status and never replies to a customer. A person on your team does both.",
+  },
+  {
+    title: "Customers see only their own tickets",
+    // The one exception is a status page staff choose to publish (read via
+    // the service role by token), so the copy says so.
+    text: "Enforced by the database itself, with row-level security on every table. The only way a ticket is seen outside its owner's account is a read-only status page that staff choose to publish.",
+  },
+  {
+    // Mitigations, not a guarantee against prompt injection: worded as what
+    // the code does (delimited prompt, strict JSON schema, validated output).
+    title: "Ticket text is information, not instructions",
+    text: "The AI is told to treat what customers write as information to assess, never as instructions to follow, and its answers are checked against a strict format.",
+  },
+];
+
 // The page's sections, linked from the header.
 const SECTIONS = [
   { href: "#demo", label: "Demo" },
@@ -360,6 +383,32 @@ export default async function WelcomePage() {
                 </div>
               ))}
             </dl>
+          </div>
+        </section>
+
+        <section aria-labelledby="safe" className="border-t border-[#E3E5EA]">
+          <div className={`mx-auto w-full max-w-6xl px-5 sm:px-8 ${sectionPad}`}>
+            <h2 id="safe" className={sectionHeading}>
+              Safe by design
+            </h2>
+            <ul className="mt-10 grid gap-x-12 gap-y-8 md:grid-cols-3">
+              {SAFETY.map((item) => (
+                <li key={item.title} className="border-t border-[#E3E5EA] pt-5">
+                  <h3 className="text-balance text-[18px] font-semibold leading-snug">{item.title}</h3>
+                  <p className={`mt-2 text-pretty text-[15px] leading-[1.6] ${graphite}`}>{item.text}</p>
+                </li>
+              ))}
+            </ul>
+            <p className={`mt-10 text-[15px] ${graphite}`}>
+              What we collect and why is in the{" "}
+              <Link
+                href="/privacy"
+                className="rounded font-medium text-[#15171C] underline underline-offset-4 hover:text-[#4F46E5] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]"
+              >
+                privacy policy
+              </Link>
+              .
+            </p>
           </div>
         </section>
 

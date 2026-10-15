@@ -81,6 +81,10 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
   - its update is posted only when staff press the button;
   - the incident note's model call sees only the grouped tickets' AI summaries, never raw ticket
     text, and the draft customer update is sanitized of customer-specific details.
+- The public homepage's "Safe by design" strip (`SAFETY` in `app/welcome/page.tsx`) states three of
+  these rules to visitors: advisory triage (no status changes or replies by the AI), RLS on every
+  table (with published status pages as the one exception), and untrusted ticket text with
+  strict-format output. Changing any of them means updating that copy (and its test) too.
 - Ticket bodies are untrusted input to the model (prompt injection risk). The triage prompt must
   keep instructions and untrusted ticket content clearly delimited, use `response_format:
   json_schema` with `strict: true`, and restrict any duplicate/related-ticket IDs the model can
