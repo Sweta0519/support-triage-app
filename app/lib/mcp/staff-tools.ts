@@ -22,10 +22,9 @@ import { formatTicketNumber } from "@/app/lib/format";
 import type { PersonCard } from "@/app/lib/people";
 import { matchesSearch, QUEUE_SORTS, QUEUE_STATUSES, sortQueue, type QueueSort } from "@/app/lib/queue";
 import { computeSla } from "@/app/lib/sla";
-import { SITE_URL } from "@/app/lib/site-url";
 import { moveTicketAs } from "@/app/lib/ticket-moves";
 import { isOneOf, TRIAGE_CATEGORIES, TRIAGE_PRIORITIES, TRIAGE_TEAMS } from "@/app/lib/triage-fields";
-import { guarded, toolError, toolResult, untrusted } from "./results";
+import { guarded, ticketNumberInput, ticketUrl, toolError, toolResult, untrusted } from "./results";
 
 // The staff tools (SUP-56): the queue, a ticket with the AI's triage, and
 // the actions an agent takes on it, through the same app/lib/db/ functions
@@ -40,11 +39,6 @@ import { guarded, toolError, toolResult, untrusted } from "./results";
 const QUEUE_TABS = ["all", "unassigned", "mine", "flagged"] as const;
 const LIST_LIMIT = 50;
 
-const ticketNumber = z
-  .number()
-  .int()
-  .positive()
-  .describe("The ticket's number, without the #: 1042 for ticket #1042.");
 
 // Same answer for a ticket that doesn't exist and one this person can't see
 // (an agent and another agent's ticket), as on the web.
@@ -141,8 +135,9 @@ export function registerStaffTools(server: McpServer, profile: Profile) {
         "One ticket as staff see it: the customer's message, the whole conversation including internal notes, " +
         "team labels, and the AI's triage (category, priority and why, team, duplicate or related tickets, " +
         "escalation risk, what's still needed, and a draft reply). The draft is a suggestion only: nothing is " +
-        "sent to the customer unless you call post_reply.",
-      inputSchema: { number: ticketNumber },
+        "sent to the customer unless you call post_reply. triage.assessment_id and triage.reviewed_at are what " +
+        "review_triage needs to record a review of what you read here.",
+      inputSchema: { number: ticketNumberInput },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     guarded(async ({ number }) => {
@@ -176,7 +171,13 @@ export function registerStaffTools(server: McpServer, profile: Profile) {
           priority: state?.priority ?? null,
           category: state?.category ?? null,
           team: state?.team ?? null,
-          reviewed: state?.reviewed_at != null,
+          // Reviewed against this assessment: a newer AI run since makes it
+          // unreviewed again, as on the ticket page.
+          reviewed: state?.reviewed_at != null && (triage ? state.reviewed_result_id === triage.id : true),
+          // What this read showed, for review_triage to pass back: a newer AI
+          // run or someone else's review after it is then refused.
+          assessment_id: triage?.id ?? null,
+          reviewed_at: state?.reviewed_at ?? null,
           ...(triage
             ? {
                 summary: untrusted(triage.summary),
@@ -195,13 +196,13 @@ export function registerStaffTools(server: McpServer, profile: Profile) {
             : {}),
         },
         conversation: comments.map((c) => ({
-          from: personRef(c.author_id, profile.id, people) ?? { name: null },
+          from: personRef(c.author_id, profile.id, people) ?? { deleted_account: true },
           by_customer: c.author_id === ticket.customer_id,
           internal: c.is_internal,
           at: c.created_at,
           message: untrusted(c.body),
         })),
-        url: `${SITE_URL}/tickets/${ticket.id}`,
+        url: ticketUrl(ticket.id),
       });
     })
   );
@@ -213,7 +214,7 @@ export function registerStaffTools(server: McpServer, profile: Profile) {
       description:
         "Assigns an unassigned ticket to you, as the Claim button does. If someone else claims it first, " +
         "this says so instead.",
-      inputSchema: { number: ticketNumber },
+      inputSchema: { number: ticketNumberInput },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     guarded(async ({ number }) => {
@@ -237,8 +238,11 @@ export function registerStaffTools(server: McpServer, profile: Profile) {
         "Adds a comment to a ticket as you, like \"Add comment\" on the ticket page. A public reply is sent to " +
         "the customer; set internal to true for a note only staff can see. Use this only when you mean to send it.",
       inputSchema: {
-        number: ticketNumber,
-        message: z.string().describe(`The reply or note (at most ${COMMENT_MAX_LENGTH.toLocaleString()} characters).`),
+        number: ticketNumberInput,
+        message: z
+          .string()
+          .max(COMMENT_MAX_LENGTH * 2)
+          .describe(`The reply or note (at most ${COMMENT_MAX_LENGTH.toLocaleString()} characters).`),
         internal: z.boolean().optional().describe("true: an internal note, never shown to the customer. Default false."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -259,7 +263,7 @@ export function registerStaffTools(server: McpServer, profile: Profile) {
         if (err instanceof RateLimitError) return toolError(RATE_LIMITED_MESSAGE);
         throw err;
       }
-      return toolResult({ posted_to: formatTicketNumber(number), internal, url: `${SITE_URL}/tickets/${ticket.id}` });
+      return toolResult({ posted_to: formatTicketNumber(number), internal, url: ticketUrl(ticket.id) });
     })
   );
 
@@ -272,7 +276,7 @@ export function registerStaffTools(server: McpServer, profile: Profile) {
         "assigned to in_progress or back to triaged; in_progress to resolved or back to assigned; resolved to " +
         "closed or back to in_progress. Moving an unassigned ticket to assigned or in_progress claims it for you.",
       inputSchema: {
-        number: ticketNumber,
+        number: ticketNumberInput,
         status: z.enum(TICKET_STATUSES).describe("The status to move it to."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -294,28 +298,37 @@ export function registerStaffTools(server: McpServer, profile: Profile) {
     {
       title: "Confirm or correct the AI's triage",
       description:
-        "Records your review of the AI's priority, category and team, as the triage panel does. Leave a field out " +
-        "to keep its current value; with none given, this confirms the AI's assessment as it is.",
+        "Records your review of the ticket's priority, category and team, as the triage panel does. Read the ticket " +
+        "with get_ticket first and pass back its triage.assessment_id and triage.reviewed_at: if the AI has run " +
+        "again or someone else has reviewed it since, the review is refused, so you can read it again. Give the " +
+        "fields to change (others keep the values you read), or confirm: true to accept them as they are.",
       inputSchema: {
-        number: ticketNumber,
+        number: ticketNumberInput,
+        assessment_id: z.string().uuid().nullable().describe("triage.assessment_id from get_ticket (null if it had none)."),
+        reviewed_at: z.string().nullable().describe("triage.reviewed_at from get_ticket (null if it was unreviewed)."),
         priority: z.enum(TRIAGE_PRIORITIES).optional(),
         category: z.enum(TRIAGE_CATEGORIES).optional(),
         team: z.enum(TRIAGE_TEAMS).optional(),
+        confirm: z.boolean().optional().describe("true, with no fields given: confirm the values as they are."),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
-    guarded(async ({ number, priority, category, team }) => {
+    guarded(async ({ number, assessment_id, reviewed_at, priority, category, team, confirm }) => {
+      if (!priority && !category && !team && !confirm) {
+        return toolError("Give the fields to change, or confirm: true to accept them as they are.");
+      }
+      if (reviewed_at !== null && Number.isNaN(Date.parse(reviewed_at))) return toolError("reviewed_at isn't a time from get_ticket.");
       const ticket = await getTicketForStaffByNumber(number);
       if (!ticket) return notFound(number);
       const fields = reviewFields(ticket, { priority, category, team });
       if (!fields) {
         return toolError("The AI hasn't set every field yet: give a priority, category and team to review it by hand.");
       }
-      const latest = await getLatestTriageResult(ticket.id);
       try {
-        // Against the run and the review this tool just read, so a newer
-        // AI run or someone else's review in between is refused, not overwritten.
-        const outcome = await reviewTriage(ticket.id, latest?.id ?? null, ticket.triage_state?.reviewed_at ?? null, fields);
+        // Against the run and the review the caller read (get_ticket), as
+        // the web form does: if either changed since, review_triage() refuses
+        // and the caller reads it again, rather than overwriting what's newer.
+        const outcome = await reviewTriage(ticket.id, assessment_id, reviewed_at, fields);
         return toolResult({ ticket: formatTicketNumber(number), outcome, ...fields });
       } catch (err) {
         if (!(err instanceof TriageReviewError)) throw err;

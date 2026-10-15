@@ -47,7 +47,8 @@ export function createMcpServer(profile: Profile): McpServer {
   // Tools for each role: customers work their own tickets (SUP-55), staff
   // work the queue (SUP-56).
   if (profile.role === "customer") registerCustomerTools(server, profile);
-  else registerStaffTools(server, profile);
+  // Named roles only, so a role added later gets no staff tools by default.
+  else if (profile.role === "agent" || profile.role === "admin") registerStaffTools(server, profile);
 
   return server;
 }

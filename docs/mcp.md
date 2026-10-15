@@ -156,6 +156,11 @@ their own tickets, through the same `app/lib/db/` functions, validation and rate
   to a customer anyway.
 - **Staff don't get these tools.** Filing a ticket is the customer's action on the web too.
 
+- **Statuses** come back as the values the filter accepts (`in_progress`, not "in progress"), so
+  an assistant can pass what it read straight back.
+- **Reply authors** are `{"role": "you" | "support" | "deleted account"}`, and a staff member's
+  chosen display name, when there is one, is in `name`, wrapped as untrusted.
+
 **Agents and admins (SUP-56, `app/lib/mcp/staff-tools.ts`)** get the queue and the actions on a
 ticket, through the same functions as the web app. As there, RLS decides what they see: agents
 their own and unassigned tickets, admins every ticket.
@@ -167,7 +172,7 @@ their own and unassigned tickets, admins every ticket.
 | `claim_ticket(number)` | The atomic claim (`UPDATE ... WHERE assignee_id IS NULL`): a lost race says so. |
 | `post_reply(number, message, internal?)` | A comment as the staff member, like "Add comment". Public goes to the customer; `internal: true` is a staff-only note. |
 | `set_status(number, status)` | The board's move (`moveTicketAs`): allowed transitions only, and moving an unassigned ticket to assigned or in progress claims it. |
-| `review_triage(number, priority?, category?, team?)` | Confirms or corrects the AI's fields, as the triage panel does. Fields left out keep their current value. A newer AI run, or someone else's review in between, is refused rather than overwritten. |
+| `review_triage(number, assessment_id, reviewed_at, priority?, category?, team?, confirm?)` | Confirms or corrects the fields, as the triage panel does. It takes back the `assessment_id` and `reviewed_at` that `get_ticket` returned, as the web form does with what it showed, so a newer AI run or someone else's review since then is refused rather than overwritten. Fields left out keep their values; with none, `confirm: true` is required. |
 
 - **Triage stays advisory.** Reading a ticket, draft reply included, sends nothing. Only
   `post_reply`, an explicit staff action, reaches the customer.
@@ -175,12 +180,12 @@ their own and unassigned tickets, admins every ticket.
   doesn't exist.
 - **Admin-only actions** (role changes, learning exclusions) aren't offered.
 - **Every role, every request.** The tool set is built from the role in `profiles` on each
-  request, so a demoted agent loses the staff tools on their next call.
-
-- **Statuses** come back as the values the filter accepts (`in_progress`, not "in progress"), so
-  an assistant can pass what it read straight back.
-- **Reply authors** are `{"role": "you" | "support" | "deleted account"}`, and a staff member's
-  chosen display name, when there is one, is in `name`, wrapped as untrusted.
+  request, so a demoted agent loses the staff tools on their next call. Only `agent` and `admin`
+  get them; any other role gets none.
+- **People** are `{"you": true}`, `{"name": {untrusted_text}}` (or `null` when they have no display
+  name), or `{"deleted_account": true}`.
+- **`reviewed`** is true only when the current AI assessment has been reviewed. A newer run
+  makes it false again.
 
 **Errors.** Refusals the person can act on (a validation message, a rate limit, a closed ticket,
 a ticket that isn't theirs) come back as tool errors in words (`isError`). If a tool fails on our
