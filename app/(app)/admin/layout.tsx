@@ -31,6 +31,9 @@ export default async function AdminLayout({
           <Link href="/admin/users" className={navLinkClasses}>
             Users
           </Link>
+          <Link href="/admin/access-requests" className={navLinkClasses}>
+            Access requests
+          </Link>
         </nav>
       </div>
       {children}

@@ -17,3 +17,108 @@ export async function fileAccessRequestIfPending(): Promise<{ id: string; number
   const row = (data as { ticket_id: string; ticket_number: number }[] | null)?.[0];
   return row ? { id: row.ticket_id, number: row.ticket_number } : null;
 }
+
+// ---- Admins: reviewing and deciding requests (SUP-68) ---------------------
+
+export type AccessRequestStatus = "pending" | "granted" | "declined";
+
+export type AccessRequest = {
+  userId: string;
+  email: string;
+  name: string | null;
+  role: string;
+  requestedAt: string;
+  status: AccessRequestStatus;
+  ticket: { id: string; number: number; body: string } | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+};
+
+// How many requests are waiting, for the admin sidebar. Only admins can see
+// other people's profiles (RLS), so for anyone else this is 0.
+export async function countPendingAccessRequests(): Promise<number> {
+  const supabase = await createServerSupabaseClient();
+  const { count, error } = await supabase
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .eq("access_request_status", "pending");
+  if (error) {
+    throw new Error(error.message);
+  }
+  return count ?? 0;
+}
+
+// Every request, newest first: the pending ones and the history. Admins
+// only, through RLS on profiles and tickets.
+export async function listAccessRequests(): Promise<AccessRequest[]> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select(
+      "id, email, full_name, role, access_requested_at, access_request_status, access_decided_by, access_decided_at, ticket:tickets!profiles_access_request_ticket_id_fkey(id, number, body)"
+    )
+    .not("access_request_status", "is", null)
+    .order("access_requested_at", { ascending: false });
+  if (error) {
+    throw new Error(error.message);
+  }
+  type Row = {
+    id: string;
+    email: string;
+    full_name: string | null;
+    role: string;
+    access_requested_at: string;
+    access_request_status: AccessRequestStatus;
+    access_decided_by: string | null;
+    access_decided_at: string | null;
+    ticket: { id: string; number: number; body: string } | null;
+  };
+  return (data as unknown as Row[]).map((r) => ({
+    userId: r.id,
+    email: r.email,
+    name: r.full_name,
+    role: r.role,
+    requestedAt: r.access_requested_at,
+    status: r.access_request_status,
+    ticket: r.ticket,
+    decidedBy: r.access_decided_by,
+    decidedAt: r.access_decided_at,
+  }));
+}
+
+export class AccessDecisionError extends Error {
+  constructor(readonly reason: "not_pending" | "not_allowed" | "own_request") {
+    super(`decide_access_request refused: ${reason}`);
+  }
+}
+
+// Grants (makes them an agent) or declines a pending request, replying on
+// and resolving its ticket: ticketing.decide_access_request() does it all,
+// and checks the caller is an admin.
+export async function decideAccessRequest(userId: string, grant: boolean): Promise<"granted" | "declined"> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("decide_access_request", { p_user: userId, p_grant: grant });
+  if (error) {
+    if (error.message === "not_pending") throw new AccessDecisionError("not_pending");
+    if (error.message === "own_request") throw new AccessDecisionError("own_request");
+    if (error.code === "42501") throw new AccessDecisionError("not_allowed");
+    throw new Error(error.message);
+  }
+  return data as "granted" | "declined";
+}
+
+// The pending access request this ticket belongs to, if any, for the
+// admin's buttons on the ticket page. Admins only (RLS on profiles).
+export async function getPendingAccessRequestForTicket(ticketId: string): Promise<{ userId: string } | null> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("access_request_ticket_id", ticketId)
+    .eq("access_request_status", "pending")
+    .maybeSingle();
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data ? { userId: data.id } : null;
+}

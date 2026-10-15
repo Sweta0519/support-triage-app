@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 
 import { requireAdmin } from "@/app/lib/auth/session";
 import { isAppRole, setUserRole } from "@/app/lib/db/profiles";
+import { AccessDecisionError, decideAccessRequest } from "@/app/lib/db/access-requests";
+import { isUuid } from "@/app/lib/db/tickets";
 
 // Maps the database's exceptions to the short codes the users page renders.
 // The DB is the enforcement; this is just the friendly message.
@@ -43,4 +45,33 @@ export async function setRoleAction(formData: FormData) {
   revalidatePath("/admin/users");
   revalidatePath("/queue");
   redirect("/admin/users?saved=1");
+}
+
+// Grant or decline an access request (SUP-68), from the Access requests page
+// or the request's ticket. decide_access_request() checks the caller is an
+// admin and that the request is still pending.
+export async function decideAccessRequestAction(
+  userId: string,
+  grant: boolean
+): Promise<{ ok: true; outcome: "granted" | "declined" } | { ok: false; error: string }> {
+  await requireAdmin();
+  if (!isUuid(userId) || typeof grant !== "boolean") return { ok: false, error: "That request can't be found." };
+  try {
+    const outcome = await decideAccessRequest(userId, grant);
+    return { ok: true, outcome };
+  } catch (err) {
+    if (!(err instanceof AccessDecisionError)) throw err;
+    return {
+      ok: false,
+      error:
+        err.reason === "not_pending"
+          ? "This request has already been decided."
+          : err.reason === "own_request"
+            ? "You can't decide your own request."
+            : "Only admins can decide access requests.",
+    };
+  } finally {
+    // The count, the lists, the ticket and the person's role all changed.
+    revalidatePath("/", "layout");
+  }
 }
