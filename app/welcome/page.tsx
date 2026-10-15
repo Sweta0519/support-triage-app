@@ -173,7 +173,8 @@ const ALSO = [
 
 // "Safe by design" (SUP-63): each line is how the app actually works
 // (CLAUDE.md: advisory triage, RLS on every table, untrusted ticket text in
-// a delimited prompt with strict JSON-schema output).
+// a delimited prompt with strict JSON-schema output). CLAUDE.md points back
+// here, so a change to any of those keeps this copy true.
 const SAFETY = [
   {
     title: "The AI only suggests",
@@ -181,11 +182,15 @@ const SAFETY = [
   },
   {
     title: "Customers see only their own tickets",
-    text: "Enforced by the database itself, with row-level security on every table, not just by the app's pages.",
+    // The one exception is a status page staff choose to publish (read via
+    // the service role by token), so the copy says so.
+    text: "Enforced by the database itself, with row-level security on every table. The only way a ticket is seen outside its owner's account is a read-only status page that staff choose to publish.",
   },
   {
-    title: "Ticket text can't give the AI orders",
-    text: "The AI treats what customers write as information, not instructions, and its answers must fit a strict format.",
+    // Mitigations, not a guarantee against prompt injection: worded as what
+    // the code does (delimited prompt, strict JSON schema, validated output).
+    title: "Ticket text is information, not instructions",
+    text: "The AI is told to treat what customers write as information to assess, never as instructions to follow, and its answers are checked against a strict format.",
   },
 ];
 
@@ -444,7 +449,10 @@ export default async function WelcomePage() {
             </ul>
             <p className={`mt-10 text-[15px] ${graphite}`}>
               What we collect and why is in the{" "}
-              <Link href="/privacy" className="font-medium text-[#15171C] underline underline-offset-4 hover:text-[#4F46E5]">
+              <Link
+                href="/privacy"
+                className="rounded font-medium text-[#15171C] underline underline-offset-4 hover:text-[#4F46E5] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]"
+              >
                 privacy policy
               </Link>
               .
