@@ -1,0 +1,25 @@
+/* The homepage's one orchestrated moment (docs/marketing/homepage-design.md):
+   the AI's read of the hero ticket fills in line by line, once, on load. */
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.reveal {
+  opacity: 0;
+  animation: appear 420ms cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+  animation-delay: calc(500ms + var(--step) * 260ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    animation: none;
+  }
+}

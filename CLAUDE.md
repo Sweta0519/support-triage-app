@@ -99,6 +99,8 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
   role-specific routes server-side. `proxy.ts` (`middleware.ts`) only refreshes sessions and
   redirects unauthenticated visitors -- it must never contain role/authorization logic (Next.js
   proxy is not an authorization layer).
+- The one other proxy rule: a signed-out visitor at `/` is rewritten to the public homepage
+  (`app/welcome/`, SUP-48), so the address stays `/`. Signed-in users get the app at `/`.
 - A user can exist in `auth.users` without a `ticketing.profiles` row yet (see Database above).
   Any code path that reads `profiles` for the current user must call
   `ticketing.ensure_profile()` first, not assume the row exists.
