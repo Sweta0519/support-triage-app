@@ -1,11 +1,14 @@
 import { expect, test } from "@playwright/test";
 
+import { login, requireEnv } from "./helpers";
+
 // SUP-48: the public homepage. Signed out, / shows it (the session proxy
 // rewrites / to /welcome, so the address stays /); signed in, / is the app.
 const HEADLINE = "Every new ticket, read and sorted before anyone opens it.";
 
 test.describe("signed out", () => {
-  test.use({ storageState: { cookies: [], origins: [] } });
+  // Wide enough for the inline header links (xl and up).
+  test.use({ storageState: { cookies: [], origins: [] }, viewport: { width: 1440, height: 900 } });
 
   test("/ shows the homepage, and its buttons lead to sign up and sign in", async ({ page }) => {
     await page.goto("/");
@@ -33,7 +36,8 @@ test.describe("signed out", () => {
     }
     // Pricing (SUP-51): Free and Custom; Custom's "Contact us" goes through
     // Support Triage itself (sign up, then a ticket).
-    await page.getByRole("navigation", { name: "Page" }).getByRole("link", { name: "Pricing" }).click();
+    await page.getByRole("navigation", { name: "Page" }).getByRole("link", { name: "Pricing", exact: true }).click();
+    await expect(page).toHaveURL(/#pricing$/);
     const pricing = page.getByRole("region", { name: "Pricing" });
     await expect(pricing.getByRole("heading", { name: "Free" })).toBeVisible();
     await expect(pricing.getByRole("heading", { name: "Custom" })).toBeVisible();
@@ -89,6 +93,44 @@ test("signed in, / is the app, not the homepage", async ({ page }) => {
   await page.goto("/welcome");
   await expect(page.getByRole("navigation", { name: "Account" }).getByRole("link", { name: "Open the app" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Request access", exact: true })).toHaveCount(0);
-  // A signed-in user's "Contact us" opens a new ticket straight away.
+  // A signed-in customer's "Contact us" opens a new ticket straight away.
   await expect(page.getByRole("region", { name: "Pricing" }).getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/tickets/new");
+});
+
+test.describe("signed out, on a phone", () => {
+  test.use({ storageState: { cookies: [], origins: [] }, viewport: { width: 390, height: 844 } });
+
+  test("the header menu lists the sections and Sign in, and closes on a pick, Escape or a click outside", async ({ page }) => {
+    await page.goto("/");
+    const nav = page.getByRole("navigation", { name: "Page", exact: true });
+    const menu = nav.locator("details");
+    const button = nav.getByText("Menu", { exact: true });
+    await button.click();
+    await expect(menu).toHaveAttribute("open", "");
+    await expect(nav.getByRole("link", { name: "Sign in" })).toBeVisible();
+    // Picking a section jumps there and closes the menu.
+    await nav.getByRole("link", { name: "Pricing", exact: true }).click();
+    await expect(page).toHaveURL(/#pricing$/);
+    await expect(menu).not.toHaveAttribute("open", "");
+    // Escape closes it and puts focus back on the button.
+    await button.click();
+    await page.keyboard.press("Escape");
+    await expect(menu).not.toHaveAttribute("open", "");
+    await expect(button).toBeFocused();
+    // So does a click anywhere else.
+    await button.click();
+    await page.getByRole("heading", { level: 2, name: "Pricing" }).click();
+    await expect(menu).not.toHaveAttribute("open", "");
+  });
+});
+
+test("signed-in staff see no Contact us: they're the team it would reach", async ({ browser }) => {
+  const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const page = await context.newPage();
+  await login(page, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
+  await page.goto("/welcome");
+  const pricing = page.getByRole("region", { name: "Pricing" });
+  await expect(pricing).toContainText("You're on the team");
+  await expect(pricing.getByRole("link", { name: "Contact us" })).toHaveCount(0);
+  await context.close();
 });

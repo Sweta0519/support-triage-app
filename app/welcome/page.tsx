@@ -6,7 +6,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { Logo } from "@/app/components/Logo";
 import { MacWindow, Phone } from "./DeviceFrames";
 import { SectionMenu } from "./SectionMenu";
-import { getUser } from "@/app/lib/auth/session";
+import { getProfile, getUser } from "@/app/lib/auth/session";
 import styles from "./welcome.module.css";
 
 // The public homepage (SUP-48). Signed-out visitors see it at / (the session
@@ -163,6 +163,10 @@ const FREE_INCLUDES = [
 
 export default async function WelcomePage() {
   const signedIn = Boolean(await getUser());
+  // Staff are the team "Contact us" would reach, and /tickets/new shows them
+  // the log-a-ticket-for-a-customer form, so the Custom plan points them at
+  // the app instead. (getProfile ensures the profile row first.)
+  const isStaff = signedIn && (await getProfile())?.role !== "customer";
   return (
     // A light-only design: data-theme="light" turns off the app's dark:
     // variants inside and paints the page background light (globals.css).
@@ -171,32 +175,37 @@ export default async function WelcomePage() {
         <Link href="/" className="whitespace-nowrap rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#4F46E5]">
           <Logo size={28} />
         </Link>
-        <nav aria-label="Page" className="hidden items-center gap-6 lg:flex">
+        <nav aria-label="Page" className="hidden items-center gap-6 xl:flex">
           {SECTIONS.map((section) => (
             <a key={section.href} href={section.href} className={quietLink}>
               {section.label}
             </a>
           ))}
         </nav>
-        <nav aria-label="Account" className="flex items-center gap-4 sm:gap-5">
-          {/* Phones and tablets: the same section links behind one button. */}
-          <SectionMenu sections={signedIn ? SECTIONS : [...SECTIONS, { href: "/login", label: "Sign in" }]} linkClass={quietLink} />
-          {signedIn ? (
-            <Link href="/" className={primaryButton}>
-              Open the app
-            </Link>
-          ) : (
-            <>
-              {/* On phones, Sign in lives in the menu to keep the header on one line. */}
-              <Link href="/login" className={`${quietLink} hidden sm:inline`}>
-                Sign in
+        <div className="flex items-center gap-4 sm:gap-5">
+          {/* Below xl: the same section links behind one button; on phones it
+              also carries Sign in, which the header has no room for there. */}
+          <SectionMenu
+            links={signedIn ? SECTIONS : [...SECTIONS, { href: "/login", label: "Sign in", className: "sm:hidden" }]}
+            linkClass={quietLink}
+          />
+          <nav aria-label="Account" className="flex items-center gap-4 sm:gap-5">
+            {signedIn ? (
+              <Link href="/" className={primaryButton}>
+                Open the app
               </Link>
-              <Link href="/signup" className={primaryButton}>
-                Request access
-              </Link>
-            </>
-          )}
-        </nav>
+            ) : (
+              <>
+                <Link href="/login" className={`${quietLink} hidden sm:inline`}>
+                  Sign in
+                </Link>
+                <Link href="/signup" className={primaryButton}>
+                  Request access
+                </Link>
+              </>
+            )}
+          </nav>
+        </div>
       </header>
 
       <main className="flex-1">
@@ -369,7 +378,9 @@ export default async function WelcomePage() {
               <div className="py-8 md:pr-10">
                 <h3 className="text-[20px] font-semibold">Free</h3>
                 <p className="mt-3 text-[44px] font-semibold leading-none tracking-[-0.025em] tabular-nums">€0</p>
-                <p className={`mt-3 text-[15px] leading-[1.6] ${graphite}`}>Everything in the app, for your whole team.</p>
+                <p className={`mt-3 text-[15px] leading-[1.6] ${graphite}`}>
+                  Every feature listed here, at no cost. Your team gets agent access once you request it.
+                </p>
                 <ul className={`mt-6 flex flex-col gap-2.5 text-[15px] leading-[1.5] ${ink}`}>
                   {FREE_INCLUDES.map((item) => (
                     <li key={item} className="flex gap-3">
@@ -390,12 +401,22 @@ export default async function WelcomePage() {
                   Tell us about rolling it out to a bigger team, moving your existing tickets over, or something you need that
                   isn&apos;t here yet. We&apos;ll work it out with you.
                 </p>
-                <Link href={signedIn ? "/tickets/new" : "/signup"} className={`${secondaryButton} mt-8`}>
-                  Contact us
-                </Link>
-                <p className={`mt-3 text-[13px] ${graphite}`}>
-                  {signedIn ? "Opens a new ticket to our team." : "Create an account, then open a ticket to our team."}
-                </p>
+                {isStaff ? (
+                  <p className={`mt-8 text-[15px] ${graphite}`}>
+                    You&apos;re on the team: requests from customers arrive in your queue.
+                  </p>
+                ) : (
+                  <>
+                    <Link href={signedIn ? "/tickets/new" : "/signup"} className={`${secondaryButton} mt-8`}>
+                      Contact us
+                    </Link>
+                    <p className={`mt-3 text-[13px] ${graphite}`}>
+                      {signedIn
+                        ? "Opens a new ticket: tell us what you need."
+                        : "Create an account, then open a ticket telling us what you need."}
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           </div>
