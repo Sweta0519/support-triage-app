@@ -28,6 +28,8 @@ export const metadata: Metadata = {
 
 const ink = "text-[#15171C]";
 const graphite = "text-[#5B606B]";
+// Copy on the dark product band (about 9:1 on its lightest stop).
+const onDarkCopy = "text-[#C4C0E8]";
 const primaryButton =
   "inline-flex items-center whitespace-nowrap rounded-lg bg-[#4F46E5] px-4 py-2.5 text-[15px] font-medium text-white hover:bg-[#4338CA] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
 const secondaryButton =
@@ -164,8 +166,9 @@ export default async function WelcomePage() {
   // the app instead. (getProfile ensures the profile row first.)
   const isStaff = signedIn && (await getProfile())?.role !== "customer";
   return (
-    // A light-only design: data-theme="light" turns off the app's dark:
-    // variants inside and paints the page background light (globals.css).
+    // A light design with one dark band (the screenshots, SUP-60):
+    // data-theme="light" turns off the app's dark: variants inside and paints
+    // the page background light (globals.css).
     <div data-theme="light" className={`flex min-h-screen flex-col bg-[#FBFBFC] font-sans ${ink}`}>
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-5 sm:px-8">
         <Link href="/" className="whitespace-nowrap rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#4F46E5]">
@@ -277,12 +280,18 @@ export default async function WelcomePage() {
           </div>
         </section>
 
-        <section id="product" aria-labelledby="in-the-app" className="scroll-mt-6 border-t border-[#E3E5EA]">
-          <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
+        {/* The page's one dark moment (SUP-60): the video's deep indigo, so
+            the devices sit on a stage. */}
+        <section
+          id="product"
+          aria-labelledby="in-the-app"
+          className="scroll-mt-6 bg-[#14112F] bg-[radial-gradient(120%_80%_at_20%_0%,#2A2170_0%,#14112F_45%,#0B0A1A_100%)] text-white print:bg-white print:text-[#15171C] forced-colors:bg-[Canvas] forced-colors:text-[CanvasText]"
+        >
+          <div className="mx-auto w-full max-w-6xl px-5 py-24 sm:px-8">
             <h2 id="in-the-app" className="max-w-xl text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
               On the desk and on the phone
             </h2>
-            <p className={`mt-4 max-w-xl text-[17px] leading-[1.65] ${graphite}`}>
+            <p className={`mt-4 max-w-xl text-[17px] leading-[1.65] ${onDarkCopy}`}>
               Your team works the queue on a laptop. Customers file and follow their tickets from wherever they are.
             </p>
             <div className="relative mt-12 pb-10 lg:pb-0 lg:pr-36">
@@ -307,7 +316,7 @@ export default async function WelcomePage() {
                   title="Incident"
                   sizes="(min-width: 1152px) 528px, (min-width: 1024px) calc(50vw - 64px), calc(100vw - 40px)"
                 />
-                <figcaption className={`mt-3 text-[15px] ${graphite}`}>One problem, many tickets: grouped, with one update for staff to post.</figcaption>
+                <figcaption className={`mt-3 text-[15px] ${onDarkCopy}`}>One problem, many tickets: grouped, with one update for staff to post.</figcaption>
               </figure>
               <figure>
                 <MacWindow
@@ -316,13 +325,13 @@ export default async function WelcomePage() {
                   title="Analytics"
                   sizes="(min-width: 1152px) 528px, (min-width: 1024px) calc(50vw - 64px), calc(100vw - 40px)"
                 />
-                <figcaption className={`mt-3 text-[15px] ${graphite}`}>Response times, ratings and how often the AI gets it right, in one place.</figcaption>
+                <figcaption className={`mt-3 text-[15px] ${onDarkCopy}`}>Response times, ratings and how often the AI gets it right, in one place.</figcaption>
               </figure>
             </div>
           </div>
         </section>
 
-        <section id="features" aria-labelledby="also" className="scroll-mt-6 border-t border-[#E3E5EA]">
+        <section id="features" aria-labelledby="also" className="scroll-mt-6">
           <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
             <h2 id="also" className="text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
               Also included
