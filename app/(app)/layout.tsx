@@ -10,6 +10,7 @@ import { IncidentBanner, type BannerIncident } from "@/app/components/IncidentBa
 import { listOpenIncidentsWithCounts } from "@/app/lib/db/incidents";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { listRecentFinishedTriageRuns } from "@/app/lib/db/triage";
+import { countPendingAccessRequests } from "@/app/lib/db/access-requests";
 import { aiTriageHealth, HEALTH_SAMPLE, type AiTriageHealth } from "@/app/lib/triage-status";
 
 // The AI triage banner's input. Best effort: the banner is a hint, so a
@@ -23,6 +24,16 @@ async function triageHealth(): Promise<AiTriageHealth> {
   } catch (err) {
     console.error("[layout] AI triage health check failed:", err instanceof Error ? err.message : err);
     return { kind: "ok" };
+  }
+}
+
+// Pending access requests for the admin sidebar (SUP-68). Best effort too.
+async function pendingAccessRequests(): Promise<number> {
+  try {
+    return await countPendingAccessRequests();
+  } catch (err) {
+    console.error("[layout] access request count failed:", err instanceof Error ? err.message : err);
+    return 0;
   }
 }
 
@@ -51,7 +62,11 @@ export default async function AppLayout({
     if (metadata?.access_request) await afterSignIn(metadata);
   }
   // Staff only: customers never see triage, working or not.
-  const [health, incidents] = staff ? await Promise.all([triageHealth(), openIncidents()]) : [null, []];
+  const [health, incidents, accessRequests] = await Promise.all([
+    staff ? triageHealth() : null,
+    staff ? openIncidents() : ([] as BannerIncident[]),
+    profile.role === "admin" ? pendingAccessRequests() : 0,
+  ]);
 
   return (
     // Sidebar on the left from lg up, a top bar on phones; the page and
@@ -70,6 +85,7 @@ export default async function AppLayout({
           avatarPath: profile.avatar_path,
           role: profile.role,
         }}
+        accessRequests={accessRequests}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         {health ? <AiTriageBanner health={health} isAdmin={profile.role === "admin"} /> : null}

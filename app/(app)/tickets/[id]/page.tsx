@@ -45,6 +45,8 @@ import { listLabels, listLabelsForTickets } from "@/app/lib/db/labels";
 import { LabelsPanel } from "./LabelsPanel";
 import { Stars } from "@/app/components/Stars";
 import { SITE_URL } from "@/app/lib/site-url";
+import { getPendingAccessRequestForTicket } from "@/app/lib/db/access-requests";
+import { AccessRequestActions } from "@/app/components/AccessRequestActions";
 
 
 // A comment's author by name where the viewer may see it (profile_cards,
@@ -128,7 +130,7 @@ export default async function TicketDetailPage({
     comments: list,
     people: await getPersonCards([ticket.customer_id, ticket.created_by, ...list.map((c: Comment) => c.author_id)]),
   }));
-  const [{ comments, people }, triage, staff, share, filerEmail, rating, flaggedByMe, labels, incident] = await Promise.all([
+  const [{ comments, people }, triage, staff, share, filerEmail, rating, flaggedByMe, labels, incident, accessRequest] = await Promise.all([
     commentsWithPeople,
     isStaff ? getLatestTriageResult(id) : Promise.resolve(null),
     // Only admins reassign, so only admins get the staff list.
@@ -148,6 +150,8 @@ export default async function TicketDetailPage({
       : Promise.resolve(null),
     // The open incident this ticket is part of (SUP-42); staff only.
     isStaff ? openIncidentsForTickets([ticket.id]).then((m) => m.get(ticket.id) ?? null) : Promise.resolve(null),
+    // A pending access request this ticket carries (SUP-68): admins decide it here.
+    isAdmin ? getPendingAccessRequestForTicket(ticket.id) : Promise.resolve(null),
   ]);
   const customerCard = people.get(ticket.customer_id);
   // The past corrections this run learned from (SUP-43): the ones this
@@ -318,6 +322,18 @@ export default async function TicketDetailPage({
                   </Link>
                 </span>
               </p>
+            ) : null}
+            {accessRequest ? (
+              <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 dark:border-indigo-900 dark:bg-indigo-950/30">
+                <p className="mb-2 text-sm font-medium text-black dark:text-zinc-50">
+                  This is an access request. Decide it here, or on{" "}
+                  <Link href="/admin/access-requests" className="underline underline-offset-2">
+                    Access requests
+                  </Link>
+                  .
+                </p>
+                <AccessRequestActions userId={accessRequest.userId} name={customerCard?.display_name ?? "the requester"} />
+              </div>
             ) : null}
             {isStaff && (triage?.is_escalation_risk || triage?.frustration != null) ? (
               // The AI's read of the customer, up front: it's what decides

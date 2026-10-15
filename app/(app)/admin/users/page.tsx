@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireAdmin } from "@/app/lib/auth/session";
 import { APP_ROLES, listProfiles } from "@/app/lib/db/profiles";
 import { setRoleAction } from "../actions";
@@ -67,6 +68,19 @@ export default async function AdminUsersPage({
                         </span>
                         {p.full_name ? (
                           <span className="text-xs text-zinc-500 dark:text-zinc-500">{p.email}</span>
+                        ) : null}
+                        {p.access_request_status ? (
+                          <span className="text-xs text-zinc-500 dark:text-zinc-500">
+                            {p.access_request_status === "pending" ? (
+                              <Link href="/admin/access-requests" className="underline underline-offset-2">
+                                Asked for access
+                              </Link>
+                            ) : p.access_request_status === "granted" ? (
+                              "Access request granted"
+                            ) : (
+                              "Access request declined"
+                            )}
+                          </span>
                         ) : null}
                       </div>
                     </div>

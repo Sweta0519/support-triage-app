@@ -21,6 +21,8 @@ type NavItem = {
   icon: React.ReactNode;
   // Paths that count as "here" for highlighting.
   isActive: (path: string) => boolean;
+  // Something waiting there (access requests): a number beside the label.
+  count?: number;
 };
 
 const iconProps = {
@@ -66,6 +68,14 @@ const icons = {
       <path d="M8 17v-5M13 17V8M18 17v-9" />
     </svg>
   ),
+  // A person with a plus: access requests (SUP-68).
+  userPlus: (
+    <svg {...iconProps}>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M19 8v6M22 11h-6" />
+    </svg>
+  ),
   shield: (
     <svg {...iconProps}>
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -98,7 +108,7 @@ const icons = {
 // A link is active on its own page and anything below it.
 const under = (href: string) => (p: string) => p === href || p.startsWith(`${href}/`);
 
-function navItems(role: AppRole): NavItem[] {
+function navItems(role: AppRole, accessRequests: number): NavItem[] {
   if (role === "customer") {
     return [
       {
@@ -128,7 +138,19 @@ function navItems(role: AppRole): NavItem[] {
   if (role === "admin") {
     staff.push(
       { href: "/analytics", label: "Analytics", icon: icons.chart, isActive: under("/analytics") },
-      { href: "/admin", label: "Admin", icon: icons.shield, isActive: under("/admin") }
+      {
+        href: "/admin/access-requests",
+        label: "Access requests",
+        icon: icons.userPlus,
+        isActive: under("/admin/access-requests"),
+        count: accessRequests,
+      },
+      {
+        href: "/admin",
+        label: "Admin",
+        icon: icons.shield,
+        isActive: (p) => under("/admin")(p) && !under("/admin/access-requests")(p),
+      }
     );
   }
   return staff;
@@ -143,8 +165,11 @@ const linkActive = "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text
 // Only what the sidebar shows, not the whole profile row.
 export function AppSidebar({
   profile,
+  accessRequests = 0,
 }: {
   profile: { id: string; email: string; fullName: string | null; avatarPath: string | null; role: AppRole };
+  // Pending access requests, for admins (SUP-68).
+  accessRequests?: number;
 }) {
   const pathname = usePathname();
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -159,7 +184,7 @@ export function AppSidebar({
   }
   const close = () => setOpen(false);
 
-  const items = navItems(profile.role);
+  const items = navItems(profile.role, accessRequests);
 
   return (
     <aside
@@ -210,6 +235,12 @@ export function AppSidebar({
               >
                 {item.icon}
                 {item.label}
+                {item.count ? (
+                  <span className="ml-auto rounded-full bg-indigo-600 px-1.5 py-px text-[11px] font-semibold leading-4 text-white dark:bg-indigo-500">
+                    {item.count}
+                    <span className="sr-only"> waiting</span>
+                  </span>
+                ) : null}
               </Link>
             );
           })}

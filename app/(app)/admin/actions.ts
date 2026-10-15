@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 
 import { requireAdmin } from "@/app/lib/auth/session";
 import { isAppRole, setUserRole } from "@/app/lib/db/profiles";
+import { AccessDecisionError, decideAccessRequest } from "@/app/lib/db/access-requests";
+import { isUuid } from "@/app/lib/db/tickets";
 
 // Maps the database's exceptions to the short codes the users page renders.
 // The DB is the enforcement; this is just the friendly message.
@@ -43,4 +45,35 @@ export async function setRoleAction(formData: FormData) {
   revalidatePath("/admin/users");
   revalidatePath("/queue");
   redirect("/admin/users?saved=1");
+}
+
+// Grant or decline an access request (SUP-68), from the Access requests page
+// or the request's ticket. decide_access_request() checks the caller is an
+// admin and that the request is still pending.
+export async function decideAccessRequestAction(
+  userId: string,
+  grant: boolean
+): Promise<{ ok: true; outcome: "granted" | "declined" } | { ok: false; error: string }> {
+  await requireAdmin();
+  if (!isUuid(userId) || typeof grant !== "boolean") return { ok: false, error: "That request can't be found." };
+  try {
+    const outcome = await decideAccessRequest(userId, grant);
+    return { ok: true, outcome };
+  } catch (err) {
+    if (!(err instanceof AccessDecisionError)) throw err;
+    return {
+      ok: false,
+      error:
+        err.reason === "not_pending"
+          ? "This request has already been decided."
+          : err.reason === "own_request"
+            ? "You can't decide your own request."
+            : err.reason === "rate_limited"
+              ? "You've posted a lot of replies just now. Wait a few minutes and try again."
+              : "Only admins can decide access requests.",
+    };
+  }
+  // No revalidatePath here: it would re-render the page at once, moving the
+  // card out of the Waiting list before its confirmation could be read. The
+  // client refreshes the page (count, lists, ticket) a moment later.
 }

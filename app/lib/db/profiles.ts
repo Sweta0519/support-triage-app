@@ -33,13 +33,16 @@ export function isAppRole(value: unknown): value is AppRole {
 export type ProfileSummary = Pick<
   Profile,
   "id" | "email" | "full_name" | "avatar_path" | "role" | "created_at" | "updated_at"
->;
+> & {
+  // Whether they asked for access through "Request access" (SUP-68).
+  access_request_status: "pending" | "granted" | "declined" | null;
+};
 
 export async function listProfiles(): Promise<ProfileSummary[]> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, full_name, avatar_path, role, created_at, updated_at")
+    .select("id, email, full_name, avatar_path, role, created_at, updated_at, access_request_status")
     .order("created_at", { ascending: true });
 
   if (error) {
