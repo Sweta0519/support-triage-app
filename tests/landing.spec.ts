@@ -77,6 +77,24 @@ test.describe("signed out", () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
+  test("the page has share metadata and loads without console errors", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("console", (m) => {
+      if (m.type() === "error") errors.push(m.text());
+    });
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    const og = await page.locator('meta[property="og:image"]').getAttribute("content");
+    expect(og).toMatch(/\/marketing\/og\.png$/);
+    await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
+    const canonical = await page.locator('link[rel="canonical"]').getAttribute("href");
+    expect(new URL(canonical!).pathname).toBe("/");
+    const image = await page.request.get(new URL(og!).pathname);
+    expect(image.headers()["content-type"]).toBe("image/png");
+    expect(errors).toEqual([]);
+  });
+
   test("/ with a query string, and /welcome itself, show the homepage; /privacy stays public", async ({ page }) => {
     await page.goto("/?utm_source=test");
     expect(new URL(page.url()).pathname).toBe("/");
