@@ -18,13 +18,35 @@ import styles from "./welcome.module.css";
 // is in the app's sans.
 const serif = Source_Serif_4({ subsets: ["latin"], style: ["normal"], weight: ["400"] });
 
+// The share card's wording (scripts/render-og-image.mjs) says the same thing.
+const TITLE = "Support Triage: every new ticket, read and sorted before anyone opens it";
+const DESCRIPTION =
+  "A help desk where AI reads each new ticket and suggests a category, a priority with its reason, the right team and a first reply. Your team confirms, corrects and sends.";
+
 export const metadata: Metadata = {
-  // Served at / (signed out) and /welcome: / is the address to index.
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+  // Served at / (signed out) and /welcome: / is the address to index. The
+  // base URL comes from the root layout's metadataBase.
   alternates: { canonical: "/" },
-  title: "Support Triage: every ticket read and sorted before anyone opens it",
-  description:
-    "A help desk where AI reads each new ticket and suggests a category, a priority with its reason, the right team and a first reply. Your team confirms, corrects and sends.",
+  title: TITLE,
+  description: DESCRIPTION,
+  // The share card (SUP-52), rendered by scripts/render-og-image.mjs.
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: "Support Triage",
+    title: TITLE,
+    description: DESCRIPTION,
+    images: [
+      {
+        url: "/marketing/og.png",
+        width: 1200,
+        height: 630,
+        alt: "Support Triage: every new ticket, read and sorted before anyone opens it. An AI help desk where people decide.",
+      },
+    ],
+  },
+  // Title, description and image come from openGraph (Next copies them).
+  twitter: { card: "summary_large_image" },
 };
 
 const ink = "text-[#15171C]";

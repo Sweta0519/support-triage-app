@@ -86,6 +86,44 @@ test.describe("signed out", () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
+  test("the page has share metadata, and the card is a 1200x630 PNG", async ({ page }) => {
+    await page.goto("/");
+    const meta = (property: string) => page.locator(`meta[property="${property}"]`).getAttribute("content");
+    expect(await meta("og:title")).toMatch(/^Support Triage/);
+    expect(await meta("og:site_name")).toBe("Support Triage");
+    expect(await meta("og:image:width")).toBe("1200");
+    expect(await meta("og:image:height")).toBe("630");
+    expect(await meta("og:image:alt")).toMatch(/read and sorted before anyone opens it/);
+    await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
+    const canonical = await page.locator('link[rel="canonical"]').getAttribute("href");
+    expect(new URL(canonical!).pathname).toBe("/");
+    // The card itself: served to signed-out visitors, and really 1200x630
+    // (the PNG header stores width and height at bytes 16-23).
+    const og = (await meta("og:image"))!;
+    // Absolute, on this site's own address (NEXT_PUBLIC_SITE_URL), not a
+    // placeholder host; and the Twitter card picks the same image up.
+    expect(new URL(og).origin).toBe(new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").origin);
+    await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute("content", og);
+    const image = await page.request.get(new URL(og).pathname);
+    expect(image.headers()["content-type"]).toBe("image/png");
+    const png = await image.body();
+    expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630]);
+  });
+
+  test("the page loads without errors", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("console", (m) => {
+      if (m.type() === "error") errors.push(m.text());
+    });
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto("/");
+    // Fully rendered and hydrated: the hero's reveal has run.
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByText("Drafted reply, for an agent to edit and send")).toBeVisible();
+    await page.waitForTimeout(500);
+    expect(errors).toEqual([]);
+  });
+
   test("the demo video is reachable from the hero, captioned, and served to signed-out visitors", async ({ page }) => {
     // SUP-50: not downloaded until played; captions on by default.
     await page.goto("/");
