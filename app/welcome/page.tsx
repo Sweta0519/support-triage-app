@@ -178,14 +178,45 @@ export default async function WelcomePage() {
               <Link href={signedIn ? "/" : "/signup"} className={primaryButton}>
                 {signedIn ? "Open the app" : "Request access"}
               </Link>
-              {signedIn ? null : (
-                <Link href="/login" className={quietLink}>
-                  Sign in
-                </Link>
-              )}
+              <a href="#demo" className={quietLink}>
+                Watch the 2-minute demo
+              </a>
             </div>
           </div>
           <TriageMoment />
+        </section>
+
+        <section id="demo" aria-labelledby="demo-title" className="scroll-mt-6 border-t border-[#E3E5EA]">
+          <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
+            <h2 id="demo-title" className="max-w-xl text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
+              See it work in two minutes
+            </h2>
+            <p className={`mt-4 max-w-xl text-[17px] leading-[1.65] ${graphite}`}>
+              A ticket arrives, the AI reads it, an agent decides, and Sage answers from the team&apos;s own notes. Narrated,
+              with captions.
+            </p>
+            {/* Nothing downloads until play is pressed (preload="none"); the
+                file is the full-quality master, not a compressed copy. */}
+            <video
+              controls
+              playsInline
+              preload="none"
+              poster="/marketing/demo-poster.webp"
+              aria-label="Support Triage product demo, 2 minutes, narrated"
+              className="mt-10 aspect-video w-full rounded-xl border border-black/[.12] bg-[#0A0A1A] shadow-[0_1px_2px_rgba(21,23,28,0.06),0_24px_48px_-24px_rgba(21,23,28,0.28)]"
+            >
+              <source src="/marketing/demo.mp4" type="video/mp4" />
+              {/* On by default: the section promises captions. */}
+              <track kind="captions" src="/marketing/demo.vtt" srcLang="en" label="English" default />
+              <p>
+                Your browser can&apos;t play this video.{" "}
+                <a href="/marketing/demo.mp4" className="underline underline-offset-4">
+                  Download the demo (MP4, 30 MB)
+                </a>
+                .
+              </p>
+            </video>
+          </div>
         </section>
 
         <section aria-labelledby="sequence" className="border-t border-[#E3E5EA]">

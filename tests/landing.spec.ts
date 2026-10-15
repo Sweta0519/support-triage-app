@@ -35,6 +35,23 @@ test.describe("signed out", () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
+  test("the demo video is reachable from the hero, captioned, and served to signed-out visitors", async ({ page }) => {
+    // SUP-50: not downloaded until played; captions on by default.
+    await page.goto("/");
+    await page.getByRole("link", { name: "Watch the 2-minute demo" }).click();
+    await expect(page).toHaveURL(/#demo$/);
+    const video = page.locator("#demo video");
+    await expect(video).toHaveAttribute("preload", "none");
+    const track = video.locator("track[kind=captions]");
+    await expect(track).toHaveAttribute("src", "/marketing/demo.vtt");
+    await expect(track).toHaveAttribute("default", "");
+    const mp4 = await page.request.head("/marketing/demo.mp4");
+    expect(mp4.ok()).toBe(true);
+    expect(mp4.headers()["content-type"]).toContain("video/mp4");
+    expect(await (await page.request.get("/marketing/demo.vtt")).text()).toMatch(/^WEBVTT/);
+    expect((await page.request.get("/marketing/demo-poster.webp")).ok()).toBe(true);
+  });
+
   test("/ with a query string, and /welcome itself, show the homepage; /privacy stays public", async ({ page }) => {
     await page.goto("/?utm_source=test");
     expect(new URL(page.url()).pathname).toBe("/");
