@@ -1,6 +1,7 @@
 """Renders the demo video (SUP-44) from what record.mjs captured.
 
-    /usr/bin/python3 demo-video/build.py   # -> demo-video/build/support-triage-demo.mp4
+    /usr/bin/python3 demo-video/build.py   # -> demo-video/build/support-triage-demo.mp4 (+ .vtt captions)
+    /usr/bin/python3 demo-video/build.py --captions   # captions only, from the last render
 
 (/usr/bin/python3 because it has Pillow; ffmpeg must be on PATH.)
 
@@ -633,5 +634,46 @@ def main():
     print(f"\n{OUT} ({duration(OUT):.1f} s)")
 
 
+def vtt_time(t):
+    h, rem = divmod(t, 3600)
+    m, sec = divmod(rem, 60)
+    return f"{int(h):02d}:{int(m):02d}:{sec:06.3f}"
+
+
+def write_captions(out=BUILD / "support-triage-demo.vtt"):
+    """WebVTT captions for the finished video, from the rendered scenes and
+    narration in WORK: each line is split into sentences, timed in proportion
+    to their length, starting 0.5 s into its scene (as the audio mix does)."""
+    cues, t = [], 0.0
+    for scene in SCENES:
+        sid = scene["id"]
+        length = duration(WORK / f"{sid}.mp4")
+        if "montage" in scene:
+            lines, at = [], t + 0.5
+            for name, _, text in scene["montage"]:
+                said = duration(WORK / f"{name}.wav")
+                lines.append((at, said, text))
+                at += max(SHOT, said + 0.6)
+        else:
+            lines = [(t + 0.5, duration(WORK / f"{sid}.wav"), scene["say"])]
+        for start, said, text in lines:
+            parts = [p.strip() for p in re.split(r"(?<=[.?!])\s+", text) if p.strip()]
+            total = sum(len(p) for p in parts)
+            for part in parts:
+                d = said * len(part) / total
+                cues.append((start, start + d, part))
+                start += d
+        t += length - XFADE
+    body = "WEBVTT\n\n" + "\n\n".join(f"{vtt_time(a)} --> {vtt_time(b)}\n{text}" for a, b, text in cues) + "\n"
+    out.write_text(body)
+    print(f"{out} ({len(cues)} cues)")
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+
+    if "--captions" in sys.argv:
+        write_captions()
+    else:
+        main()
+        write_captions()
