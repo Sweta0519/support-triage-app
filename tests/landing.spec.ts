@@ -54,6 +54,14 @@ test.describe("signed out", () => {
     for (const href of await page.getByRole("navigation", { name: "Page" }).getByRole("link").evaluateAll((links) => links.map((a) => a.getAttribute("href")))) {
       await expect(page.locator(href!)).toHaveCount(1);
     }
+    // "Safe by design" (SUP-63): three statements and the privacy policy.
+    const safe = page.getByRole("region", { name: "Safe by design" });
+    await expect(safe.getByRole("heading", { level: 3 })).toHaveText([
+      "The AI only suggests",
+      "Customers see only their own tickets",
+      "Ticket text can't give the AI orders",
+    ]);
+    await expect(safe.getByRole("link", { name: "privacy policy" })).toHaveAttribute("href", "/privacy");
     // Pricing (SUP-51): Free and Custom; Custom's "Contact us" goes through
     // Support Triage itself (sign up, then a ticket).
     await page.getByRole("navigation", { name: "Page" }).getByRole("link", { name: "Pricing" }).click();
