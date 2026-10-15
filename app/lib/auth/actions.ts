@@ -5,8 +5,12 @@ import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "./clients";
 import { AUTH_RATE_LIMITED_MESSAGE, consumeAuthRateLimit, refundAuthAttempt } from "@/app/lib/db/auth-rate-limit";
 import { SITE_URL } from "@/app/lib/site-url";
+import { afterSignIn } from "./after-sign-in";
+import { parseAccessRequest, type AccessRequestAnswers } from "@/app/lib/access-request-options";
 
-export type AuthFormState = { error: string } | undefined;
+// On an error, the access-request answers come back too, so the form can
+// show them again (React resets uncontrolled fields after an action).
+export type AuthFormState = { error: string; request?: AccessRequestAnswers } | undefined;
 
 
 function parseCredentials(formData: FormData) {
@@ -20,25 +24,31 @@ export async function signUpAction(
   formData: FormData
 ): Promise<AuthFormState> {
   const { email, password } = parseCredentials(formData);
+  const request = parseAccessRequest(formData) ?? undefined;
   // Per IP and per email, before Supabase sends a confirmation email.
   if (!(await consumeAuthRateLimit("sign_up", email))) {
-    return { error: AUTH_RATE_LIMITED_MESSAGE };
+    return { error: AUTH_RATE_LIMITED_MESSAGE, request };
   }
   const supabase = await createServerSupabaseClient();
 
   // No `options.data` role is ever passed here -- role is hard-coded to
   // 'customer' server-side by the ticketing.handle_new_user() trigger, which
   // ignores raw_user_meta_data entirely. Never add a role field to this call.
+  // The only metadata ever sent is the access request's answers: text that
+  // becomes a ticket, never a role.
   const { error } = await supabase.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: `${SITE_URL}/auth/confirm` },
+    options: {
+      emailRedirectTo: `${SITE_URL}/auth/confirm`,
+      ...(request ? { data: { access_request: request } } : {}),
+    },
   });
 
   if (error) {
     // Refused before any email went out: give the email's quota back.
     await refundAuthAttempt("sign_up_failed", email);
-    return { error: error.message };
+    return { error: error.message, request };
   }
 
   redirect("/login?confirmEmail=1");
@@ -57,7 +67,7 @@ export async function signInAction(
   }
   const supabase = await createServerSupabaseClient();
 
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
@@ -71,7 +81,7 @@ export async function signInAction(
     return { error: error.message };
   }
 
-  redirect("/");
+  redirect((await afterSignIn(data.user?.user_metadata)) ?? "/");
 }
 
 export async function signOutAction() {

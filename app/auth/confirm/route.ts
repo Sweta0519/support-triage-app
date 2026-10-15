@@ -2,9 +2,9 @@ import type { EmailOtpType } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import type { NextRequest } from "next/server";
 
+import { afterSignIn } from "@/app/lib/auth/after-sign-in";
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import { SITE_URL } from "@/app/lib/site-url";
-
 
 const OTP_TYPES: readonly EmailOtpType[] = [
   "signup",
@@ -52,12 +52,16 @@ export async function GET(request: NextRequest) {
 
   if (tokenHash && type) {
     const supabase = await createServerSupabaseClient();
-    const { error } = await supabase.auth.verifyOtp({
+    const { data, error } = await supabase.auth.verifyOtp({
       type,
       token_hash: tokenHash,
     });
     if (!error) {
-      redirect(next);
+      // A sign-in link may be the first sign-in after "Request access"
+      // (SUP-58), which files the request. A password reset or an email
+      // change always goes on to its own `next`.
+      const signInLink = type === "signup" || type === "magiclink" || type === "email";
+      redirect((signInLink ? await afterSignIn(data.user?.user_metadata) : null) ?? next);
     }
   }
 
