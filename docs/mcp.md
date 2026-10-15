@@ -11,7 +11,9 @@ who connected it, with exactly the permissions that person has in the web app.
 
 ### Connecting an assistant
 
-The homepage shows the same setups, with a copy button (`app/welcome/McpConnect.tsx`, SUP-65).
+The homepage shows the same setups with a copy button (SUP-65), and the Account page shows them
+once, right after a token is created, with that token filled in (SUP-66). Both use
+`app/components/mcp/McpConnect.tsx`.
 They're the clients that accept a URL and a bearer token. ChatGPT's and the Claude apps'
 connectors sign in with OAuth, which this server doesn't support yet.
 

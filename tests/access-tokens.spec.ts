@@ -58,6 +58,14 @@ test("create a token on the Account page: shown once, stored as a hash, resolvab
   await panel.getByRole("tab", { name: "Codex" }).click();
   await expect(setup).not.toContainText(token);
   await expect(panel).toContainText(`export SUPPORT_TRIAGE_TOKEN=${token}`);
+  // Only the "Created" line is a live region, never the token or the setup.
+  await expect(panel.getByRole("status").filter({ hasText: "Created" })).toBeVisible();
+  await expect(panel.getByRole("status").filter({ hasText: token })).toHaveCount(0);
+
+  // Done puts it all away.
+  await panel.getByRole("button", { name: "Done" }).click();
+  await expect(panel.getByRole("tablist", { name: "AI tool" })).toHaveCount(0);
+  await expect(panel.getByLabel("New access token")).toHaveCount(0);
 
   // Stored as its SHA-256 hash, with the visible prefix and a 30-day expiry.
   const { data: row } = await admin.from("access_tokens").select("id, owner_id, token_hash, prefix, expires_at").eq("name", name).single();

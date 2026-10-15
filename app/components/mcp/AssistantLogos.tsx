@@ -1,5 +1,5 @@
-// The marks of the AI tools the MCP connector works with (SUP-65), shown in
-// the homepage's "works with" row. Path data from Simple Icons 15.22.0
+// The marks of the AI tools the MCP connector works with (SUP-65), shown on
+// the MCP setup panel's tabs and in the homepage's "works with" row. Path data from Simple Icons 15.22.0
 // (simple-icons.org, CC0); the marks themselves belong to their owners and
 // are shown unmodified, in one neutral colour, beside each product's name.
 // VS Code has no mark there (Microsoft asked for its removal), so it's shown
