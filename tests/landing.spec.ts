@@ -15,6 +15,17 @@ test.describe("signed out", () => {
     const example = page.getByRole("figure", { name: "An example ticket and the AI's suggestions for it" });
     await expect(example).toContainText("Charged twice for Pro this month");
     await expect(example).toContainText("Drafted reply, for an agent to edit and send");
+    // The demo video (SUP-50): reachable from the hero, captioned, and not
+    // downloaded until played.
+    await page.getByRole("link", { name: "Watch the 2-minute demo" }).click();
+    expect(new URL(page.url()).hash).toBe("#demo");
+    const video = page.locator("video");
+    await expect(video).toHaveAttribute("preload", "none");
+    await expect(video.locator("track[kind=captions]")).toHaveAttribute("src", "/marketing/demo.vtt");
+    const mp4 = await page.request.head("/marketing/demo.mp4");
+    expect(mp4.ok()).toBe(true);
+    expect(mp4.headers()["content-type"]).toBe("video/mp4");
+    expect(await (await page.request.get("/marketing/demo.vtt")).text()).toMatch(/^WEBVTT/);
     // Real product screenshots in device frames (SUP-49), and the MCP note,
     // which says plainly that it isn't available yet.
     await expect(page.getByRole("img", { name: /^The queue: tickets assigned to the agent/ })).toBeVisible();
