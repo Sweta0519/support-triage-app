@@ -25,7 +25,8 @@ export async function signUpAction(
 ): Promise<AuthFormState> {
   const { email, password } = parseCredentials(formData);
   const request = parseAccessRequest(formData) ?? undefined;
-  // Per IP and per email, before Supabase sends a confirmation email.
+  // Per IP and per email, before the account is made (and, if the project
+  // requires confirmation, before Supabase sends the email).
   if (!(await consumeAuthRateLimit("sign_up", email))) {
     return { error: AUTH_RATE_LIMITED_MESSAGE, request };
   }
@@ -36,7 +37,7 @@ export async function signUpAction(
   // ignores raw_user_meta_data entirely. Never add a role field to this call.
   // The only metadata ever sent is the access request's answers: text that
   // becomes a ticket, never a role.
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
@@ -46,11 +47,19 @@ export async function signUpAction(
   });
 
   if (error) {
-    // Refused before any email went out: give the email's quota back.
+    // Refused: no account was made and no email went out, so give the
+    // email's quota back.
     await refundAuthAttempt("sign_up_failed", email);
     return { error: error.message, request };
   }
 
+  // With email confirmation off (this project), sign-up signs the person in
+  // at once: there's no confirmation link to wait for, so file their access
+  // request now (SUP-69) and take them into the app. Otherwise they confirm
+  // by email first, and the request is filed on that link.
+  if (data.session) {
+    redirect((await afterSignIn(data.user?.user_metadata)) ?? "/");
+  }
   redirect("/login?confirmEmail=1");
 }
 
