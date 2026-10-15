@@ -8,7 +8,9 @@ import { fileAccessRequestIfPending } from "@/app/lib/db/access-requests";
 
 // Not in actions.ts: everything a "use server" file exports is a server
 // action the browser can call, and this is only for the sign-in paths.
-// After someone is signed in (a password sign-in, or a confirmation link):
+// After someone is signed in (a sign-up that signs them straight in, a
+// password sign-in, or a sign-in link; the (app) layout also calls it as a
+// retry while a request is still waiting):
 // files their access request if one is waiting, and starts its triage as
 // the web form does. Returns where to send them: their tickets with a
 // thank-you, or null to go on as usual. A failure here never blocks signing

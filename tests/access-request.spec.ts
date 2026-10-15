@@ -7,10 +7,11 @@ import { parseAccessRequest } from "../app/lib/access-request-options";
 import { login, requireEnv } from "./helpers";
 
 // SUP-58: "Request access" files one access-request ticket the first time the
-// new customer is signed in. Accounts are made with the Admin API, carrying
-// the answers the sign-up form stores, rather than through the form itself:
-// a real sign-up sends a confirmation email, and the project's mailer only
-// allows a few an hour.
+// new customer is signed in. One test signs up through the real form, which
+// works because this project confirms emails automatically, so no email is
+// sent (SUP-69). The rest make accounts with the Admin API, carrying the
+// answers the form stores, so they can reach the confirmation-link and
+// sign-in paths directly, and don't depend on that setting.
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -19,6 +20,24 @@ function service() {
     db: { schema: "ticketing" },
     auth: { persistSession: false, autoRefreshToken: false },
   });
+}
+
+// Deletes a test account and its tickets. A filed request starts triage in
+// the background, so it waits while that runs; one that stays pending a few
+// seconds never started (a request filed by calling the function directly).
+async function removeAccount(id: string) {
+  const admin = service();
+  const { data: open } = await admin.from("tickets").select("id").eq("customer_id", id);
+  for (const t of open ?? []) {
+    for (let i = 0; i < 60 && process.env.OPENROUTER_API_KEY; i++) {
+      const { data: state } = await admin.from("ticket_triage_state").select("triage_status").eq("ticket_id", t.id).maybeSingle();
+      const status = state?.triage_status ?? "pending";
+      if (status === "completed" || status === "failed" || (status === "pending" && i >= 3)) break;
+      await new Promise((r) => setTimeout(r, 1_000));
+    }
+  }
+  await admin.from("tickets").delete().eq("customer_id", id);
+  await admin.auth.admin.deleteUser(id);
 }
 
 const ANSWERS = { team: "Acme Robotics", size: "6-20", purpose: "Triage our support inbox." };
@@ -36,23 +55,7 @@ async function newAccount(metadata: Record<string, unknown> | undefined) {
     password,
     tickets: async () =>
       (await admin.from("tickets").select("id, subject, body, customer_id").eq("customer_id", id)).data ?? [],
-    remove: async () => {
-      // A filed request starts triage in the background: let it finish
-      // before the ticket goes, so it never writes to a deleted ticket.
-      const { data: open } = await admin.from("tickets").select("id").eq("customer_id", id);
-      for (const t of open ?? []) {
-        // Wait while it runs; one that stays pending a few seconds never started
-        // (a request filed by calling the function directly).
-        for (let i = 0; i < 60 && process.env.OPENROUTER_API_KEY; i++) {
-          const { data: state } = await admin.from("ticket_triage_state").select("triage_status").eq("ticket_id", t.id).maybeSingle();
-          const status = state?.triage_status ?? "pending";
-          if (status === "completed" || status === "failed" || (status === "pending" && i >= 3)) break;
-          await new Promise((r) => setTimeout(r, 1_000));
-        }
-      }
-      await admin.from("tickets").delete().eq("customer_id", id);
-      await admin.auth.admin.deleteUser(id);
-    },
+    remove: () => removeAccount(id),
   };
 }
 
@@ -123,7 +126,9 @@ test("the first sign-in files exactly one access-request ticket, as the customer
 
 test("signing up through Request access files the request straight away when the email is confirmed automatically", async ({ page }) => {
   // This project confirms emails automatically, so sign-up signs the person
-  // in at once and no email is sent (SUP-69).
+  // in at once and no email is sent (SUP-69). Locally there's no per-IP
+  // sign-up limit (the dev server sees no visitor IP), and each run uses a
+  // new email, so repeated runs don't trip the limiter.
   const email = `e2e-access-signup-${Date.now()}-${randomUUID().slice(0, 8)}@example.com`;
   const admin = service();
   try {
@@ -135,7 +140,11 @@ test("signing up through Request access files the request straight away when the
     await page.getByLabel("What would you use it for?").fill("Triage a busy inbox.");
     await page.getByRole("button", { name: "Request access" }).click();
 
-    await expect(page).toHaveURL(/\/tickets\?requested=1$/, { timeout: 15_000 });
+    // If the project starts requiring email confirmation, sign-up waits for
+    // the email instead; the confirmation-link test below covers that path.
+    await page.waitForURL(/\/(tickets\?requested=1|login\?confirmEmail=1)$/, { timeout: 15_000 });
+    test.skip(page.url().includes("confirmEmail"), "The project requires email confirmation");
+    await expect(page).toHaveURL(/\/tickets\?requested=1$/);
     await expect(page.getByRole("status")).toContainText("Thanks, we've got your request.");
     const { data: profile } = await admin.from("profiles").select("id, role, access_request_status").eq("email", email).single();
     expect(profile).toMatchObject({ role: "customer", access_request_status: "pending" });
@@ -145,10 +154,7 @@ test("signing up through Request access files the request straight away when the
     ]);
   } finally {
     const { data: profile } = await admin.from("profiles").select("id").eq("email", email).maybeSingle();
-    if (profile) {
-      await admin.from("tickets").delete().eq("customer_id", profile.id);
-      await admin.auth.admin.deleteUser(profile.id);
-    }
+    if (profile) await removeAccount(profile.id);
   }
 });
 

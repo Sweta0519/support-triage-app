@@ -25,7 +25,8 @@ export async function signUpAction(
 ): Promise<AuthFormState> {
   const { email, password } = parseCredentials(formData);
   const request = parseAccessRequest(formData) ?? undefined;
-  // Per IP and per email, before Supabase sends a confirmation email.
+  // Per IP and per email, before the account is made (and, if the project
+  // requires confirmation, before Supabase sends the email).
   if (!(await consumeAuthRateLimit("sign_up", email))) {
     return { error: AUTH_RATE_LIMITED_MESSAGE, request };
   }
@@ -46,7 +47,8 @@ export async function signUpAction(
   });
 
   if (error) {
-    // Refused before any email went out: give the email's quota back.
+    // Refused: no account was made and no email went out, so give the
+    // email's quota back.
     await refundAuthAttempt("sign_up_failed", email);
     return { error: error.message, request };
   }
