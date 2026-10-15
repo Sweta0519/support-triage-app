@@ -144,8 +144,12 @@ def env(name):
     path = ROOT.parent / ".env.local"
     if path.exists():
         for line in path.read_text().splitlines():
+            line = line.strip().removeprefix("export ").lstrip()
             if line.startswith(f"{name}="):
-                return line.split("=", 1)[1].strip().strip('"')
+                value = line.split("=", 1)[1].strip()
+                if value[:1] in "\"'" and value[-1:] == value[:1] and len(value) > 1:
+                    return value[1:-1]
+                return value.split(" #", 1)[0].strip()  # an unquoted value's trailing comment
     return None
 
 
@@ -336,6 +340,9 @@ class Clip:
         mouse_file = d / "mouse.json"
         moves = json.loads(mouse_file.read_text()) if mouse_file.exists() else []
         self.mouse = [(self.to_comp(m["t"]), m["x"], m["y"]) for m in moves if not m.get("click")]
+        self._mouse_times = [m[0] for m in self.mouse]
+        self._key_times = [k[0] for k in self.keys]
+        self._starts = {}  # per move duration: where each keyframe's ease starts
         self.clicks = [self.to_comp(m["t"]) for m in moves if m.get("click")]
         scroll_file = d / "scrolls.json"
         spans = json.loads(scroll_file.read_text()) if scroll_file.exists() else []
@@ -354,8 +361,7 @@ class Clip:
         """Where the cursor is at time c (None if this shot has no mouse log)."""
         if not self.mouse:
             return None
-        times = [m[0] for m in self.mouse]
-        i = bisect.bisect_right(times, c) - 1
+        i = bisect.bisect_right(self._mouse_times, c) - 1
         if i < 0:
             return self.mouse[0][1:]
         if i + 1 >= len(self.mouse):
@@ -382,13 +388,16 @@ class Clip:
 
     def camera_at(self, c, move):
         """(x, y, zoom) at time c: each keyframe eases from where the camera was."""
-        starts = []
-        for k, (ck, x, y, z) in enumerate(self.keys):
-            if k == 0:
-                starts.append((x, y, z))
-                continue
-            starts.append(self._eval(ck, k - 1, starts, move))
-        last = max(0, bisect.bisect_right([k[0] for k in self.keys], c) - 1)
+        starts = self._starts.get(move)
+        if starts is None:
+            starts = []
+            for k, (ck, x, y, z) in enumerate(self.keys):
+                if k == 0:
+                    starts.append((x, y, z))
+                    continue
+                starts.append(self._eval(ck, k - 1, starts, move))
+            self._starts[move] = starts
+        last = max(0, bisect.bisect_right(self._key_times, c) - 1)
         return self._eval(c, last, starts, move)
 
     def _eval(self, c, k, starts, move):
@@ -476,7 +485,8 @@ class Encoder:
 
     def close(self):
         self.p.stdin.close()
-        self.p.wait()
+        if self.p.wait() != 0:
+            raise SystemExit(f"ffmpeg failed while encoding (exit {self.p.returncode})")
 
 
 def render_clip(enc, clip, seconds, speed, caption=None, pill_img=None, tail=False):
@@ -616,8 +626,10 @@ def main():
             label = f"x{i}"
         t += length - XFADE
     total = t + XFADE
-    music_wav = WORK / "music.wav"
-    music(total, music_wav)
+    # Generating the bed takes minutes, so it's kept per length.
+    music_wav = WORK / f"music-{total:.3f}.wav"
+    if not music_wav.exists():
+        music(total, music_wav)
     n = len(clips)
     for wav in voices:
         inputs += ["-i", wav]

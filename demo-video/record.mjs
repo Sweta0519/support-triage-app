@@ -18,12 +18,19 @@
 // customer B (replacing the previous take's), and reviews, claims, answers,
 // moves, flags, labels, shares, resolves and rates it as the test admin.
 // It keeps one "Refund policy" note on the admin for Sage. The agent's theme
-// switch in the montage is put back afterwards.
-import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+// switch in the montage is put back afterwards. That data is the shared
+// Supabase project's (the same database as notes-collections), so the newest
+// ticket in the queue after a take is the demo's.
+//
+// This is a dev-only Node script, never part of the app: it uses the
+// service-role key directly (outside app/lib/supabase/service.ts and
+// app/lib/db/) to set up and reset scene state, scoped to the test accounts
+// and the one ticket it files.
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
+import { chromium } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
 const BASE = "http://localhost:3000";
@@ -36,6 +43,9 @@ const STATE = join(BUILD, "state.json");
 const VIEWPORT = { width: 2880, height: 1620 };
 const ZOOM = 2.25;
 
+for (const name of ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "TEST_USER_B_EMAIL", "TEST_AGENT_EMAIL", "TEST_ADMIN_EMAIL"]) {
+  if (!process.env[name]) throw new Error(`${name} is not set: run with node --env-file=.env.local`);
+}
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
   db: { schema: "ticketing" },
   auth: { persistSession: false, autoRefreshToken: false },
@@ -64,6 +74,22 @@ const DEMO_NOTE = {
 const SAGE_QUESTION = "What's our policy for refunding a duplicate charge?";
 
 const state = existsSync(STATE) ? JSON.parse(readFileSync(STATE, "utf8")) : {};
+// The ticket 02-customer files, for the scenes that use it.
+const demoTicket = () => {
+  if (!state.ticketUrl) throw new Error("Record 02-customer first: this scene uses its ticket.");
+  return { url: state.ticketUrl, number: state.ticketNumber };
+};
+// Moves the demo ticket through statuses one allowed step at a time (the
+// status trigger applies to the service role too), checking each.
+async function stepStatus(...statuses) {
+  for (const status of statuses) {
+    const { error } = await db.from("tickets").update({ status }).eq("number", demoTicket().number);
+    if (error) throw new Error(`Demo ticket -> ${status}: ${error.message}`);
+  }
+}
+// The demo ticket's current status.
+const demoStatus = async () =>
+  (await db.from("tickets").select("status").eq("number", demoTicket().number).single()).data.status;
 const saveState = () => writeFileSync(STATE, JSON.stringify(state, null, 2));
 const profileId = async (role) =>
   (await db.from("profiles").select("id").eq("email", process.env[ACCOUNTS[role][0]].toLowerCase()).single()).data.id;
@@ -150,7 +176,8 @@ async function scrollToLocator(page, locator, ms = 1200) {
         const step = (now) => {
           const k = Math.min(1, (now - t0) / ms);
           box.scrollTop = from + (to - from) * (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
-          k < 1 ? requestAnimationFrame(step) : done();
+          if (k < 1) requestAnimationFrame(step);
+          else done();
         };
         requestAnimationFrame(step);
       });
@@ -207,7 +234,10 @@ async function record(browser, id, role, { setup, run, teardown }) {
   if (setup) await setup(page);
   await pause(page, 500);
 
-  const dir = join(BUILD, "frames", id);
+  // A take records into a fresh folder and replaces the last good one only
+  // when it finishes, so a failed re-take leaves that one as it was.
+  const final = join(BUILD, "frames", id);
+  const dir = `${final}.take`;
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   const cdp = await page.context().newCDPSession(page);
@@ -229,16 +259,23 @@ async function record(browser, id, role, { setup, run, teardown }) {
   const started = Date.now() / 1000;
   mouse.push({ t: started, x: mousePos.x, y: mousePos.y });
   camera.push({ t: started, x: VIEWPORT.width / 2, y: VIEWPORT.height / 2, zoom: 1 });
-  await run(page);
-  await pause(page, 900);
-  const ended = Date.now() / 1000;
-  await cdp.send("Page.stopScreencast");
-  await Promise.all(writes);
-  if (teardown) await teardown(page);
+  let ended;
+  try {
+    await run(page);
+    await pause(page, 900);
+    ended = Date.now() / 1000;
+    await cdp.send("Page.stopScreencast");
+    await Promise.all(writes);
+  } finally {
+    // Even after a failed take, so test accounts are always put back.
+    if (teardown) await teardown(page);
+  }
   writeFileSync(join(dir, "frames.json"), JSON.stringify({ started, ended, frames, size: VIEWPORT }, null, 1));
   writeFileSync(join(dir, "camera.json"), JSON.stringify(camera, null, 1));
   writeFileSync(join(dir, "mouse.json"), JSON.stringify(mouse, null, 1));
   writeFileSync(join(dir, "scrolls.json"), JSON.stringify(scrolls, null, 1));
+  rmSync(final, { recursive: true, force: true });
+  renameSync(dir, final);
   console.log(`${id}: ${frames.length} frames, ${(ended - started).toFixed(1)} s, ${camera.length} camera moves`);
   await page.context().close();
 }
@@ -288,7 +325,7 @@ const SCENES = {
 
   "03-triage": ["admin", {
     setup: async (page) => {
-      await page.goto(state.ticketUrl);
+      await page.goto(demoTicket().url);
       await waitForTriage(page);
     },
     run: async (page) => {
@@ -335,7 +372,7 @@ const SCENES = {
         await page.getByRole("button", { name: "Save note" }).click();
         await page.waitForURL((u) => !u.pathname.endsWith("/new"), { timeout: 60_000 });
       }
-      await page.goto(state.ticketUrl);
+      await page.goto(demoTicket().url);
     },
     run: async (page) => {
       await pause(page, 700);
@@ -373,7 +410,14 @@ const SCENES = {
   }],
 
   "05-review": ["admin", {
-    setup: (page) => page.goto(state.ticketUrl),
+    setup: async (page) => {
+      // A re-take starts unclaimed (as after 02), so "Claim ticket" is there.
+      const path = { resolved: ["in_progress", "assigned", "triaged"], in_progress: ["assigned", "triaged"], assigned: ["triaged"] };
+      await stepStatus(...(path[await demoStatus()] ?? []));
+      const { error } = await db.from("tickets").update({ assignee_id: null }).eq("number", demoTicket().number);
+      if (error) throw new Error(error.message);
+      await page.goto(demoTicket().url);
+    },
     run: async (page) => {
       const panel = panelOf(page);
       const review = panel.getByText("Your review");
@@ -406,7 +450,7 @@ const SCENES = {
 
   "06-queue": ["admin", {
     setup: async (page) => {
-      const { data: t } = await db.from("tickets").select("id").eq("number", state.ticketNumber).single();
+      const { data: t } = await db.from("tickets").select("id").eq("number", demoTicket().number).single();
       await db.from("ticket_flags").delete().eq("ticket_id", t.id);
       await db.from("ticket_labels").delete().eq("ticket_id", t.id);
       // As it was after scene 05's claim (a re-take may come after the montage
@@ -419,7 +463,7 @@ const SCENES = {
       await page.goto(`${BASE}/queue?filter=all`);
     },
     run: async (page) => {
-      const n = state.ticketNumber;
+      const n = demoTicket().number;
       await pause(page, 900);
       const stats = page.getByText("SLA at risk").first().locator("xpath=ancestor::div[2]");
       await cam(page, stats, { zoom: 1.7 });
@@ -458,11 +502,11 @@ const SCENES = {
   "07-board": ["admin", {
     setup: async (page) => {
       // A re-take starts from "assigned" (as after the claim).
-      await db.from("tickets").update({ status: "assigned" }).eq("number", state.ticketNumber).eq("status", "in_progress");
+      if ((await demoStatus()) === "in_progress") await stepStatus("assigned");
       await page.goto(`${BASE}/board`);
     },
     run: async (page) => {
-      const n = state.ticketNumber;
+      const n = demoTicket().number;
       const card = page.locator("article", { hasText: DEMO_TICKET.subject }).first();
       const target = page.getByRole("region", { name: /^In progress, \d+ tickets?$/ });
       await pause(page, 700);
@@ -565,8 +609,10 @@ const SCENES = {
   "11-m02-csat": ["customer", {
     setup: async (page) => {
       // Staff resolve the demo ticket first (unrecorded).
-      await db.from("tickets").update({ status: "resolved", resolved_at: new Date().toISOString() }).eq("number", state.ticketNumber);
-      await page.goto(state.ticketUrl);
+      // (The trigger sets resolved_at.)
+      const path = { new: ["in_progress", "resolved"], triaged: ["in_progress", "resolved"], assigned: ["in_progress", "resolved"], in_progress: ["resolved"] };
+      await stepStatus(...(path[await demoStatus()] ?? []));
+      await page.goto(demoTicket().url);
     },
     run: async (page) => {
       const heading = page.getByRole("heading", { name: /How did we do\?|Your rating/ });
@@ -583,7 +629,7 @@ const SCENES = {
   }],
 
   "11-m03-share": ["admin", {
-    setup: (page) => page.goto(state.ticketUrl),
+    setup: (page) => page.goto(demoTicket().url),
     run: async (page) => {
       const publish = page.getByRole("button", { name: "Publish public status page" });
       if (await publish.isVisible().catch(() => false)) {
@@ -609,9 +655,9 @@ const SCENES = {
   }],
 
   "11-m05-rerun": ["admin", {
-    setup: (page) => page.goto(`${BASE}/queue?filter=all&q=%23${state.ticketNumber}`),
+    setup: (page) => page.goto(`${BASE}/queue?filter=all&q=%23${demoTicket().number}`),
     run: async (page) => {
-      await click(page, page.getByRole("button", { name: `Actions for #${state.ticketNumber}` }));
+      await click(page, page.getByRole("button", { name: `Actions for #${demoTicket().number}` }));
       await cam(page, page.getByRole("menu").first(), { zoom: 2.0, pad: 40 });
       await moveTo(page, page.getByRole("menuitem", { name: "Re-run AI triage" }));
       await pause(page, 1300);
@@ -646,6 +692,7 @@ const SCENES = {
     },
     // Put the agent's theme back (directly: the form's save can race the page closing).
     teardown: async () => {
+      if (!state.agentTheme) return; // the scene never got as far as reading it
       const { error } = await db.from("profiles").update({ theme: state.agentTheme }).eq("email", process.env.TEST_AGENT_EMAIL.toLowerCase());
       if (error) throw new Error(`Theme not restored: ${error.message}`);
     },
@@ -683,9 +730,6 @@ mkdirSync(BUILD, { recursive: true });
 const browser = await chromium.launch();
 try {
   for (const id of ids) {
-    if (id !== "02-customer" && !state.ticketUrl && !/^(08|09|10|11-m04|11-m07|11-m09|11-m10)/.test(id)) {
-      throw new Error("Record 02-customer first: later scenes use its ticket.");
-    }
     const [role, scene] = SCENES[id];
     await record(browser, id, role, scene);
   }
