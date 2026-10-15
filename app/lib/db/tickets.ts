@@ -258,18 +258,43 @@ export async function listQueueTickets(
   return (data as unknown as Row[]).map((row) => ({ ...row, latest_triage: row.latest_triage[0] ?? null }));
 }
 
+// A ticket as staff see it, by id (pages) or short number (the MCP tools).
+// RLS decides visibility: agents see their own and unassigned tickets,
+// admins every ticket; anything else comes back null.
 export async function getTicketForStaff(ticketId: string): Promise<Ticket | null> {
+  return getStaffTicket("id", ticketId);
+}
+
+export async function getTicketForStaffByNumber(number: number): Promise<Ticket | null> {
+  return getStaffTicket("number", number);
+}
+
+async function getStaffTicket(column: "id" | "number", value: string | number): Promise<Ticket | null> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("tickets")
     .select(TICKET_COLUMNS)
-    .eq("id", ticketId)
+    .eq(column, value)
     .maybeSingle();
 
   if (error) {
     throw new Error(error.message);
   }
   return data as unknown as Ticket | null;
+}
+
+// The short numbers of the tickets with these ids that the caller can see
+// (RLS): for showing the AI's duplicate/related links as #numbers.
+export async function getTicketNumbers(ids: string[]): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (ids.length === 0) return result;
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.from("tickets").select("id, number").in("id", ids);
+  if (error) {
+    throw new Error(error.message);
+  }
+  for (const row of data) result.set(row.id, row.number);
+  return result;
 }
 
 // Atomic claim: the WHERE clause (not just the RLS policy) requires

@@ -5,6 +5,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Profile } from "@/app/lib/db/profiles";
 import { profileName } from "@/app/lib/people";
 import { registerCustomerTools } from "./customer-tools";
+import { registerStaffTools } from "./staff-tools";
 import { guarded } from "./results";
 
 // The MCP server one request talks to (SUP-54). It's built per request for
@@ -43,8 +44,10 @@ export function createMcpServer(profile: Profile): McpServer {
     })
   );
 
-  // Tools for each role (staff tools: SUP-56).
+  // Tools for each role: customers work their own tickets (SUP-55), staff
+  // work the queue (SUP-56).
   if (profile.role === "customer") registerCustomerTools(server, profile);
+  else registerStaffTools(server, profile);
 
   return server;
 }
