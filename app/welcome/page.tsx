@@ -16,6 +16,9 @@ import styles from "./welcome.module.css";
 const serif = Source_Serif_4({ subsets: ["latin"], style: ["normal"], weight: ["400"] });
 
 export const metadata: Metadata = {
+  // Served at / (signed out) and /welcome: / is the address to index.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+  alternates: { canonical: "/" },
   title: "Support Triage: every ticket read and sorted before anyone opens it",
   description:
     "A help desk where AI reads each new ticket and suggests a category, a priority with its reason, the right team and a first reply. Your team confirms, corrects and sends.",
@@ -25,6 +28,8 @@ const ink = "text-[#15171C]";
 const graphite = "text-[#5B606B]";
 const primaryButton =
   "inline-flex items-center rounded-lg bg-[#4F46E5] px-4 py-2.5 text-[15px] font-medium text-white hover:bg-[#4338CA] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
+const quietFooterLink =
+  "rounded underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
 const quietLink =
   "rounded text-[15px] font-medium text-[#15171C] underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
 
@@ -43,9 +48,10 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+// One term/definition pair, revealed in turn (a direct child of the <dl>).
+function Field({ label, step, children }: { label: string; step: number; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[6.5rem_1fr] gap-3 py-1.5">
+    <div className={`${styles.reveal} grid grid-cols-[6.5rem_1fr] gap-3 py-1.5`} style={{ "--step": step } as CSSProperties}>
       <dt className={`text-[13px] ${graphite}`}>{label}</dt>
       <dd className={`text-[14px] ${ink}`}>{children}</dd>
     </div>
@@ -65,29 +71,23 @@ function TriageMoment() {
       </div>
       <div className="bg-[#FBFBFC] px-5 py-4">
         <Step n={0}>
-          <p className={`text-[13px] ${graphite}`}>Read by the AI in about 4 seconds</p>
+          <p className={`text-[13px] ${graphite}`}>Read by the AI as it arrives</p>
         </Step>
         <dl className="mt-2">
-          <Step n={1}>
-            <Field label="Category">Billing</Field>
-          </Step>
-          <Step n={2}>
-            <Field label="Priority">
-              <span className="inline-flex items-center gap-1.5 font-medium">
-                <span aria-hidden="true" className="h-2 w-2 rounded-full bg-[#F5A524]" />
-                High
-              </span>
-              <span className={`mt-0.5 block text-[13px] leading-snug ${graphite}`}>
-                Double-charged for the second time, frustrated, and asking for a refund.
-              </span>
-            </Field>
-          </Step>
-          <Step n={3}>
-            <Field label="Team">Billing</Field>
-          </Step>
-          <Step n={4}>
-            <Field label="Still needed">The account email, and which card was charged</Field>
-          </Step>
+          <Field label="Category" step={1}>Billing</Field>
+          <Field label="Priority" step={2}>
+            <span className="inline-flex items-center gap-1.5 font-medium">
+              <span aria-hidden="true" className="h-2 w-2 rounded-full bg-[#F5A524]" />
+              High
+            </span>
+            <span className={`mt-0.5 block text-[13px] leading-snug ${graphite}`}>
+              Double-charged for the second time, frustrated, and asking for a refund.
+            </span>
+          </Field>
+          <Field label="Team" step={3}>Billing</Field>
+          <Field label="Still needed" step={4}>
+            The account email or customer ID
+          </Field>
         </dl>
         <Step n={5}>
           <div className="mt-3 rounded-lg border border-[#E3E5EA] bg-white px-4 py-3">
@@ -118,7 +118,7 @@ const SEQUENCE = [
   },
   {
     title: "The next ticket gets it right",
-    text: "Each correction becomes an example the AI uses on similar tickets, and analytics show whether its suggestions are being accepted more often.",
+    text: "Staff corrections are fed back as examples on similar tickets, and analytics show whether the AI's suggestions are being accepted more often.",
   },
 ];
 
@@ -126,7 +126,7 @@ const ALSO = [
   { name: "Sage", text: "A private assistant for each agent that answers from their own notes and says which note it used." },
   {
     name: "Incident detection",
-    text: "When several customers report the same problem within an hour, their tickets are grouped and one update is drafted for all of them.",
+    text: "When several customers report the same problem within an hour, their tickets are grouped and one update is drafted for staff to review and post to all of them.",
   },
   { name: "Queue and board", text: "Response-time targets for each priority, urgent work first, and drag and drop between statuses." },
   { name: "Analytics", text: "Response times, customer ratings, and how often the AI's suggestions are kept as they are." },
@@ -137,7 +137,9 @@ const ALSO = [
 export default async function WelcomePage() {
   const signedIn = Boolean(await getUser());
   return (
-    <div className={`flex min-h-full flex-col bg-[#FBFBFC] font-sans ${ink}`}>
+    // A light-only design: data-theme="light" turns off the app's dark:
+    // variants inside and paints the page background light (globals.css).
+    <div data-theme="light" className={`flex min-h-screen flex-col bg-[#FBFBFC] font-sans ${ink}`}>
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-5 sm:px-8">
         <Link href="/" className="rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#4F46E5]">
           <Logo size={28} />
@@ -153,7 +155,7 @@ export default async function WelcomePage() {
                 Sign in
               </Link>
               <Link href="/signup" className={primaryButton}>
-                Get started
+                Request access
               </Link>
             </>
           )}
@@ -173,7 +175,7 @@ export default async function WelcomePage() {
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-6">
               <Link href={signedIn ? "/" : "/signup"} className={primaryButton}>
-                {signedIn ? "Open the app" : "Get started free"}
+                {signedIn ? "Open the app" : "Request access"}
               </Link>
               {signedIn ? null : (
                 <Link href="/login" className={quietLink}>
@@ -221,11 +223,14 @@ export default async function WelcomePage() {
         <section className="border-t border-[#E3E5EA]">
           <div className="mx-auto flex w-full max-w-6xl flex-col items-start gap-6 px-5 py-16 sm:flex-row sm:items-center sm:justify-between sm:px-8">
             <div>
-              <h2 className="text-[26px] font-semibold tracking-[-0.01em]">Try it with your own tickets.</h2>
-              <p className={`mt-1 text-[15px] ${graphite}`}>Free to use. Sign up with your email address.</p>
+              <h2 className="text-[26px] font-semibold tracking-[-0.01em]">Use it with your team.</h2>
+              <p className={`mt-1 max-w-xl text-[15px] leading-[1.6] ${graphite}`}>
+                Create an account, then open a ticket telling us about your team. We&apos;ll set you up with agent
+                access. It&apos;s free.
+              </p>
             </div>
             <Link href={signedIn ? "/" : "/signup"} className={primaryButton}>
-              {signedIn ? "Open the app" : "Get started free"}
+              {signedIn ? "Open the app" : "Request access"}
             </Link>
           </div>
         </section>
@@ -234,11 +239,11 @@ export default async function WelcomePage() {
       <footer className="border-t border-[#E3E5EA]">
         <div className={`mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-5 py-6 text-[14px] sm:px-8 ${graphite}`}>
           <span>Support Triage</span>
-          <Link href="/privacy" className="underline-offset-4 hover:underline">
+          <Link href="/privacy" className={quietFooterLink}>
             Privacy policy
           </Link>
           {signedIn ? null : (
-            <Link href="/login" className="underline-offset-4 hover:underline">
+            <Link href="/login" className={quietFooterLink}>
               Sign in
             </Link>
           )}

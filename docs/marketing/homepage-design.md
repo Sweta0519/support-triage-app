@@ -40,12 +40,12 @@ everything else stays quiet, like the app itself (calm, Linear-style).
 **Layout:** left-aligned throughout.
 
 ```
-[logo] Support Triage                         Sign in  [Get started]
+[logo] Support Triage                         Sign in  [Request access]
 
 Every new ticket, read and sorted       ┌ customer's message (serif) ┐
 before anyone opens it.                 │ "Hi, I just noticed two…"  │
 one-paragraph explanation               ├ the AI's read (sans) ──────┤
-[Get started free]  Sign in             │ Billing · High (why…) ·…   │
+[Request access]  Sign in             │ Billing · High (why…) ·…   │
                                         └ drafted reply ─────────────┘
 
 How a ticket moves through Support Triage      (a real sequence: 1–4)
@@ -58,7 +58,7 @@ Also included                        (two-column list, not cards)
  Sage ……………… one line       Incident detection …… one line
  …
 
-Try it with your own tickets.  [Get started free]
+Use it with your team.  [Request access]
 footer: Privacy policy   Sign in
 ```
 

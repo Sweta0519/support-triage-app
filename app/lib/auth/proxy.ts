@@ -3,7 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { AUTH_COOKIE_OPTIONS } from "./clients";
 
-const PUBLIC_PATHS = ["/login", "/signup", "/auth/confirm", "/s/", "/privacy", "/welcome"];
+const PUBLIC_PATHS = ["/login", "/signup", "/auth/confirm", "/s/", "/privacy"];
+// Exact, unlike the prefixes above, so a later /welcome-something route
+// isn't public by accident.
+const PUBLIC_EXACT = ["/welcome"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -31,18 +34,22 @@ export async function updateSession(request: NextRequest) {
   );
 
   const { data } = await supabase.auth.getClaims();
-  const isPublicPath = PUBLIC_PATHS.some((path) =>
-    request.nextUrl.pathname.startsWith(path)
-  );
+  const isPublicPath =
+    PUBLIC_EXACT.includes(request.nextUrl.pathname) ||
+    PUBLIC_PATHS.some((path) => request.nextUrl.pathname.startsWith(path));
 
   // Session refresh + "is anyone signed in" only. Role/authorization checks
   // must never live here -- Next's proxy is not an authorization layer, so
   // per-role gating happens in requireRole()/requireStaff()/requireAdmin()
   // (app/lib/auth/session.ts) and in RLS, not here.
-  // Signed out at the site root: show the marketing page (SUP-48) under the
-  // same URL. Like the redirect below, this only asks "is anyone signed in";
-  // signed-in visitors get the app at /, guarded server-side as before.
-  if (!data && request.nextUrl.pathname === "/") {
+
+  // The public homepage (SUP-48). A visitor at the site root with no sign-in
+  // cookie at all sees the marketing page under the same URL. Like the
+  // redirect below, this only asks "is anyone signed in". A visitor who has
+  // a session cookie that didn't check out (expired, or a transient error)
+  // still goes to /login below, as before, rather than to the marketing page.
+  const hasSessionCookie = request.cookies.getAll().some((c) => c.name.startsWith("sb-") && c.name.includes("auth-token"));
+  if (!data && !hasSessionCookie && request.nextUrl.pathname === "/") {
     const url = request.nextUrl.clone();
     url.pathname = "/welcome";
     const rewrite = NextResponse.rewrite(url, { request });

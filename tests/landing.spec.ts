@@ -9,18 +9,28 @@ test.describe("signed out", () => {
 
   test("/ shows the homepage, and its buttons lead to sign up and sign in", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveURL(/\/$/);
+    expect(new URL(page.url()).pathname).toBe("/");
     await expect(page.getByRole("heading", { level: 1, name: HEADLINE })).toBeVisible();
     // The hero's example ticket and the AI's suggestions for it.
     const example = page.getByRole("figure", { name: "An example ticket and the AI's suggestions for it" });
     await expect(example).toContainText("Charged twice for Pro this month");
     await expect(example).toContainText("Drafted reply, for an agent to edit and send");
 
-    await page.getByRole("navigation", { name: "Account" }).getByRole("link", { name: "Get started" }).click();
+    await page.getByRole("navigation", { name: "Account" }).getByRole("link", { name: "Request access", exact: true }).click();
     await expect(page).toHaveURL(/\/signup$/);
     await page.goto("/");
     await page.getByRole("navigation", { name: "Account" }).getByRole("link", { name: "Sign in" }).click();
     await expect(page).toHaveURL(/\/login$/);
+  });
+
+  test("/ with a query string, and /welcome itself, show the homepage; /privacy stays public", async ({ page }) => {
+    await page.goto("/?utm_source=test");
+    expect(new URL(page.url()).pathname).toBe("/");
+    await expect(page.getByRole("heading", { level: 1, name: HEADLINE })).toBeVisible();
+    await page.goto("/welcome");
+    await expect(page.getByRole("heading", { level: 1, name: HEADLINE })).toBeVisible();
+    await page.goto("/privacy");
+    await expect(page.getByRole("heading", { level: 1, name: "Privacy policy" })).toBeVisible();
   });
 
   test("app pages still send signed-out visitors to sign in", async ({ page }) => {
@@ -35,8 +45,8 @@ test("signed in, / is the app, not the homepage", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   await expect(page.getByRole("heading", { name: HEADLINE })).toHaveCount(0);
-  // Visiting the homepage directly offers the app instead of sign up.
+  // Visiting the homepage directly offers the app instead of requesting access.
   await page.goto("/welcome");
   await expect(page.getByRole("navigation", { name: "Account" }).getByRole("link", { name: "Open the app" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Get started" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Request access", exact: true })).toHaveCount(0);
 });
