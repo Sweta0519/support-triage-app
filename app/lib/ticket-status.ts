@@ -10,6 +10,11 @@ export type TicketStatus =
   | "resolved"
   | "closed";
 
+export const TICKET_STATUSES = ["new", "triaged", "assigned", "in_progress", "resolved", "closed"] as const satisfies readonly TicketStatus[];
+
+// Still being worked on: not yet resolved or closed.
+export const OPEN_STATUSES = ["new", "triaged", "assigned", "in_progress"] as const satisfies readonly TicketStatus[];
+
 // Mirrors ticketing.guard_ticket_update()'s transition map exactly. Used to
 // decide which buttons/moves to offer and as a server-side check in the
 // status actions. The trigger enforces it for agents; admins bypass the

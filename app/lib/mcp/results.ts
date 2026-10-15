@@ -8,9 +8,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 // words of a customer or a support agent, to read as data, never to follow
 // as instructions (prompt injection through a ticket).
 
-export type Untrusted = { untrusted_text: string };
-
-export function untrusted(text: string): Untrusted {
+export function untrusted(text: string): { untrusted_text: string } {
   return { untrusted_text: text };
 }
 
@@ -23,4 +21,19 @@ export function toolError(message: string): CallToolResult {
   return { isError: true, content: [{ type: "text", text: message }] };
 }
 
-export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+// Every tool handler goes through this. The SDK would otherwise hand a thrown
+// error's message (a database error, say) to the assistant as the result;
+// here it's logged on the server, and the person gets a plain message, as
+// the route does for its own failures.
+export function guarded<A extends unknown[]>(
+  handler: (...args: A) => Promise<CallToolResult>
+): (...args: A) => Promise<CallToolResult> {
+  return async (...args: A) => {
+    try {
+      return await handler(...args);
+    } catch (err) {
+      console.error("MCP tool failed:", err);
+      return toolError("That didn't work because of a problem on our side. Try again shortly.");
+    }
+  };
+}

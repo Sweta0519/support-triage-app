@@ -4,10 +4,10 @@ import { redirect } from "next/navigation";
 
 import { createServerSupabaseClient } from "./clients";
 import { AUTH_RATE_LIMITED_MESSAGE, consumeAuthRateLimit, refundAuthAttempt } from "@/app/lib/db/auth-rate-limit";
+import { SITE_URL } from "@/app/lib/site-url";
 
 export type AuthFormState = { error: string } | undefined;
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
 function parseCredentials(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();

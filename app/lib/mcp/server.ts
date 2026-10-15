@@ -5,6 +5,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Profile } from "@/app/lib/db/profiles";
 import { profileName } from "@/app/lib/people";
 import { registerCustomerTools } from "./customer-tools";
+import { guarded } from "./results";
 
 // The MCP server one request talks to (SUP-54). It's built per request for
 // the signed-in token owner, from their profile as just read from the
@@ -36,10 +37,10 @@ export function createMcpServer(profile: Profile): McpServer {
       description: "The person these tools act as: their name, email and role (customer, agent or admin).",
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async () => {
+    guarded(async () => {
       const me = { name: profileName(profile), email: profile.email, role: profile.role };
       return { content: [{ type: "text", text: JSON.stringify(me) }] };
-    }
+    })
   );
 
   // Tools for each role (staff tools: SUP-56).

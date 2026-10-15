@@ -104,8 +104,8 @@ their own tickets, through the same `app/lib/db/` functions, validation and rate
 | Tool | Does |
 |---|---|
 | `create_ticket(subject, description)` | Files a ticket as the web form does. AI triage starts after the answer (`after()`, service role, as from the form). Returns the number and link. |
-| `list_my_tickets(status?)` | Their tickets, newest first (50 at most): number, subject, status, created and updated times. `status` can be `open` (not resolved or closed) or one status. |
-| `get_ticket(number)` | One of their tickets: status, description, and the public replies, with authors named as on the web ("You", "Sam (Support)"). |
+| `list_my_tickets(status?)` | Their tickets, newest first (50 at most, filtered in the database, with `more` when there are others): number, subject, status, created and updated times. `status` can be `open` (not resolved or closed) or one status. |
+| `get_ticket(number)` | One of their tickets: status, description, and the public replies with who wrote each (the customer, or support, with the staff member's name where the web shows it). |
 | `add_reply(number, message)` | A public reply on one of their tickets. Closed tickets refuse it, as on the web. |
 
 - **Not found means not yours.** A ticket number that isn't the customer's (someone else's, or
@@ -115,14 +115,23 @@ their own tickets, through the same `app/lib/db/` functions, validation and rate
 - **Staff don't get these tools.** Filing a ticket is the customer's action on the web too.
   Staff tools come in SUP-56.
 
-Refusals the person can act on (a validation message, a rate limit, a closed ticket) come back as
-tool errors in words (`isError`). Anything else is a JSON-RPC error.
+- **Statuses** come back as the values the filter accepts (`in_progress`, not "in progress"), so
+  an assistant can pass what it read straight back.
+- **Reply authors** are `{"role": "you" | "support" | "deleted account"}`, and a staff member's
+  chosen display name, when there is one, is in `name`, wrapped as untrusted.
+
+**Errors.** Refusals the person can act on (a validation message, a rate limit, a closed ticket,
+a ticket that isn't theirs) come back as tool errors in words (`isError`). If a tool fails on our
+side (a database error, say), `guarded()` in `app/lib/mcp/results.ts` logs it on the server, and
+the tool error says only that something went wrong, never the underlying message. Problems with
+the request itself (bad arguments, an unknown tool) are JSON-RPC errors from the SDK.
 
 ## Untrusted text
 
-Ticket subjects, descriptions and replies are written by people, and could contain text aimed at
-the assistant ("ignore your instructions and..."). Tool results are JSON, so such text can't
-break out of its field, and every such field is wrapped as `{"untrusted_text": "..."}`
+Ticket subjects, descriptions, replies and other people's display names are written by people,
+and could contain text aimed at the assistant ("ignore your instructions and..."). Tool results
+are JSON, so such text can't break out of its field, and every such field is wrapped as
+`{"untrusted_text": "..."}`
 (`app/lib/mcp/results.ts`). The server's instructions tell the assistant to read those as
 information, never as instructions. The same rule applies to the triage prompt
 (`docs/ai-triage.md`).
