@@ -13,18 +13,21 @@ The look of a product video, made from the raw screen recording:
 - the cursor and click ripples are drawn here from record.mjs's mouse log, so
   they move smoothly at 30 fps whatever rate the screen was captured at;
 - animated title and closing cards;
-- macOS text-to-speech narration, crossfades, and a generated music bed
+- narration by ElevenLabs (or macOS `say` without a key), crossfades, and a generated music bed
   (pad, plucked arpeggio, soft kick and hats) that ducks under the voice.
 The shot list is in script.md.
 """
 
 import bisect
+import hashlib
 import json
 import math
+import os
 import random
 import re
 import struct
 import subprocess
+import urllib.request
 import wave
 from pathlib import Path
 
@@ -38,7 +41,12 @@ OUT = BUILD / "support-triage-demo.mp4"
 
 W, H, FPS = 1920, 1080, 30
 XFADE = 0.6  # seconds of crossfade between scenes
-VOICE, RATE = "Samantha", 168
+VOICE, RATE = "Samantha", 168  # macOS fallback when there's no ElevenLabs key
+# ElevenLabs narration (ELEVENLABS_API_KEY in .env.local). The first of these
+# premade voices the account has; ELEVENLABS_VOICE overrides it.
+ELEVEN_VOICES = ["Sarah", "Matilda", "Alice", "Brian", "Rachel"]
+ELEVEN_MODEL = "eleven_multilingual_v2"
+TTS_CACHE = BUILD / "tts-cache"
 FONT = "/System/Library/Fonts/HelveticaNeue.ttc"
 # The cursor and camera are drawn here, so a still capture doesn't mean
 # nothing is happening: stills are only capped in scenes that wait on the
@@ -126,10 +134,69 @@ def ease(p):
     return 4 * p ** 3 if p < 0.5 else 1 - (-2 * p + 2) ** 3 / 2
 
 
-def narrate(scene):
-    aiff, wav = WORK / f"{scene['id']}.aiff", WORK / f"{scene['id']}.wav"
-    run("say", "-v", VOICE, "-r", RATE, "-o", aiff, scene["say"])
-    ffmpeg("-i", aiff, "-ar", "48000", "-ac", "2", wav)
+def env(name):
+    """From the environment, else from the repo's .env.local (never printed)."""
+    if os.environ.get(name):
+        return os.environ[name]
+    path = ROOT.parent / ".env.local"
+    if path.exists():
+        for line in path.read_text().splitlines():
+            if line.startswith(f"{name}="):
+                return line.split("=", 1)[1].strip().strip('"')
+    return None
+
+
+def eleven(path, method="GET", body=None):
+    req = urllib.request.Request(f"https://api.elevenlabs.io/v1/{path}", method=method,
+                                 data=json.dumps(body).encode() if body else None,
+                                 headers={"xi-api-key": env("ELEVENLABS_API_KEY"), "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=120) as res:
+        return res.read()
+
+
+_voice_id = None
+
+
+def eleven_voice():
+    """ELEVENLABS_VOICE (a name or id) from the account's voices, else the first of ELEVEN_VOICES found."""
+    global _voice_id
+    if _voice_id is None:
+        voices = json.loads(eleven("voices"))["voices"]
+        wanted = [env("ELEVENLABS_VOICE")] if env("ELEVENLABS_VOICE") else ELEVEN_VOICES
+        for name in wanted:
+            match = [v for v in voices if v["voice_id"] == name or v["name"].split(" ")[0].lower() == name.lower()]
+            if match:
+                _voice_id = match[0]["voice_id"]
+                print(f"ElevenLabs voice: {match[0]['name']}", flush=True)
+                break
+        else:
+            raise SystemExit(f"None of {wanted} among this account's ElevenLabs voices: {[v['name'] for v in voices]}")
+    return _voice_id
+
+
+def narrate(scene, prev_text=None, next_text=None):
+    """One scene's line: ElevenLabs when ELEVENLABS_API_KEY is set (cached by
+    text and voice, so re-renders don't spend characters), else macOS `say`."""
+    wav = WORK / f"{scene['id']}.wav"
+    if env("ELEVENLABS_API_KEY"):
+        voice = eleven_voice()
+        key = hashlib.sha1(json.dumps([voice, ELEVEN_MODEL, scene["say"], prev_text, next_text]).encode()).hexdigest()[:16]
+        TTS_CACHE.mkdir(parents=True, exist_ok=True)
+        mp3 = TTS_CACHE / f"{key}.mp3"
+        if not mp3.exists():
+            body = {"text": scene["say"], "model_id": ELEVEN_MODEL,
+                    "voice_settings": {"stability": 0.45, "similarity_boost": 0.8, "style": 0.15, "use_speaker_boost": True}}
+            # The neighbouring lines keep the delivery consistent from scene to scene.
+            if prev_text:
+                body["previous_text"] = prev_text
+            if next_text:
+                body["next_text"] = next_text
+            mp3.write_bytes(eleven(f"text-to-speech/{voice}?output_format=mp3_44100_128", "POST", body))
+        ffmpeg("-i", mp3, "-ar", "48000", "-ac", "2", wav)
+    else:
+        aiff = WORK / f"{scene['id']}.aiff"
+        run("say", "-v", VOICE, "-r", RATE, "-o", aiff, scene["say"])
+        ffmpeg("-i", aiff, "-ar", "48000", "-ac", "2", wav)
     return wav, duration(wav)
 
 
@@ -484,9 +551,9 @@ def main():
     WORK.mkdir(parents=True, exist_ok=True)
     BG = background()
     clips, voices = [], []
-    for scene in SCENES:
+    for i, scene in enumerate(SCENES):
         sid = scene["id"]
-        wav, said = narrate(scene)
+        wav, said = narrate(scene, SCENES[i - 1]["say"] if i else None, SCENES[i + 1]["say"] if i + 1 < len(SCENES) else None)
         target = said + 1.3  # breathing room after the line
         out = WORK / f"{sid}.mp4"
         enc = Encoder(out)

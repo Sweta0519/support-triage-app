@@ -409,6 +409,13 @@ const SCENES = {
       const { data: t } = await db.from("tickets").select("id").eq("number", state.ticketNumber).single();
       await db.from("ticket_flags").delete().eq("ticket_id", t.id);
       await db.from("ticket_labels").delete().eq("ticket_id", t.id);
+      // As it was after scene 05's claim (a re-take may come after the montage
+      // resolved it): reopened, then back to assigned, the moves the app allows.
+      const { data: cur } = await db.from("tickets").select("status").eq("id", t.id).single();
+      for (const status of cur.status === "resolved" ? ["in_progress", "assigned"] : cur.status === "in_progress" ? ["assigned"] : []) {
+        const { error } = await db.from("tickets").update({ status }).eq("id", t.id);
+        if (error) throw new Error(error.message);
+      }
       await page.goto(`${BASE}/queue?filter=all`);
     },
     run: async (page) => {
