@@ -66,13 +66,14 @@ const secondaryButton =
   "inline-flex items-center rounded-lg border border-[#C9CCD3] bg-white px-4 py-2.5 text-[15px] font-medium text-[#15171C] hover:border-[#9EA3AE] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
 // Navigation links (SUP-64): quiet grey that darkens on hover, no underline.
 // Underlines are kept for links inside sentences.
-const navLink =
-  "rounded text-[15px] font-medium text-[#5B606B] transition-colors duration-150 hover:text-[#15171C] focus-visible:text-[#15171C] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#4F46E5]";
-const footerLink =
-  "rounded text-[14px] text-[#5B606B] transition-colors duration-150 hover:text-[#15171C] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
-// A text action next to a primary button (hero): ink, no underline.
+const linkBase =
+  "rounded text-[#5B606B] transition-colors duration-150 hover:text-[#15171C] focus-visible:text-[#15171C] focus-visible:outline-2 focus-visible:outline-[#4F46E5]";
+const navLink = `${linkBase} text-[15px] font-medium focus-visible:outline-offset-4`;
+const footerLink = `${linkBase} text-[14px] focus-visible:outline-offset-2`;
+// A text action next to a primary button (hero): ink, and lighter on hover,
+// like the other links' quiet change; no underline, no brand colour.
 const quietLink =
-  "rounded text-[15px] font-medium text-[#15171C] transition-colors duration-150 hover:text-[#4F46E5] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
+  "rounded text-[15px] font-medium text-[#15171C] transition-colors duration-150 hover:text-[#5B606B] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
 
 // The hero: the real demo ticket and the AI's real read of it.
 const TICKET = {
@@ -208,29 +209,18 @@ const SECTIONS = [
   { href: "#pricing", label: "Pricing" },
 ];
 
-// The footer's link groups; the account links depend on being signed in.
-function FOOTER_GROUPS(signedIn: boolean) {
-  return [
-    {
-      title: "Product",
-      links: [
-        { href: "#demo", label: "Demo" },
-        { href: "#how-it-works", label: "How it works" },
-        { href: "#features", label: "Features" },
-        { href: "#pricing", label: "Pricing" },
-      ],
-    },
-    {
-      title: "Account",
-      links: signedIn
-        ? [{ href: "/", label: "Open the app" }]
-        : [
-            { href: "/login", label: "Sign in" },
-            { href: "/signup", label: "Request access" },
-          ],
-    },
-    { title: "Legal", links: [{ href: "/privacy", label: "Privacy policy" }] },
-  ];
+// The footer's link groups: the page's sections (the header's own list, so
+// the two can't drift), the account links for the visitor's state, and legal.
+const FOOTER_PRODUCT = { id: "product", title: "Product", links: SECTIONS };
+const FOOTER_LEGAL = { id: "legal", title: "Legal", links: [{ href: "/privacy", label: "Privacy policy" }] };
+function footerGroups(signedIn: boolean) {
+  const account = signedIn
+    ? [{ href: "/", label: "Open the app" }]
+    : [
+        { href: "/login", label: "Sign in" },
+        { href: "/signup", label: "Request access" },
+      ];
+  return [FOOTER_PRODUCT, { id: "account", title: "Account", links: account }, FOOTER_LEGAL];
 }
 
 // What the Free tier includes: the shipped app (README), nothing promised.
@@ -555,33 +545,40 @@ export default async function WelcomePage() {
       </main>
 
       <footer className="border-t border-[#E3E5EA]">
-        <div className="mx-auto grid w-full max-w-6xl gap-10 px-5 py-14 sm:px-8 md:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]">
+        <div className="mx-auto grid w-full max-w-6xl gap-10 px-5 py-14 sm:px-8 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           <div className="max-w-xs">
             <Logo size={24} />
             <p className={`mt-3 text-[14px] leading-[1.6] ${graphite}`}>
               A help desk where AI reads every ticket and people make every decision.
             </p>
           </div>
-          {FOOTER_GROUPS(signedIn).map((group) => (
-            <nav key={group.title} aria-label={`Footer: ${group.title}`}>
-              <h2 className="text-[13px] font-semibold text-[#15171C]">{group.title}</h2>
-              <ul className="mt-3 flex flex-col gap-2.5">
-                {group.links.map((link) => (
-                  <li key={link.href}>
-                    {link.href.startsWith("#") ? (
-                      <a href={link.href} className={footerLink}>
-                        {link.label}
-                      </a>
-                    ) : (
-                      <Link href={link.href} className={footerLink}>
-                        {link.label}
-                      </Link>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </nav>
-          ))}
+          {/* One footer landmark; each group is a list named by its title
+              (a label, not a heading: these aren't page sections). Two
+              columns on phones, three from md. */}
+          <nav aria-label="Footer" className="grid grid-cols-2 gap-x-8 gap-y-8 sm:grid-cols-3">
+            {footerGroups(signedIn).map((group) => (
+              <div key={group.id}>
+                <p id={`footer-${group.id}`} className="text-[13px] font-semibold text-[#15171C]">
+                  {group.title}
+                </p>
+                <ul aria-labelledby={`footer-${group.id}`} className="mt-3 flex flex-col gap-2.5">
+                  {group.links.map((link) => (
+                    <li key={link.href}>
+                      {link.href.startsWith("#") ? (
+                        <a href={link.href} className={footerLink}>
+                          {link.label}
+                        </a>
+                      ) : (
+                        <Link href={link.href} className={footerLink}>
+                          {link.label}
+                        </Link>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </nav>
         </div>
       </footer>
     </div>

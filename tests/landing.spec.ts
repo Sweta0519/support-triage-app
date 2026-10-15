@@ -124,6 +124,21 @@ test.describe("signed out", () => {
     expect(errors).toEqual([]);
   });
 
+  test("the footer links the sections, the account pages and the privacy policy", async ({ page }) => {
+    await page.goto("/");
+    const footer = page.getByRole("navigation", { name: "Footer", exact: true });
+    const product = footer.getByRole("list", { name: "Product" });
+    for (const href of await product.getByRole("link").evaluateAll((links) => links.map((a) => a.getAttribute("href")))) {
+      await expect(page.locator(href!)).toHaveCount(1);
+    }
+    const account = footer.getByRole("list", { name: "Account" });
+    await expect(account.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
+    await expect(account.getByRole("link", { name: "Request access" })).toHaveAttribute("href", "/signup");
+    await expect(footer.getByRole("list", { name: "Legal" }).getByRole("link", { name: "Privacy policy" })).toHaveAttribute("href", "/privacy");
+    // Group titles are labels, not headings: no "Product" heading on the page.
+    await expect(page.getByRole("heading", { name: "Product", exact: true })).toHaveCount(0);
+  });
+
   test("the demo video is reachable from the hero, captioned, and served to signed-out visitors", async ({ page }) => {
     // SUP-50: not downloaded until played; captions on by default.
     await page.goto("/");
@@ -167,6 +182,8 @@ test("signed in, / is the app, not the homepage", async ({ page }) => {
   await page.goto("/welcome");
   await expect(page.getByRole("navigation", { name: "Account", exact: true }).getByRole("link", { name: "Open the app" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Request access", exact: true })).toHaveCount(0);
+  // The footer's account group offers the app instead.
+  await expect(page.getByRole("navigation", { name: "Footer", exact: true }).getByRole("list", { name: "Account" }).getByRole("link")).toHaveText(["Open the app"]);
   // A signed-in customer's "Contact us" opens a new ticket straight away.
   await expect(page.getByRole("region", { name: "Pricing" }).getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/tickets/new");
 });
