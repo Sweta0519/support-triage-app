@@ -660,9 +660,15 @@ const SCENES = {
     },
   }],
 
-  "11-m10-tests": [null, {
-    setup: (page) => page.goto(`file://${join(ROOT, "..", "playwright-report", "index.html")}`),
+  "11-m10-privacy": [null, {
+    setup: (page) => page.goto(`${BASE}/privacy`),
     run: async (page) => {
+      const title = page.getByRole("heading", { name: "Privacy policy", level: 1 });
+      await cam(page, title.locator("xpath=.."), { zoom: 1.6 });
+      await pause(page, 1300);
+      const rights = page.getByRole("heading", { name: "Your rights and how to use them" });
+      await scrollToLocator(page, rights, 1100);
+      await cam(page, rights.locator("xpath=.."), { zoom: 1.7 });
       await pause(page, 1600);
     },
   }],

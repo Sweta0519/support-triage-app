@@ -16,12 +16,12 @@ a calm generated music bed (pad, plucked arpeggio, soft kick) that ducks under t
 | 3 | AI triage | The AI panel: fields (zoom), "Still needed", the drafted reply, model and cost | Before anyone opens it, the AI has read it… Every run shows its model, and what it cost. |
 | 4 | Sage | On the same ticket: open Sage (zoom on the chat), ask the refund policy, it answers from the "Refund policy" note and cites it | Need the policy? Ask Sage, your private assistant… |
 | 5 | Human in the loop | Correct the priority (zoom on the review), claim, use the suggested reply, send | The AI only suggests… Nothing reaches a customer without a person. |
-| 6 | The queue | SLA stat cards and an "At risk" card (zoom), the card's ⋯ menu (zoom), flag, labels with the L key | The queue keeps the team on time… |
+| 6 | The queue | SLA stat cards and an "At risk" card (zoom), the card's ⋯ menu (zoom), flag to follow up | The queue keeps the team on time… |
 | 7 | The board | Drag the ticket to In progress (zoom on the column) | Prefer a board? Drag and drop. |
 | 8 | Learning | #4190: "✦ Used 2 past corrections as examples" expanded (zoom), "Don't learn from this" | And it learns… |
 | 9 | Incidents | Banner (zoom) → INC-30 → the AI-drafted update and its two-step post (zoom), then Cancel | When many customers hit the same problem… |
 | 10 | Analytics | Stat cards (zoom), "Is the AI learning?" (zoom), team performance | Analytics show response times… |
-| 11 | Montage | ~2 s each, captioned: file for a customer, 5-star rating, public status page, labels, re-run AI, admin overview, dark theme, sign-in, test report | And everything else a modern help desk needs, built in. |
+| 11 | Montage | ~2 s each, captioned: file for a customer, 5-star rating, public status page, labels, re-run AI, admin overview, dark theme, sign-in, privacy policy | One line per shot ("Agents file tickets for customers…", "…with a clear privacy policy, and your data under your control.") |
 | 12 | Close | Logo, "The AI does the reading. Your team does the helping." | Support Triage. The AI does the reading… |
 
 Not shown: the "AI triage is off/failing" banner and a stalled run (both need a real outage).

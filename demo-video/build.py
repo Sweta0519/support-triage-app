@@ -93,18 +93,20 @@ SCENES = [
     {"id": "10-analytics", "clips": ["10-analytics"],
      "caption": ("ANALYTICS", "Know it's working"),
      "say": "Analytics show response times, customer satisfaction, and whether the AI is getting better."},
+    # Each montage shot has its own line, and lasts as long as it.
     {"id": "11-montage", "montage": [
-        ("11-m01-on-behalf", "File tickets for customers"),
-        ("11-m02-csat", "Customers rate the help they got"),
-        ("11-m03-share", "Shareable status pages"),
-        ("11-m04-labels", "Team labels"),
-        ("11-m05-rerun", "Re-run the AI any time"),
-        ("11-m07-admin", "Admin overview"),
-        ("11-m08-settings", "Light and dark themes"),
-        ("11-m09-security", "Secure by default"),
-        ("11-m10-tests", "120 automated tests"),
+        ("11-m01-on-behalf", "File tickets for customers",
+         "Plus everything a modern help desk needs. Agents file tickets for customers who call in."),
+        ("11-m02-csat", "Customers rate the help they got", "Customers rate the help they got."),
+        ("11-m03-share", "Shareable status pages", "Share a public status page for any ticket."),
+        ("11-m04-labels", "Team labels", "Organise the work with team labels."),
+        ("11-m05-rerun", "Re-run the AI any time", "Re-run the AI whenever you need to."),
+        ("11-m07-admin", "Admin overview", "Admins see the whole operation at a glance."),
+        ("11-m08-settings", "Light and dark themes", "Light and dark themes."),
+        ("11-m09-security", "Secure by default", "It's secure by default,"),
+        ("11-m10-privacy", "Privacy built in", "with a clear privacy policy, and your data under your control."),
      ],
-     "say": "And everything else a modern help desk needs, built in."},
+     "say": "Plus everything a modern help desk needs."},
     {"id": "12-close", "card": ("Support Triage", "The AI does the reading. Your team does the helping."),
      "say": "Support Triage. The AI does the reading. Your team does the helping."},
 ]
@@ -198,6 +200,28 @@ def narrate(scene, prev_text=None, next_text=None):
         run("say", "-v", VOICE, "-r", RATE, "-o", aiff, scene["say"])
         ffmpeg("-i", aiff, "-ar", "48000", "-ac", "2", wav)
     return wav, duration(wav)
+
+
+def narrate_montage(scene, prev_text, next_text):
+    """One line per montage shot. Each shot lasts its line plus a beat (at
+    least SHOT), and the lines are joined with silence to match, so every
+    line plays over its own shot. Returns (wav, seconds, shot lengths)."""
+    lines = [text for _, _, text in scene["montage"]]
+    parts, lengths = [], []
+    for k, (name, _, text) in enumerate(scene["montage"]):
+        wav, said = narrate({"id": name, "say": text},
+                            lines[k - 1] if k else prev_text, lines[k + 1] if k + 1 < len(lines) else next_text)
+        seconds = max(SHOT, said + 0.6)  # the scene audio starts 0.5 s in
+        padded = WORK / f"{name}-padded.wav"
+        ffmpeg("-i", wav, "-af", f"apad,atrim=duration={seconds:.3f}", "-ar", "48000", "-ac", "2", padded)
+        parts.append(padded)
+        lengths.append(seconds)
+    listfile = WORK / "11-montage-audio.txt"
+    listfile.write_text("".join(f"file '{p}'\n" for p in parts))
+    out = WORK / f"{scene['id']}.wav"
+    ffmpeg("-f", "concat", "-safe", "0", "-i", listfile, "-c", "copy", out)
+    # The scene's own target adds 1.3 s; the shots already include their beats.
+    return out, sum(lengths) - 1.3, lengths
 
 
 # ---- looks -------------------------------------------------------------
@@ -553,17 +577,22 @@ def main():
     clips, voices = [], []
     for i, scene in enumerate(SCENES):
         sid = scene["id"]
-        wav, said = narrate(scene, SCENES[i - 1]["say"] if i else None, SCENES[i + 1]["say"] if i + 1 < len(SCENES) else None)
+        prev_say = SCENES[i - 1]["say"] if i else None
+        next_say = SCENES[i + 1]["say"] if i + 1 < len(SCENES) else None
+        if "montage" in scene:
+            wav, said, shot_lengths = narrate_montage(scene, prev_say, next_say)
+        else:
+            wav, said = narrate(scene, prev_say, next_say)
         target = said + 1.3  # breathing room after the line
         out = WORK / f"{sid}.mp4"
         enc = Encoder(out)
         if "card" in scene:
             render_card(enc, *scene["card"], target + 0.8)
         elif "montage" in scene:
-            for name, text in scene["montage"]:
+            for (name, text, _), seconds in zip(scene["montage"], shot_lengths):
                 clip = Clip(name)
-                speed = min(max(clip.length / SHOT, 1.0), 3.0)
-                render_clip(enc, clip, SHOT, speed, pill_img=pill(text), tail=True)
+                speed = min(max(clip.length / seconds, 1.0), 3.0)
+                render_clip(enc, clip, seconds, speed, pill_img=pill(text), tail=True)
         else:
             clip = Clip(scene["clips"][0], scene.get("max_still"))
             max_speed = scene.get("max_speed", MAX_SPEED)
