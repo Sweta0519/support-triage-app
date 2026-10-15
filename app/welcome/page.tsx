@@ -260,12 +260,18 @@ export default async function WelcomePage() {
           </div>
         </section>
 
-        <section id="product" aria-labelledby="in-the-app" className="scroll-mt-6 border-t border-[#E3E5EA]">
-          <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
+        <section
+          id="product"
+          aria-labelledby="in-the-app"
+          // The page's one dark moment (SUP-60): the video's deep indigo, so
+          // the devices sit on a stage.
+          className="scroll-mt-6 bg-[radial-gradient(120%_80%_at_20%_0%,#2A2170_0%,#14112F_45%,#0B0A1A_100%)] text-white"
+        >
+          <div className="mx-auto w-full max-w-6xl px-5 py-24 sm:px-8">
             <h2 id="in-the-app" className="max-w-xl text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
               On the desk and on the phone
             </h2>
-            <p className={`mt-4 max-w-xl text-[17px] leading-[1.65] ${graphite}`}>
+            <p className="mt-4 max-w-xl text-[17px] leading-[1.65] text-[#C4C0E8]">
               Your team works the queue on a laptop. Customers file and follow their tickets from wherever they are.
             </p>
             <div className="relative mt-12 pb-10 lg:pb-0 lg:pr-36">
@@ -288,7 +294,7 @@ export default async function WelcomePage() {
                   alt="An incident: three tickets about the same webhook problem from different customers, with an AI-drafted update for staff to post"
                   title="Incident"
                 />
-                <figcaption className={`mt-3 text-[15px] ${graphite}`}>One problem, many tickets: grouped, with one update for staff to post.</figcaption>
+                <figcaption className="mt-3 text-[15px] text-[#C4C0E8]">One problem, many tickets: grouped, with one update for staff to post.</figcaption>
               </figure>
               <figure>
                 <MacWindow
@@ -296,13 +302,13 @@ export default async function WelcomePage() {
                   alt="Analytics: tickets per day, replies on time, customer satisfaction and how often the AI's triage is accepted"
                   title="Analytics"
                 />
-                <figcaption className={`mt-3 text-[15px] ${graphite}`}>Response times, ratings and how often the AI gets it right, in one place.</figcaption>
+                <figcaption className="mt-3 text-[15px] text-[#C4C0E8]">Response times, ratings and how often the AI gets it right, in one place.</figcaption>
               </figure>
             </div>
           </div>
         </section>
 
-        <section id="features" aria-labelledby="also" className="scroll-mt-6 border-t border-[#E3E5EA]">
+        <section id="features" aria-labelledby="also" className="scroll-mt-6">
           <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
             <h2 id="also" className="text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
               Also included
