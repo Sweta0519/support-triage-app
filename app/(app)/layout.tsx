@@ -1,6 +1,7 @@
 import Link from "next/link";
 
-import { requireProfile } from "@/app/lib/auth/session";
+import { getUser, requireProfile } from "@/app/lib/auth/session";
+import { afterSignIn } from "@/app/lib/auth/after-sign-in";
 import { linkClass } from "@/app/lib/styles";
 import { AppSidebar } from "@/app/components/AppSidebar";
 import { AssistantWidget } from "@/app/components/assistant/AssistantWidget";
@@ -43,6 +44,12 @@ export default async function AppLayout({
 }) {
   const profile = await requireProfile();
   const staff = profile.role !== "customer";
+  // An access request that couldn't be filed at sign-in (SUP-58) is tried
+  // again on the next page, while the session still carries its answers.
+  if (!staff) {
+    const metadata = (await getUser())?.user_metadata as Record<string, unknown> | undefined;
+    if (metadata?.access_request) await afterSignIn(metadata);
+  }
   // Staff only: customers never see triage, working or not.
   const [health, incidents] = staff ? await Promise.all([triageHealth(), openIncidents()]) : [null, []];
 

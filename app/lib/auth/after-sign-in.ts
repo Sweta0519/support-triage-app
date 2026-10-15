@@ -13,7 +13,11 @@ import { fileAccessRequestIfPending } from "@/app/lib/db/access-requests";
 // the web form does. Returns where to send them: their tickets with a
 // thank-you, or null to go on as usual. A failure here never blocks signing
 // in; the request is filed on a later sign-in instead.
-export async function afterSignIn(): Promise<string | null> {
+//
+// `metadata`: the signed-in user's metadata when the caller has it. Without
+// an access_request there's nothing to file, so the database isn't asked.
+export async function afterSignIn(metadata?: Record<string, unknown> | null): Promise<string | null> {
+  if (metadata && !metadata.access_request) return null;
   try {
     const filed = await fileAccessRequestIfPending();
     if (!filed) return null;

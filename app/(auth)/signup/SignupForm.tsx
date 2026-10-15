@@ -37,13 +37,13 @@ export function SignupForm({ requestingAccess = false }: { requestingAccess?: bo
             <label htmlFor="team" className={labelClass}>
               Team or company name
             </label>
-            <input id="team" name="team" maxLength={ACCESS_TEAM_MAX} className={inputClass} />
+            <input id="team" name="team" maxLength={ACCESS_TEAM_MAX} defaultValue={state?.request?.team} className={inputClass} />
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="size" className={labelClass}>
               Team size
             </label>
-            <select id="size" name="size" defaultValue="" className={inputClass}>
+            <select id="size" name="size" defaultValue={state?.request?.size ?? ""} className={inputClass}>
               <option value="">Choose…</option>
               {TEAM_SIZES.map((size) => (
                 <option key={size} value={size}>
@@ -56,7 +56,14 @@ export function SignupForm({ requestingAccess = false }: { requestingAccess?: bo
             <label htmlFor="purpose" className={labelClass}>
               What would you use it for?
             </label>
-            <textarea id="purpose" name="purpose" rows={3} maxLength={ACCESS_PURPOSE_MAX} className={inputClass} />
+            <textarea
+              id="purpose"
+              name="purpose"
+              rows={3}
+              maxLength={ACCESS_PURPOSE_MAX}
+              defaultValue={state?.request?.purpose}
+              className={inputClass}
+            />
           </div>
         </fieldset>
       ) : null}

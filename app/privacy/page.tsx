@@ -91,9 +91,12 @@ export default function PrivacyPolicyPage() {
                   <td className={cell}>Access request answers (optional): team name, size, and use</td>
                   <td className={cell}>
                     If you sign up through &quot;Request access&quot;, so we can consider your request. They are
-                    kept with your sign-in and become an access-request ticket once you confirm your email.
+                    kept with your sign-in until you confirm your email, then moved into an access-request ticket.
                   </td>
-                  <td className={cell}>Consent: you choose whether to answer.</td>
+                  <td className={cell}>
+                    Steps you ask us to take before an agreement: they are optional, and you can ask us on the
+                    ticket to remove them.
+                  </td>
                 </tr>
                 <tr>
                   <td className={cell}>Your role (customer, agent, or admin)</td>

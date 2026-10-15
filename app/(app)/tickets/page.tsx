@@ -5,6 +5,7 @@ import { MY_TICKETS_CRUMB } from "@/app/lib/crumbs";
 
 import { requireRole } from "@/app/lib/auth/session";
 import { listMyTickets } from "@/app/lib/db/tickets";
+import { ACCESS_REQUEST_SUBJECT } from "@/app/lib/access-request-options";
 import { Badge } from "@/app/components/Badge";
 import { statusBadgeClasses, statusLabel } from "@/app/lib/badges";
 import { formatTicketNumber } from "@/app/lib/format";
@@ -14,8 +15,10 @@ export default async function TicketsPage({ searchParams }: { searchParams: Prom
   const profile = await requireRole("customer");
   // Arriving from "Request access" (SUP-58): the request was just filed.
   const { requested } = await searchParams;
-  const justRequested = (Array.isArray(requested) ? requested[0] : requested) === "1";
   const tickets = await listMyTickets(profile.id);
+  const justRequested =
+    (Array.isArray(requested) ? requested[0] : requested) === "1" &&
+    tickets.some((t) => t.subject.startsWith(ACCESS_REQUEST_SUBJECT));
 
   return (
     <div className={readablePageClass}>

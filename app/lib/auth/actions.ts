@@ -6,9 +6,11 @@ import { createServerSupabaseClient } from "./clients";
 import { AUTH_RATE_LIMITED_MESSAGE, consumeAuthRateLimit, refundAuthAttempt } from "@/app/lib/db/auth-rate-limit";
 import { SITE_URL } from "@/app/lib/site-url";
 import { afterSignIn } from "./after-sign-in";
-import { ACCESS_PURPOSE_MAX, ACCESS_TEAM_MAX, TEAM_SIZES, type AccessRequestAnswers } from "@/app/lib/access-request-options";
+import { parseAccessRequest, type AccessRequestAnswers } from "@/app/lib/access-request-options";
 
-export type AuthFormState = { error: string } | undefined;
+// On an error, the access-request answers come back too, so the form can
+// show them again (React resets uncontrolled fields after an action).
+export type AuthFormState = { error: string; request?: AccessRequestAnswers } | undefined;
 
 
 function parseCredentials(formData: FormData) {
@@ -17,26 +19,15 @@ function parseCredentials(formData: FormData) {
   return { email, password };
 }
 
-// The "Request access" answers (SUP-58), when the form came from it: all
-// optional, trimmed and capped. Null for a plain sign-up.
-function accessRequest(formData: FormData): AccessRequestAnswers | null {
-  if (formData.get("access") !== "1") return null;
-  const size = String(formData.get("size") ?? "");
-  return {
-    team: String(formData.get("team") ?? "").trim().slice(0, ACCESS_TEAM_MAX),
-    size: (TEAM_SIZES as readonly string[]).includes(size) ? size : "",
-    purpose: String(formData.get("purpose") ?? "").trim().slice(0, ACCESS_PURPOSE_MAX),
-  };
-}
-
 export async function signUpAction(
   _prevState: AuthFormState,
   formData: FormData
 ): Promise<AuthFormState> {
   const { email, password } = parseCredentials(formData);
+  const request = parseAccessRequest(formData) ?? undefined;
   // Per IP and per email, before Supabase sends a confirmation email.
   if (!(await consumeAuthRateLimit("sign_up", email))) {
-    return { error: AUTH_RATE_LIMITED_MESSAGE };
+    return { error: AUTH_RATE_LIMITED_MESSAGE, request };
   }
   const supabase = await createServerSupabaseClient();
 
@@ -45,7 +36,6 @@ export async function signUpAction(
   // ignores raw_user_meta_data entirely. Never add a role field to this call.
   // The only metadata ever sent is the access request's answers: text that
   // becomes a ticket, never a role.
-  const request = accessRequest(formData);
   const { error } = await supabase.auth.signUp({
     email,
     password,
@@ -58,7 +48,7 @@ export async function signUpAction(
   if (error) {
     // Refused before any email went out: give the email's quota back.
     await refundAuthAttempt("sign_up_failed", email);
-    return { error: error.message };
+    return { error: error.message, request };
   }
 
   redirect("/login?confirmEmail=1");
@@ -77,7 +67,7 @@ export async function signInAction(
   }
   const supabase = await createServerSupabaseClient();
 
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
@@ -91,7 +81,7 @@ export async function signInAction(
     return { error: error.message };
   }
 
-  redirect((await afterSignIn()) ?? "/");
+  redirect((await afterSignIn(data.user?.user_metadata)) ?? "/");
 }
 
 export async function signOutAction() {
