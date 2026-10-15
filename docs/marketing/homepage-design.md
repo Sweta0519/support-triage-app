@@ -30,6 +30,8 @@ everything else stays quiet, like the app itself (calm, Linear-style).
 | Graphite | `#5B606B` | secondary text |
 | Rule | `#E3E5EA` | the few borders and the sequence line |
 | Indigo | `#4F46E5` | the app's own primary: buttons and links only |
+| Band | `#2A2170` to `#0B0A1A` | the screenshots section only: the video's deep indigo, a radial gradient over solid `#14112F` (SUP-60) |
+| On-band copy | `#C4C0E8` | secondary text on the band (about 9:1 at its lightest point) |
 | Signal red / amber / green | `#E5484D` / `#F5A524` / `#30A46C` | the logo's three priority dots, used only as dots |
 
 **Type:**
@@ -65,6 +67,10 @@ footer: Privacy policy   Sign in
 **Motion:** one orchestrated moment. The AI's read fills in line by line once,
 on load. It's off under `prefers-reduced-motion`. No section fade-ins, and no
 hover effects on everything.
+
+## Revisions after the first build
+
+- **SUP-60:** the screenshots section became a dark band, the page's one dark moment, so the devices sit on a stage. The hero stays the bold *idea*, and the band is the bold *surface*. Everything else is unchanged and quiet. The device frames gained a light hairline and a deep shadow so they read on the band.
 
 ## Review against the generic defaults (what changed and why)
 
