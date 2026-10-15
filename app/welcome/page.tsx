@@ -7,8 +7,8 @@ import { Logo } from "@/app/components/Logo";
 import { MacWindow, Phone } from "./DeviceFrames";
 import { SectionMenu } from "./SectionMenu";
 import { Enlargeable } from "./Enlargeable";
-import { McpConnect } from "./McpConnect";
-import { AssistantLogo, ASSISTANTS } from "./AssistantLogos";
+import { McpConnect } from "@/app/components/mcp/McpConnect";
+import { AssistantLogo, ASSISTANTS } from "@/app/components/mcp/AssistantLogos";
 import { PUBLIC_SITE_URL } from "@/app/lib/site-url";
 import { getProfile, getUser } from "@/app/lib/auth/session";
 import styles from "./welcome.module.css";
@@ -496,7 +496,7 @@ export default async function WelcomePage() {
               </p>
             </div>
             <div className="min-w-0">
-              <McpConnect endpoint={`${PUBLIC_SITE_URL}/api/mcp`} />
+              <McpConnect endpoint={`${PUBLIC_SITE_URL}/api/mcp`} showExample />
               <div className="mt-6">
                 <p className={`text-[13px] font-medium ${graphite}`}>Works with</p>
                 <ul aria-label="Works with" className="mt-3 flex flex-wrap gap-x-6 gap-y-3">

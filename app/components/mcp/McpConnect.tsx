@@ -1,15 +1,22 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
+import { useCopy } from "@/app/components/useCopy";
+import { TrafficLights } from "@/app/components/TrafficLights";
 import { AssistantLogo, ASSISTANTS } from "./AssistantLogos";
-import { TrafficLights } from "./DeviceFrames";
 
-// The homepage's MCP setup panel (SUP-65): a dark terminal-style window with
-// one tab per AI tool. Each tab shows exactly what that tool needs (a command
-// or a config file), with a copy button. The Claude Code tab also shows an
-// example of what using it looks like. The formats are each tool's own
-// documented ones; docs/mcp.md has them too, with links to those docs.
+// The MCP setup panel: a dark terminal-style window with one tab per AI tool.
+// Each tab shows exactly what that tool needs (a command or a config file),
+// with a copy button. The formats are each tool's own documented ones;
+// docs/mcp.md has them too, with links to those docs.
+//
+// On the homepage (SUP-65) it shows a placeholder token and, on the Claude
+// Code tab, an example of what using it looks like. On the Account page,
+// right after a token is created (SUP-66), it gets that token, so the setup
+// is one copy-paste. VS Code still asks for the token itself (its secret
+// prompt) and Codex reads it from the environment, so those two never put
+// the token in a file.
 
 type Client = {
   id: string;
@@ -21,21 +28,22 @@ type Client = {
   prompt?: boolean;
 };
 
-const TOKEN = "st_your_token";
+const PLACEHOLDER = "st_your_token";
 
-function clients(endpoint: string): Client[] {
+function clients(endpoint: string, token: string | undefined): Client[] {
+  const bearer = token ?? PLACEHOLDER;
   return [
     {
       id: "claude-code",
       file: "Terminal",
       prompt: true,
-      config: `claude mcp add --transport http support-triage \\\n  ${endpoint} \\\n  --header "Authorization: Bearer ${TOKEN}"`,
+      config: `claude mcp add --transport http support-triage \\\n  ${endpoint} \\\n  --header "Authorization: Bearer ${bearer}"`,
     },
     {
       id: "cursor",
       file: "~/.cursor/mcp.json",
       config: JSON.stringify(
-        { mcpServers: { "support-triage": { url: endpoint, headers: { Authorization: `Bearer ${TOKEN}` } } } },
+        { mcpServers: { "support-triage": { url: endpoint, headers: { Authorization: `Bearer ${bearer}` } } } },
         null,
         2
       ),
@@ -68,25 +76,19 @@ function clients(endpoint: string): Client[] {
   ];
 }
 
-export function McpConnect({ endpoint }: { endpoint: string }) {
-  const configs = useMemo(() => clients(endpoint), [endpoint]);
+export function McpConnect({ endpoint, token, showExample = false }: { endpoint: string; token?: string; showExample?: boolean }) {
+  const configs = useMemo(() => clients(endpoint, token), [endpoint, token]);
   const [active, setActive] = useState(0);
   // The last copy's outcome, shown on the button and announced, for a moment.
-  const [copyState, setCopyState] = useState<"copied" | "failed" | null>(null);
+  const [copyState, copyText, resetCopy] = useCopy();
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
   const base = useId();
   const assistant = ASSISTANTS[active];
   const client = configs[active];
 
-  useEffect(() => {
-    if (!copyState) return;
-    const timer = setTimeout(() => setCopyState(null), 2000);
-    return () => clearTimeout(timer);
-  }, [copyState]);
-
   function select(i: number) {
     setActive(i);
-    setCopyState(null);
+    resetCopy();
   }
 
   // Arrow keys, Home and End move between tabs (the WAI-ARIA tabs pattern).
@@ -104,15 +106,6 @@ export function McpConnect({ endpoint }: { endpoint: string }) {
     tabs.current[next]?.focus();
   }
 
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(client.config);
-      setCopyState("copied");
-    } catch {
-      // No clipboard access: say so; the text is still there to select.
-      setCopyState("failed");
-    }
-  }
 
   return (
     <div className="overflow-hidden rounded-xl bg-[#0F1117] shadow-[0_24px_60px_-24px_rgba(15,17,23,0.55)] ring-1 ring-black/10">
@@ -122,7 +115,7 @@ export function McpConnect({ endpoint }: { endpoint: string }) {
         {/* In the title bar, so it never covers the text on a narrow screen. */}
         <button
           type="button"
-          onClick={copy}
+          onClick={() => copyText(client.config)}
           className="relative ml-auto rounded-md border border-white/[.12] px-2.5 py-0.5 text-[12px] font-medium text-[#C9CDD8] transition-colors hover:bg-white/[.06] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A5B4FC]"
         >
           {copyState === "copied" ? "Copied" : copyState === "failed" ? "Copy failed" : "Copy"}
@@ -175,7 +168,7 @@ export function McpConnect({ endpoint }: { endpoint: string }) {
             {client.config}
           </code>
         </pre>
-        {client.id === "claude-code" ? (
+        {client.id === "claude-code" && showExample ? (
           // What it looks like in use: one question, one tool call, the
           // answer. The tool and its input are real; the answer is the
           // assistant's own wording of the result, so it's marked as an example.

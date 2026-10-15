@@ -43,6 +43,30 @@ test("create a token on the Account page: shown once, stored as a hash, resolvab
   const token = await shown.inputValue();
   expect(token).toMatch(/^st_[A-Za-z0-9_-]{43}$/);
 
+  // The setup with this token in it, ready to paste (SUP-66).
+  const setup = panel.getByRole("tabpanel");
+  await expect(setup).toContainText(`--header "Authorization: Bearer ${token}"`);
+  await expect(setup).toContainText("/api/mcp");
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await panel.getByRole("button", { name: /^Copy the Claude Code setup/ }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(`Bearer ${token}`);
+  await panel.getByRole("tab", { name: "Cursor" }).click();
+  await expect(setup).toContainText(`"Authorization": "Bearer ${token}"`);
+  // VS Code asks for it, and Codex reads it from the environment: never in their files.
+  await panel.getByRole("tab", { name: "VS Code" }).click();
+  await expect(setup).not.toContainText(token);
+  await panel.getByRole("tab", { name: "Codex" }).click();
+  await expect(setup).not.toContainText(token);
+  await expect(panel).toContainText(`export SUPPORT_TRIAGE_TOKEN=${token}`);
+  // Only the "Created" line is a live region, never the token or the setup.
+  await expect(panel.getByRole("status").filter({ hasText: "Created" })).toBeVisible();
+  await expect(panel.getByRole("status").filter({ hasText: token })).toHaveCount(0);
+
+  // Done puts it all away.
+  await panel.getByRole("button", { name: "Done" }).click();
+  await expect(panel.getByRole("tablist", { name: "AI tool" })).toHaveCount(0);
+  await expect(panel.getByLabel("New access token")).toHaveCount(0);
+
   // Stored as its SHA-256 hash, with the visible prefix and a 30-day expiry.
   const { data: row } = await admin.from("access_tokens").select("id, owner_id, token_hash, prefix, expires_at").eq("name", name).single();
   expect(row!.token_hash).toBe(sha256(token));
@@ -59,6 +83,7 @@ test("create a token on the Account page: shown once, stored as a hash, resolvab
   // its prefix and that it was used.
   await page.reload();
   await expect(page.getByLabel("New access token")).toHaveCount(0);
+  await expect(page.getByRole("tablist", { name: "AI tool" })).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText(token);
   const item = page.getByRole("list", { name: "Your access tokens" }).getByRole("listitem").filter({ hasText: name });
   await expect(item).toContainText(token.slice(0, 11));
