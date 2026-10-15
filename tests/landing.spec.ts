@@ -15,6 +15,12 @@ test.describe("signed out", () => {
     const example = page.getByRole("figure", { name: "An example ticket and the AI's suggestions for it" });
     await expect(example).toContainText("Charged twice for Pro this month");
     await expect(example).toContainText("Drafted reply, for an agent to edit and send");
+    // Real product screenshots in device frames (SUP-49), and the MCP note,
+    // which says plainly that it isn't available yet.
+    await expect(page.getByRole("img", { name: /^The queue: tickets assigned to the agent/ })).toBeVisible();
+    await expect(page.getByRole("img", { name: /^A customer's view of their ticket on a phone/ })).toBeAttached();
+    const mcp = page.getByRole("region", { name: "From your AI assistant, too" });
+    await expect(mcp).toContainText("Coming soon");
 
     await page.getByRole("navigation", { name: "Account" }).getByRole("link", { name: "Request access", exact: true }).click();
     await expect(page).toHaveURL(/\/signup$/);

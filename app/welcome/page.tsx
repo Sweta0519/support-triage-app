@@ -4,6 +4,7 @@ import { Source_Serif_4 } from "next/font/google";
 import type { CSSProperties, ReactNode } from "react";
 
 import { Logo } from "@/app/components/Logo";
+import { MacWindow, Phone } from "./DeviceFrames";
 import { getUser } from "@/app/lib/auth/session";
 import styles from "./welcome.module.css";
 
@@ -204,6 +205,48 @@ export default async function WelcomePage() {
           </div>
         </section>
 
+        <section aria-labelledby="in-the-app" className="border-t border-[#E3E5EA]">
+          <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
+            <h2 id="in-the-app" className="max-w-xl text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
+              On the desk and on the phone
+            </h2>
+            <p className={`mt-4 max-w-xl text-[17px] leading-[1.65] ${graphite}`}>
+              Your team works the queue on a laptop. Customers file and follow their tickets from wherever they are.
+            </p>
+            <div className="relative mt-12 pb-10 lg:pb-0 lg:pr-36">
+              <MacWindow
+                src="/marketing/desktop-queue.webp"
+                alt="The queue: tickets assigned to the agent, each with its priority, AI signals and response-time status"
+                title="Queue"
+              />
+              <div className="mt-10 flex justify-center lg:absolute lg:-bottom-10 lg:right-0 lg:mt-0">
+                <Phone
+                  src="/marketing/phone-ticket.webp"
+                  alt="A customer's view of their ticket on a phone, with the agent's reply"
+                />
+              </div>
+            </div>
+            <div className="mt-24 grid gap-10 lg:grid-cols-2">
+              <figure>
+                <MacWindow
+                  src="/marketing/desktop-incident.webp"
+                  alt="An incident: three tickets about the same webhook problem from different customers, with an AI-drafted update for staff to post"
+                  title="Incident"
+                />
+                <figcaption className={`mt-3 text-[15px] ${graphite}`}>One problem, many tickets: grouped, with one update for staff to post.</figcaption>
+              </figure>
+              <figure>
+                <MacWindow
+                  src="/marketing/desktop-analytics.webp"
+                  alt="Analytics: tickets per day, replies on time, customer satisfaction and how often the AI's triage is accepted"
+                  title="Analytics"
+                />
+                <figcaption className={`mt-3 text-[15px] ${graphite}`}>Response times, ratings and how often the AI gets it right, in one place.</figcaption>
+              </figure>
+            </div>
+          </div>
+        </section>
+
         <section aria-labelledby="also" className="border-t border-[#E3E5EA]">
           <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
             <h2 id="also" className="text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
@@ -217,6 +260,28 @@ export default async function WelcomePage() {
                 </div>
               ))}
             </dl>
+          </div>
+        </section>
+
+        <section aria-labelledby="mcp" className="border-t border-[#E3E5EA]">
+          <div className="mx-auto grid w-full max-w-6xl gap-6 px-5 py-20 sm:px-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-12">
+            <div>
+              <h2 id="mcp" className="text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
+                From your AI assistant, too
+              </h2>
+              <p className={`mt-2 text-[15px] ${graphite}`}>Coming soon</p>
+            </div>
+            <div className={`max-w-xl text-[17px] leading-[1.65] ${graphite}`}>
+              <p>
+                Support Triage will work as an MCP server, so you can use it from Claude, Cursor or any other assistant that
+                speaks the Model Context Protocol. Connect with a personal access token from your account page.
+              </p>
+              <p className="mt-4">
+                Customers will be able to file and follow their tickets. Agents will be able to work the queue: read a ticket
+                with the AI&apos;s suggestions, claim it, reply and change its status. It acts with your own account&apos;s
+                permissions, nothing more.
+              </p>
+            </div>
           </div>
         </section>
 
