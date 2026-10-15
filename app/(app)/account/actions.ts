@@ -12,6 +12,9 @@ import { checkRateLimit, RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/
 import { removeOwnAvatar, replaceOwnAvatar } from "@/app/lib/db/avatars";
 import { AVATAR_MAX_UPLOAD_BYTES, AvatarImageError, toAvatarWebp } from "@/app/lib/avatar-image";
 import { fullNameError, isQueueFilter, isQueueSort, isTheme } from "@/app/lib/preferences";
+import { createAccessToken, revokeAccessToken, TooManyTokensError } from "@/app/lib/db/access-tokens";
+import { isUuid } from "@/app/lib/db/tickets";
+import { TOKEN_LIFETIMES, TOKEN_NAME_MAX_LENGTH } from "@/app/lib/access-token-options";
 
 // On an error the submitted values come back: React resets an uncontrolled
 // form after its action, so the form re-renders with these as its defaults
@@ -195,4 +198,42 @@ export async function removeAvatarAction(): Promise<AvatarState> {
   }
   revalidatePath("/", "layout");
   return { status: "saved" };
+}
+
+// Personal access tokens for the MCP connector (SUP-53). The owner comes
+// from the verified session; the new token's secret is returned once, to be
+// shown once, and never stored (only its hash is).
+export type CreateTokenState =
+  | { status: "created"; token: string; name: string }
+  | { status: "error"; error: string; name: string }
+  | undefined;
+
+export async function createAccessTokenAction(_prevState: CreateTokenState, formData: FormData): Promise<CreateTokenState> {
+  await requireProfile();
+  const name = String(formData.get("name") ?? "").trim();
+  const lifetime = String(formData.get("lifetime") ?? "");
+  if (!name) return { status: "error", error: "Give the token a name, like the assistant you'll use it with.", name };
+  if (name.length > TOKEN_NAME_MAX_LENGTH) {
+    return { status: "error", error: `Keep the name under ${TOKEN_NAME_MAX_LENGTH} characters.`, name };
+  }
+  const choice = TOKEN_LIFETIMES.find((l) => String(l.days ?? "never") === lifetime);
+  if (!choice) return { status: "error", error: "Choose when the token expires.", name };
+  try {
+    const token = await createAccessToken(name, choice.days);
+    revalidatePath("/account");
+    return { status: "created", token, name };
+  } catch (err) {
+    if (err instanceof TooManyTokensError) return { status: "error", error: err.message, name };
+    if (err instanceof RateLimitError) return { status: "error", error: RATE_LIMITED_MESSAGE, name };
+    throw err;
+  }
+}
+
+export async function revokeAccessTokenAction(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireProfile();
+  const tokenId = String(id);
+  if (!isUuid(tokenId)) return { ok: false, error: "That token no longer exists." };
+  const revoked = await revokeAccessToken(tokenId);
+  revalidatePath("/account");
+  return revoked ? { ok: true } : { ok: false, error: "That token was already revoked, or isn't yours." };
 }

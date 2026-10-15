@@ -7,13 +7,15 @@ import { DeleteAccountForm } from "./DeleteAccountForm";
 import { SettingsForm } from "./SettingsForm";
 import { profileName } from "@/app/lib/people";
 import { AvatarForm } from "./AvatarForm";
+import { AccessTokensPanel } from "./AccessTokensPanel";
+import { listMyAccessTokens } from "@/app/lib/db/access-tokens";
 
 const card =
   "flex flex-col gap-3 rounded-2xl border border-black/[.08] bg-white p-6 dark:border-white/[.08] dark:bg-zinc-950";
 const body = "text-sm text-zinc-600 dark:text-zinc-400";
 
 export default async function AccountPage() {
-  const profile = await requireProfile();
+  const [profile, tokens] = await Promise.all([requireProfile(), listMyAccessTokens()]);
 
   return (
     <div className={readablePageClass}>
@@ -39,6 +41,10 @@ export default async function AccountPage() {
           queueDefaultFilter={profile.queue_default_filter}
           queueDefaultSort={profile.queue_default_sort}
         />
+      </section>
+
+      <section className={card} aria-label="Access tokens">
+        <AccessTokensPanel tokens={tokens} />
       </section>
 
       <h2 className="mt-2 text-base font-semibold text-black dark:text-zinc-50">Your data</h2>
