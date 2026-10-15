@@ -62,9 +62,14 @@ test.describe("signed out", () => {
     await expect(safe.getByRole("heading", { level: 3 })).toHaveText([
       "The AI only suggests",
       "Customers see only their own tickets",
-      "Ticket text can't give the AI orders",
+      "Ticket text is information, not instructions",
     ]);
     await expect(safe.getByRole("link", { name: "privacy policy" })).toHaveAttribute("href", "/privacy");
+    // The sentences that carry the claims, so the copy can't drift silently.
+    await expect(safe).toContainText("never replies to a customer");
+    await expect(safe).toContainText("row-level security on every table");
+    await expect(safe).toContainText("a read-only status page that staff choose to publish");
+    await expect(safe).toContainText("checked against a strict format");
     // Pricing (SUP-51): Free and Custom; Custom's "Contact us" goes through
     // Support Triage itself (sign up, then a ticket).
     await page.getByRole("navigation", { name: "Page" }).getByRole("link", { name: "Pricing", exact: true }).click();
