@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { AUTH_COOKIE_OPTIONS } from "./clients";
 
-const PUBLIC_PATHS = ["/login", "/signup", "/auth/confirm", "/s/", "/privacy"];
+const PUBLIC_PATHS = ["/login", "/signup", "/auth/confirm", "/s/", "/privacy", "/welcome"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -39,6 +39,17 @@ export async function updateSession(request: NextRequest) {
   // must never live here -- Next's proxy is not an authorization layer, so
   // per-role gating happens in requireRole()/requireStaff()/requireAdmin()
   // (app/lib/auth/session.ts) and in RLS, not here.
+  // Signed out at the site root: show the marketing page (SUP-48) under the
+  // same URL. Like the redirect below, this only asks "is anyone signed in";
+  // signed-in visitors get the app at /, guarded server-side as before.
+  if (!data && request.nextUrl.pathname === "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/welcome";
+    const rewrite = NextResponse.rewrite(url, { request });
+    response.cookies.getAll().forEach((cookie) => rewrite.cookies.set(cookie));
+    return rewrite;
+  }
+
   if (!data && !isPublicPath) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
