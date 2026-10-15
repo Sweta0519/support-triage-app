@@ -243,7 +243,15 @@ export default async function WelcomePage() {
               className="mt-10 aspect-video w-full rounded-xl border border-black/[.12] bg-[#0A0A1A] shadow-[0_1px_2px_rgba(21,23,28,0.06),0_24px_48px_-24px_rgba(21,23,28,0.28)]"
             >
               <source src="/marketing/demo.mp4" type="video/mp4" />
-              <track kind="captions" src="/marketing/demo.vtt" srcLang="en" label="English" />
+              {/* On by default: the section promises captions. */}
+              <track kind="captions" src="/marketing/demo.vtt" srcLang="en" label="English" default />
+              <p>
+                Your browser can&apos;t play this video.{" "}
+                <a href="/marketing/demo.mp4" className="underline underline-offset-4">
+                  Download the demo (MP4, 30 MB)
+                </a>
+                .
+              </p>
             </video>
           </div>
         </section>
