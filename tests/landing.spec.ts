@@ -51,7 +51,7 @@ test.describe("signed out", () => {
     const mcp = page.getByRole("region", { name: "From your AI assistant, too" });
     await expect(mcp).toContainText("Coming soon");
     // Every header link points at a section on the page.
-    for (const href of await page.getByRole("navigation", { name: "Page" }).getByRole("link").evaluateAll((links) => links.map((a) => a.getAttribute("href")))) {
+    for (const href of await page.getByRole("navigation", { name: "Page", exact: true }).getByRole("link").evaluateAll((links) => links.map((a) => a.getAttribute("href")))) {
       await expect(page.locator(href!)).toHaveCount(1);
     }
     // "Safe by design" (SUP-63): three statements and the privacy policy.
@@ -64,16 +64,16 @@ test.describe("signed out", () => {
     await expect(safe.getByRole("link", { name: "privacy policy" })).toHaveAttribute("href", "/privacy");
     // Pricing (SUP-51): Free and Custom; Custom's "Contact us" goes through
     // Support Triage itself (sign up, then a ticket).
-    await page.getByRole("navigation", { name: "Page" }).getByRole("link", { name: "Pricing" }).click();
+    await page.getByRole("navigation", { name: "Page", exact: true }).getByRole("link", { name: "Pricing" }).click();
     const pricing = page.getByRole("region", { name: "Pricing" });
     await expect(pricing.getByRole("heading", { name: "Free" })).toBeVisible();
     await expect(pricing.getByRole("heading", { name: "Custom" })).toBeVisible();
     await expect(pricing.getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/signup");
 
-    await page.getByRole("navigation", { name: "Account" }).getByRole("link", { name: "Request access", exact: true }).click();
+    await page.getByRole("navigation", { name: "Account", exact: true }).getByRole("link", { name: "Request access", exact: true }).click();
     await expect(page).toHaveURL(/\/signup$/);
     await page.goto("/");
-    await page.getByRole("navigation", { name: "Account" }).getByRole("link", { name: "Sign in" }).click();
+    await page.getByRole("navigation", { name: "Account", exact: true }).getByRole("link", { name: "Sign in" }).click();
     await expect(page).toHaveURL(/\/login$/);
   });
 
@@ -119,7 +119,7 @@ test("signed in, / is the app, not the homepage", async ({ page }) => {
   await expect(page.getByRole("heading", { name: HEADLINE })).toHaveCount(0);
   // Visiting the homepage directly offers the app instead of requesting access.
   await page.goto("/welcome");
-  await expect(page.getByRole("navigation", { name: "Account" }).getByRole("link", { name: "Open the app" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Account", exact: true }).getByRole("link", { name: "Open the app" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Request access", exact: true })).toHaveCount(0);
   // A signed-in user's "Contact us" opens a new ticket straight away.
   await expect(page.getByRole("region", { name: "Pricing" }).getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/tickets/new");

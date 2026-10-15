@@ -516,7 +516,7 @@ export default async function WelcomePage() {
             </p>
           </div>
           {FOOTER_GROUPS(signedIn).map((group) => (
-            <nav key={group.title} aria-label={group.title}>
+            <nav key={group.title} aria-label={`Footer: ${group.title}`}>
               <h2 className="text-[13px] font-semibold text-[#15171C]">{group.title}</h2>
               <ul className="mt-3 flex flex-col gap-2.5">
                 {group.links.map((link) => (
