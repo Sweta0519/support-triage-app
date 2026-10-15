@@ -100,6 +100,7 @@ Built since the core above, each through a reviewed PR (see Development process)
 | **Incident detection:** a burst of similar tickets is grouped into one incident, with a staff banner, an incident page and an AI-drafted update posted to every ticket on staff action (`docs/incidents.md`) | #52 |
 | **Learning from corrections:** staff corrections become examples the AI sees on similar tickets; the panel shows what it learned from, admins can exclude one, and Analytics tracks acceptance by week (`docs/learning.md`) | #53 |
 | Staff banner when AI triage is off or failing; untriaged tickets marked as needing manual triage | #48 |
+| **MCP connector:** use Support Triage from Claude Code, Cursor, VS Code or Codex with a personal access token. Each request runs as its owner under RLS. Customers file and follow their tickets; agents work the queue, with the AI's triage as a suggestion only. Setup is on the homepage and on the Account page with the new token filled in (`docs/mcp.md`) | #65, #67, #68, #69, #70, #71, #72 |
 
 ## How it compares
 
@@ -396,7 +397,10 @@ task that went straight to `main` says so, with the commit.
     (`pr-1-diff-review.md`);
   - the security audit of the public share page (`audit-share-feature.md`, PR #3);
   - the `/security-scan` report of 2026-10-11 (SUP-11), with its follow-ups;
-  - the Vercel WAF rule to configure (`vercel-waf.md`).
+  - the Vercel WAF rules to configure (`vercel-waf.md`);
+  - the security review of the MCP connector (`mcp-review.md`, SUP-57).
+- `docs/mcp.md` -- the MCP connector: what MCP is, tokens, connecting each assistant, how a request
+  is signed in, CSRF, and every tool by role.
 - `docs/reviews/` -- how each PR is reviewed (`/code-review --comment` plus the `ai-code-reviewer`
   subagent) and where the evidence is. It holds the early reports as files; since PR #12 the
   evidence is inline PR comments, each answered and resolved. See `docs/reviews/README.md`.
