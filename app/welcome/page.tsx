@@ -502,8 +502,8 @@ export default async function WelcomePage() {
                 <p className={`text-[13px] font-medium ${graphite}`}>Works with</p>
                 <ul aria-label="Works with" className="mt-3 flex flex-wrap gap-x-6 gap-y-3">
                   {ASSISTANTS.map((tool) => (
-                    <li key={tool.name} className="flex items-center gap-2 text-[14px] font-medium text-[#3D414B]">
-                      <AssistantLogo mark={tool.mark} className="h-[18px] w-[18px] text-[#5B606B]" />
+                    <li key={tool.id} className="flex items-center gap-2 text-[14px] font-medium text-[#3D414B]">
+                      <AssistantLogo mark={tool.mark} className={`h-[18px] w-[18px] ${tool.colorClass ?? "text-[#15171C]"}`} />
                       {tool.name}
                     </li>
                   ))}

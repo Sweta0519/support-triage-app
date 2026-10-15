@@ -86,6 +86,15 @@ test.describe("signed out", () => {
       "VS Code + Copilot",
       "OpenAI Codex",
     ]);
+    // Each mark in its brand colour (SUP-67): Claude's terracotta, the
+    // monochrome marks in the page's ink.
+    const marks = mcp.getByRole("list", { name: "Works with" }).locator("svg");
+    expect(await marks.evaluateAll((svgs) => svgs.map((s) => getComputedStyle(s).color))).toEqual([
+      "rgb(217, 119, 87)",
+      "rgb(21, 23, 28)",
+      "rgb(21, 23, 28)",
+      "rgb(21, 23, 28)",
+    ]);
     // Every header link points at a section on the page.
     for (const href of await page.getByRole("navigation", { name: "Page", exact: true }).getByRole("link").evaluateAll((links) => links.map((a) => a.getAttribute("href")))) {
       await expect(page.locator(href!)).toHaveCount(1);

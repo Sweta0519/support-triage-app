@@ -1,7 +1,9 @@
 // The marks of the AI tools the MCP connector works with (SUP-65), shown on
-// the MCP setup panel's tabs and in the homepage's "works with" row. Path data from Simple Icons 15.22.0
-// (simple-icons.org, CC0); the marks themselves belong to their owners and
-// are shown unmodified, in one neutral colour, beside each product's name.
+// the MCP setup panel's tabs and in the homepage's "works with" row. Path
+// data from Simple Icons 15.22.0 (simple-icons.org, CC0); the marks belong to
+// their owners and are shown unmodified, beside each product's name: in
+// their brand colour on the homepage's light row (SUP-67), and in the
+// panel's own text colour on its dark tabs, where a black mark would vanish.
 // VS Code has no mark there (Microsoft asked for its removal), so it's shown
 // with GitHub Copilot's, the part of VS Code that connects to MCP servers.
 
@@ -17,8 +19,13 @@ export type AssistantMark = keyof typeof PATHS;
 // The AI tools the MCP connector works with, in the order the setup panel's tabs (McpConnect.tsx) and the homepage's
 // "Works with" row show them: only clients that connect with a URL and a
 // bearer token today. `name` is the full name; `label` fits a tab.
-export const ASSISTANTS: { id: string; label: string; name: string; mark: AssistantMark }[] = [
-  { id: "claude-code", label: "Claude Code", name: "Claude Code", mark: "claude" },
+// `colorClass` (homepage row only): a mark's brand colour, where it has one,
+// as a literal Tailwind class so the build sees it.
+// Claude's mark is terracotta. Cursor's, GitHub Copilot's and OpenAI's are
+// monochrome, so they're drawn in the page's ink (Simple Icons lists a
+// purple for OpenAI, but its current mark is shown in black or white).
+export const ASSISTANTS: { id: string; label: string; name: string; mark: AssistantMark; colorClass?: string }[] = [
+  { id: "claude-code", label: "Claude Code", name: "Claude Code", mark: "claude", colorClass: "text-[#D97757]" },
   { id: "cursor", label: "Cursor", name: "Cursor", mark: "cursor" },
   { id: "vscode", label: "VS Code + Copilot", name: "VS Code + Copilot", mark: "githubcopilot" },
   { id: "codex", label: "Codex", name: "OpenAI Codex", mark: "openai" },
