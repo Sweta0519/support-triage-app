@@ -13,6 +13,18 @@ export function isUuid(value: string): boolean {
 export const SUBJECT_MAX_LENGTH = 200;
 export const BODY_MAX_LENGTH = 20_000;
 
+// A new ticket's subject and description, checked the way the database's
+// constraints will: a friendly message instead of a constraint error. Shared
+// by the web forms and the MCP create_ticket tool. Pass trimmed values.
+export function ticketFieldsError(subject: string, body: string): string | null {
+  if (!subject || !body) return "Subject and description are both required.";
+  if (subject.length > SUBJECT_MAX_LENGTH) return `Subject must be at most ${SUBJECT_MAX_LENGTH} characters.`;
+  if (body.length > BODY_MAX_LENGTH) {
+    return `Description must be at most ${BODY_MAX_LENGTH.toLocaleString()} characters.`;
+  }
+  return null;
+}
+
 export { ALLOWED_STATUS_TRANSITIONS, type TicketStatus } from "@/app/lib/ticket-status";
 import type { TicketStatus } from "@/app/lib/ticket-status";
 
@@ -87,11 +99,11 @@ const TICKET_COLUMNS = `${TICKET_BASE_COLUMNS}, ${TRIAGE_STATE_EMBED}`;
 // already enforces it -- scoping doesn't depend on RLS alone (same defense-
 // in-depth pattern as notes-collections' app/lib/db.ts).
 
-export async function listMyTickets(userId: string): Promise<TicketSummary[]> {
+export async function listMyTickets(userId: string): Promise<(TicketSummary & { updated_at: string })[]> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("tickets")
-    .select("id, number, subject, status, created_at")
+    .select("id, number, subject, status, created_at, updated_at")
     .eq("customer_id", userId)
     .order("created_at", { ascending: false });
 
@@ -122,16 +134,32 @@ export async function getMyTicketById(
   return data as unknown as Ticket | null;
 }
 
+// The same, by the ticket's short number (#1042), for the MCP tools.
+export async function getMyTicketByNumber(userId: string, number: number): Promise<Ticket | null> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("tickets")
+    .select(TICKET_COLUMNS)
+    .eq("customer_id", userId)
+    .eq("number", number)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data as unknown as Ticket | null;
+}
+
 export async function createTicket(
   userId: string,
   subject: string,
   body: string
-): Promise<{ id: string }> {
+): Promise<{ id: string; number: number }> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("tickets")
     .insert({ customer_id: userId, subject, body })
-    .select("id")
+    .select("id, number")
     .single();
 
   if (error) {

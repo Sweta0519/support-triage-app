@@ -13,7 +13,7 @@ import { getLatestTriageResult } from "@/app/lib/db/triage";
 import { getStaffEmail, listStaffProfiles, type StaffProfile } from "@/app/lib/db/profiles";
 import { getActiveShareForTicket } from "@/app/lib/db/shares";
 import { getPersonCards } from "@/app/lib/db/people";
-import { personName, profileName, type PersonCard } from "@/app/lib/people";
+import { commentAuthorLabel, personName, profileName } from "@/app/lib/people";
 import { Avatar } from "@/app/components/Avatar";
 import { Badge } from "@/app/components/Badge";
 import { SlaBanner } from "@/app/components/SlaBanner";
@@ -46,26 +46,6 @@ import { LabelsPanel } from "./LabelsPanel";
 import { Stars } from "@/app/components/Stars";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-
-// A comment's author by name where the viewer may see it (profile_cards,
-// RLS-scoped), else by role: the only possible authors are the ticket's
-// customer and staff. A customer sees staff as "<name> (Support)".
-function commentAuthorLabel(
-  authorId: string | null,
-  viewerId: string,
-  customerId: string,
-  viewerIsStaff: boolean,
-  people: Map<string, PersonCard>
-): string {
-  if (authorId === null) return "Deleted account";
-  if (authorId === viewerId) return "You";
-  const card = people.get(authorId);
-  // A customer chooses their own name ("Support Team" included), so staff
-  // always see it marked as the customer.
-  if (authorId === customerId) return card?.display_name ? `${card.display_name} (Customer)` : "Customer";
-  if (!card?.display_name) return "Support team";
-  return viewerIsStaff ? card.display_name : `${card.display_name} (Support)`;
-}
 
 const headerChip = chipClass;
 const outlineChip = `${headerChip} border border-black/[.08] capitalize text-zinc-600 dark:border-white/[.145] dark:text-zinc-400`;

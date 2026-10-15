@@ -20,8 +20,7 @@ import {
   StaffTicketError,
   updateTicketStatus,
   ALLOWED_STATUS_TRANSITIONS,
-  BODY_MAX_LENGTH,
-  SUBJECT_MAX_LENGTH,
+  ticketFieldsError,
   type TicketStatus,
 } from "@/app/lib/db/tickets";
 import { listStaffProfiles } from "@/app/lib/db/profiles";
@@ -44,18 +43,6 @@ import {
 } from "@/app/lib/triage-fields";
 
 export type TicketFormState = { error: string } | undefined;
-
-// Shared by the customer's and the staff form. Mirrors the database check
-// constraints so the user gets a friendly message instead of a
-// constraint-violation error.
-function ticketFieldsError(subject: string, body: string): string | null {
-  if (!subject || !body) return "Subject and description are both required.";
-  if (subject.length > SUBJECT_MAX_LENGTH) return `Subject must be at most ${SUBJECT_MAX_LENGTH} characters.`;
-  if (body.length > BODY_MAX_LENGTH) {
-    return `Description must be at most ${BODY_MAX_LENGTH.toLocaleString()} characters.`;
-  }
-  return null;
-}
 
 export type RatingFormState = { error: string } | { ok: string } | undefined;
 

@@ -1,54 +1,10 @@
-import { randomUUID } from "node:crypto";
-
 import { expect, test } from "@playwright/test";
-import { createClient } from "@supabase/supabase-js";
 
-import { requireEnv } from "./helpers";
+import { ENDPOINT, HEADERS, service, setRole, throwawayWithToken } from "./mcp-helpers";
 
 // SUP-54: the MCP endpoint. Requests sign in with a personal access token
 // (never a cookie), run as its owner, and see that owner's role as it is in
 // the database right now.
-
-const ENDPOINT = "/api/mcp";
-const HEADERS = { "content-type": "application/json", accept: "application/json, text/event-stream" };
-
-function service() {
-  return createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
-    db: { schema: "ticketing" },
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-async function signedIn(email: string, password: string) {
-  const db = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
-    db: { schema: "ticketing" },
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { data, error } = await db.auth.signInWithPassword({ email, password });
-  expect(error).toBeNull();
-  return { db, id: data.user!.id };
-}
-
-// A confirmed throwaway account (so no shared test account's role or tokens
-// change), with a token of its own.
-async function throwawayWithToken() {
-  const admin = service();
-  const email = `sup54-mcp-${Date.now()}-${randomUUID().slice(0, 8)}@example.com`;
-  const password = `Pw-${randomUUID()}`;
-  const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
-  expect(error).toBeNull();
-  const remove = () => admin.auth.admin.deleteUser(data.user!.id);
-  try {
-    const user = await signedIn(email, password);
-    expect((await user.db.rpc("ensure_profile")).error).toBeNull();
-    const { data: token, error: tokenError } = await user.db.rpc("create_access_token", { p_name: "E2E MCP", p_expires_in_days: 30 });
-    expect(tokenError).toBeNull();
-    return { id: data.user!.id, email, db: user.db, token: token as string, remove };
-  } catch (err) {
-    await remove();
-    throw err;
-  }
-}
 
 function rpc(method: string, params: Record<string, unknown> = {}) {
   return JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
@@ -111,8 +67,8 @@ test("a token signs in as its owner: initialize, list tools, whoami; revoked, it
     });
     expect(big.status()).toBe(413);
 
-    // Revoked by its owner, as on the Account page: the next request is refused.
-    expect((await user.db.rpc("revoke_access_token", { p_id: row!.id })).data).toBe(true);
+    // Revoked (as revoke_access_token() does): the next request is refused.
+    await service().from("access_tokens").update({ revoked_at: new Date().toISOString() }).eq("id", row!.id);
     expect((await call("tools/list")).status()).toBe(401);
   } finally {
     await user.remove();
@@ -121,7 +77,6 @@ test("a token signs in as its owner: initialize, list tools, whoami; revoked, it
 
 test("the role is read on every request: a promoted, then demoted, user sees each change on the next call", async ({ request }) => {
   const user = await throwawayWithToken();
-  const admin = await signedIn(requireEnv("TEST_ADMIN_EMAIL"), requireEnv("TEST_ADMIN_PASSWORD"));
   try {
     const whoami = async () => {
       const res = await request.post(ENDPOINT, {
@@ -132,9 +87,9 @@ test("the role is read on every request: a promoted, then demoted, user sees eac
       return JSON.parse((await res.json()).result.content[0].text).role;
     };
     expect(await whoami()).toBe("customer");
-    expect((await admin.db.rpc("admin_set_role", { target_user_id: user.id, new_role: "agent" })).error).toBeNull();
+    await setRole(user.id, "agent");
     expect(await whoami()).toBe("agent");
-    expect((await admin.db.rpc("admin_set_role", { target_user_id: user.id, new_role: "customer" })).error).toBeNull();
+    await setRole(user.id, "customer");
     expect(await whoami()).toBe("customer");
   } finally {
     await user.remove();

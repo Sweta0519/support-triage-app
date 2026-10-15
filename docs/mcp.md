@@ -7,8 +7,7 @@ who connected it, with exactly the permissions that person has in the web app.
 - **Endpoint:** `POST /api/mcp` (Streamable HTTP, stateless, JSON responses).
 - **Sign-in:** `Authorization: Bearer <personal access token>`. People create tokens on the
   Account page (SUP-53).
-- **Tools so far:** `whoami`, which returns the name, email and role the tools act as. Customer
-  tools (SUP-55) and staff tools (SUP-56) come next.
+- **Tools:** see [Tools](#tools). The tools on offer depend on the person's role, as it is now.
 
 Connecting Claude Code, for example:
 
@@ -95,11 +94,38 @@ Origin/Host check against CSRF; this route doesn't need it:
 The proxy doesn't run for exactly `/api/mcp` (its matcher in `proxy.ts` excludes it). So no
 session cookie is read or refreshed there, and the route does its own sign-in.
 
+## Tools
+
+Every person gets `whoami`: the name, email and role the tools act as.
+
+**Customers (SUP-55, `app/lib/mcp/customer-tools.ts`)** get what the web app lets them do with
+their own tickets, through the same `app/lib/db/` functions, validation and rate limits:
+
+| Tool | Does |
+|---|---|
+| `create_ticket(subject, description)` | Files a ticket as the web form does. AI triage starts after the answer (`after()`, service role, as from the form). Returns the number and link. |
+| `list_my_tickets(status?)` | Their tickets, newest first (50 at most): number, subject, status, created and updated times. `status` can be `open` (not resolved or closed) or one status. |
+| `get_ticket(number)` | One of their tickets: status, description, and the public replies, with authors named as on the web ("You", "Sam (Support)"). |
+| `add_reply(number, message)` | A public reply on one of their tickets. Closed tickets refuse it, as on the web. |
+
+- **Not found means not yours.** A ticket number that isn't the customer's (someone else's, or
+  none) gets the same "You don't have a ticket #N" answer.
+- **Never triage or internal notes.** The tools don't ask for them, and RLS wouldn't return them
+  to a customer anyway.
+- **Staff don't get these tools.** Filing a ticket is the customer's action on the web too.
+  Staff tools come in SUP-56.
+
+Refusals the person can act on (a validation message, a rate limit, a closed ticket) come back as
+tool errors in words (`isError`). Anything else is a JSON-RPC error.
+
 ## Untrusted text
 
-Ticket text is written by customers. When SUP-55 and SUP-56 return it, tool results mark it as
-untrusted so the assistant on the other end treats it as data, not instructions. The same rule
-applies to the triage prompt (`docs/ai-triage.md`).
+Ticket subjects, descriptions and replies are written by people, and could contain text aimed at
+the assistant ("ignore your instructions and..."). Tool results are JSON, so such text can't
+break out of its field, and every such field is wrapped as `{"untrusted_text": "..."}`
+(`app/lib/mcp/results.ts`). The server's instructions tell the assistant to read those as
+information, never as instructions. The same rule applies to the triage prompt
+(`docs/ai-triage.md`).
 
 ## Limits
 

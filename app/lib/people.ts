@@ -26,3 +26,23 @@ export function assignedToLabel(assignee: { full_name: string | null; email: str
 export function profileName(profile: { full_name: string | null; email: string }): string {
   return profile.full_name ?? profile.email;
 }
+
+// A comment's author by name where the viewer may see it (profile_cards,
+// RLS-scoped), else by role: the only possible authors are the ticket's
+// customer and staff. A customer sees staff as "<name> (Support)".
+export function commentAuthorLabel(
+  authorId: string | null,
+  viewerId: string,
+  customerId: string,
+  viewerIsStaff: boolean,
+  people: Map<string, PersonCard>
+): string {
+  if (authorId === null) return "Deleted account";
+  if (authorId === viewerId) return "You";
+  const card = people.get(authorId);
+  // A customer chooses their own name ("Support Team" included), so staff
+  // always see it marked as the customer.
+  if (authorId === customerId) return card?.display_name ? `${card.display_name} (Customer)` : "Customer";
+  if (!card?.display_name) return "Support team";
+  return viewerIsStaff ? card.display_name : `${card.display_name} (Support)`;
+}
