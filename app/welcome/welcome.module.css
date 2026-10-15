@@ -23,3 +23,24 @@
     animation: none;
   }
 }
+
+/* The screenshot lightbox (SUP-62): a dark backdrop and a short fade. */
+.lightbox::backdrop {
+  background: rgba(8, 7, 20, 0.86);
+}
+
+.lightbox[open] {
+  animation: fade 160ms ease-out;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lightbox[open] {
+    animation: none;
+  }
+}

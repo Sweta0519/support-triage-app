@@ -31,11 +31,23 @@ test.describe("signed out", () => {
     // Loaded, not just present: a 404 would still be "visible" (lazy images
     // load once scrolled into view).
     for (const name of [/^The queue: tickets assigned to the agent/, /^A customer's view of their ticket on a phone/, /^An incident:/, /^Analytics:/]) {
-      const img = page.getByRole("img", { name });
+      // Each screenshot is a button that enlarges it (SUP-62).
+      const shot = page.getByRole("button", { name: new RegExp(`^Enlarge: ${name.source.slice(1)}`) });
+      const img = shot.locator("img");
       await img.scrollIntoViewIfNeeded();
       await expect(img).toBeVisible();
       await expect.poll(() => img.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth > 0)).toBe(true);
     }
+    // Enlarging opens the full image in a dialog; Escape closes it and focus
+    // goes back to the screenshot.
+    const queueShot = page.getByRole("button", { name: /^Enlarge: The queue/ });
+    await queueShot.click();
+    const lightbox = page.getByRole("dialog", { name: /^The queue/ });
+    await expect(lightbox).toBeVisible();
+    await expect.poll(() => lightbox.locator("img").evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth >= 2400)).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(lightbox).toBeHidden();
+    await expect(queueShot).toBeFocused();
     const mcp = page.getByRole("region", { name: "From your AI assistant, too" });
     await expect(mcp).toContainText("Coming soon");
     // Every header link points at a section on the page.
