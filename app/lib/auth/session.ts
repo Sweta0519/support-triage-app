@@ -2,12 +2,13 @@ import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 
-import { createServerSupabaseClient } from "./clients";
+import { createServerSupabaseClient, currentUserSessionToken } from "./clients";
 import { getOrCreateProfile, type AppRole, type Profile } from "@/app/lib/db/profiles";
 
 export const getUser = cache(async () => {
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase.auth.getClaims();
+  // Inside the MCP endpoint there are no cookies: verify that request's JWT.
+  const { data, error } = await supabase.auth.getClaims(currentUserSessionToken());
   if (error || !data) {
     return null;
   }

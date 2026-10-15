@@ -35,6 +35,21 @@ The limit is deliberately looser than the app's own limits:
 So the WAF only catches floods, and the app gives real users the friendly
 "Too many attempts" message.
 
+## MCP endpoint (SUP-54)
+
+`POST /api/mcp` signs requests in with access tokens and limits each person to 120 requests
+per 10 minutes, but a request with an unknown token isn't counted by the app (`docs/mcp.md`).
+A second rule catches floods of those:
+
+| Setting | Value |
+|---|---|
+| Name | Throttle MCP endpoint |
+| If | Request path *equals* `/api/mcp` |
+| Then | **Rate limit**: fixed window, 60 seconds, 300 requests, keyed by **IP** |
+| Action on limit | Deny (429) |
+
+It's looser than the per-person limit, because hosted MCP clients call from shared addresses.
+
 ## Status
 
-- [ ] Rule created or confirmed in the dashboard. Record who and when:
+- [ ] Rules created or confirmed in the dashboard (sign-in and sign-up, and MCP). Record who and when:
