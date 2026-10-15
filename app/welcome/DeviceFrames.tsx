@@ -6,7 +6,8 @@ import Image from "next/image";
 // the app (scripts/capture-marketing.mjs).
 
 // A macOS window: traffic lights and a title bar over a 1440x900 capture.
-export function MacWindow({ src, alt, title, priority = false }: { src: string; alt: string; title: string; priority?: boolean }) {
+// `sizes` is the window's rendered width, so the browser picks the right file.
+export function MacWindow({ src, alt, title, sizes }: { src: string; alt: string; title: string; sizes: string }) {
   return (
     <div className="overflow-hidden rounded-xl border border-black/[.12] bg-white shadow-[0_1px_2px_rgba(21,23,28,0.06),0_24px_48px_-24px_rgba(21,23,28,0.28)]">
       <div className="relative flex h-9 items-center border-b border-black/[.08] bg-[#F3F4F6] px-3.5">
@@ -17,7 +18,7 @@ export function MacWindow({ src, alt, title, priority = false }: { src: string; 
         </span>
         <span className="absolute inset-x-0 text-center text-[12px] font-medium text-[#5B606B]">{title}</span>
       </div>
-      <Image src={src} alt={alt} width={2400} height={1500} sizes="(min-width: 1024px) 860px, 100vw" priority={priority} className="block h-auto w-full" />
+      <Image src={src} alt={alt} width={2400} height={1500} sizes={sizes} className="block h-auto w-full" />
     </div>
   );
 }
@@ -31,7 +32,7 @@ export function Phone({ src, alt }: { src: string; alt: string }) {
         <span aria-hidden="true" className="absolute left-1/2 top-2.5 z-10 h-[22px] w-[74px] -translate-x-1/2 rounded-full bg-black sm:h-[25px] sm:w-[84px]" />
         {/* The status bar the screenshot lacks, so the island doesn't sit on the app's header. */}
         <div aria-hidden="true" className="h-[38px] bg-white sm:h-[44px]" />
-        <Image src={src} alt={alt} width={1179} height={2556} sizes="260px" className="block h-auto w-full" />
+        <Image src={src} alt={alt} width={1179} height={2556} sizes="(min-width: 640px) 240px, 212px" className="block h-auto w-full" />
       </div>
     </div>
   );

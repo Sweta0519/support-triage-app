@@ -13,13 +13,14 @@
 // the end, even if a shot fails.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { chromium } from "playwright";
+import { chromium } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import sharp from "sharp";
 
 const BASE = process.env.CAPTURE_BASE_URL ?? "http://localhost:3000";
 const OUT = join(process.cwd(), "public", "marketing");
 const DEMO_TICKET_SUBJECT = "Charged twice for Pro this month, need a refund";
+const DEMO_INCIDENT_TITLE = "Webhook events not being delivered";
 const FRIENDLY = { TEST_AGENT_EMAIL: "Priya Patel", TEST_USER_B_EMAIL: "Alex Morgan" };
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -64,16 +65,39 @@ async function ticketUrl(subject) {
 }
 
 mkdirSync(OUT, { recursive: true });
+
+// Display names to put back at the end: recorded before each change, so a
+// failure part-way restores exactly what was changed.
 const previous = {};
-for (const [emailVar, name] of Object.entries(FRIENDLY)) {
-  const email = process.env[emailVar].toLowerCase();
-  const { data } = await db.from("profiles").select("full_name").eq("email", email).single();
-  previous[emailVar] = data.full_name;
-  await db.from("profiles").update({ full_name: name }).eq("email", email);
+async function restoreNames() {
+  const results = await Promise.allSettled(
+    Object.entries(previous).map(async ([emailVar, name]) => {
+      const { error } = await db.from("profiles").update({ full_name: name }).eq("email", process.env[emailVar].toLowerCase());
+      if (error) throw new Error(`${emailVar}: ${error.message} (put back ${JSON.stringify(name)} by hand)`);
+    }),
+  );
+  const failed = results.filter((r) => r.status === "rejected");
+  for (const f of failed) console.error(`Could not restore a display name: ${f.reason.message}`);
+  if (!failed.length) console.log("display names restored");
+}
+// Ctrl-C mid-run still puts the names back.
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.once(signal, async () => {
+    await restoreNames();
+    process.exit(130);
+  });
 }
 
 const browser = await chromium.launch();
 try {
+  for (const [emailVar, name] of Object.entries(FRIENDLY)) {
+    const email = process.env[emailVar].toLowerCase();
+    const { data, error } = await db.from("profiles").select("full_name").eq("email", email).single();
+    if (error) throw new Error(`${emailVar}: ${error.message}`);
+    previous[emailVar] = data.full_name;
+    const { error: updateError } = await db.from("profiles").update({ full_name: name }).eq("email", email);
+    if (updateError) throw new Error(`${emailVar}: ${updateError.message}`);
+  }
   const demo = await ticketUrl(DEMO_TICKET_SUBJECT);
 
   // Desktop: 1440x900 at 2x, saved 2400 px wide.
@@ -85,7 +109,12 @@ try {
   await shot(desk, "desktop-queue", { width: 2400 });
   // The demo incident (INC-30), opened from the staff banner.
   await desk.goto(`${BASE}/queue`);
-  await desk.getByRole("region", { name: "Open incidents" }).getByRole("link", { name: /View INC-/ }).first().click();
+  // The demo incident by its title, not whichever incident is listed first.
+  await desk
+    .getByRole("region", { name: "Open incidents" })
+    .locator("p", { hasText: DEMO_INCIDENT_TITLE })
+    .getByRole("link", { name: /View INC-/ })
+    .click();
   await desk.getByRole("heading", { name: "Update every affected customer" }).waitFor();
   await shot(desk, "desktop-incident", { width: 2400 });
   await desk.goto(`${BASE}/analytics`);
@@ -102,8 +131,5 @@ try {
   await shot(phone, "phone-ticket", { width: 1179 });
 } finally {
   await browser.close();
-  for (const [emailVar, name] of Object.entries(previous)) {
-    await db.from("profiles").update({ full_name: name }).eq("email", process.env[emailVar].toLowerCase());
-  }
-  console.log("display names restored");
+  await restoreNames();
 }

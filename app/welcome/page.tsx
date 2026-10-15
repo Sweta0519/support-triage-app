@@ -279,6 +279,7 @@ export default async function WelcomePage() {
                 src="/marketing/desktop-queue.webp"
                 alt="The queue: tickets assigned to the agent, each with its priority, AI signals and response-time status"
                 title="Queue"
+                sizes="(min-width: 1152px) 944px, (min-width: 1024px) calc(100vw - 208px), calc(100vw - 40px)"
               />
               <div className="mt-10 flex justify-center lg:absolute lg:-bottom-10 lg:right-0 lg:mt-0">
                 <Phone
@@ -293,6 +294,7 @@ export default async function WelcomePage() {
                   src="/marketing/desktop-incident.webp"
                   alt="An incident: three tickets about the same webhook problem from different customers, with an AI-drafted update for staff to post"
                   title="Incident"
+                  sizes="(min-width: 1152px) 528px, (min-width: 1024px) calc(50vw - 64px), calc(100vw - 40px)"
                 />
                 <figcaption className="mt-3 text-[15px] text-[#C4C0E8]">One problem, many tickets: grouped, with one update for staff to post.</figcaption>
               </figure>
@@ -301,6 +303,7 @@ export default async function WelcomePage() {
                   src="/marketing/desktop-analytics.webp"
                   alt="Analytics: tickets per day, replies on time, customer satisfaction and how often the AI's triage is accepted"
                   title="Analytics"
+                  sizes="(min-width: 1152px) 528px, (min-width: 1024px) calc(50vw - 64px), calc(100vw - 40px)"
                 />
                 <figcaption className="mt-3 text-[15px] text-[#C4C0E8]">Response times, ratings and how often the AI gets it right, in one place.</figcaption>
               </figure>
@@ -334,13 +337,12 @@ export default async function WelcomePage() {
             </div>
             <div className={`max-w-xl text-[17px] leading-[1.65] ${graphite}`}>
               <p>
-                Support Triage will work as an MCP server, so you can use it from Claude, Cursor or any other assistant that
-                speaks the Model Context Protocol. Connect with a personal access token from your account page.
+                We&apos;re building an MCP server for Support Triage, so you&apos;ll be able to use it from AI assistants
+                that speak the Model Context Protocol.
               </p>
               <p className="mt-4">
-                Customers will be able to file and follow their tickets. Agents will be able to work the queue: read a ticket
-                with the AI&apos;s suggestions, claim it, reply and change its status. It acts with your own account&apos;s
-                permissions, nothing more.
+                The plan: customers file and follow their tickets, and agents work the queue, reading a ticket with the
+                AI&apos;s suggestions, replying and changing its status. It isn&apos;t available yet.
               </p>
             </div>
           </div>
