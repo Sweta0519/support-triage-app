@@ -46,13 +46,16 @@ export const metadata: Metadata = {
 };
 
 const ink = "text-[#15171C]";
-// Typography (SUP-61): one section-heading style with balanced line breaks,
-// so no heading ends on a lonely word, and one spacing rhythm per section.
-const sectionHeading = "max-w-2xl text-balance text-[30px] font-semibold leading-[1.15] tracking-[-0.02em] sm:text-[38px]";
-const sectionPad = "py-24";
 const graphite = "text-[#5B606B]";
 // Copy on the dark product band (about 9:1 on its lightest stop).
 const onDarkCopy = "text-[#C4C0E8]";
+
+// Typography (SUP-61): one section-heading style, and one vertical rhythm for
+// the content sections. The hero and the closing call to action keep their
+// own, tighter padding on purpose. Line wrapping is set once on <main>:
+// balanced headings, "pretty" paragraphs (no lonely last word).
+const sectionHeading = "max-w-2xl text-[30px] font-semibold leading-[1.15] tracking-[-0.02em] sm:text-[38px]";
+const sectionPad = "py-24";
 const primaryButton =
   "inline-flex items-center whitespace-nowrap rounded-lg bg-[#4F46E5] px-4 py-2.5 text-[15px] font-medium text-white hover:bg-[#4338CA] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
 const secondaryButton =
@@ -278,13 +281,13 @@ export default async function WelcomePage() {
         </div>
       </header>
 
-      <main className="flex-1">
+      <main className="flex-1 text-pretty [&_h1]:text-balance [&_h2]:text-balance [&_h3]:text-balance">
         <section className="mx-auto grid w-full max-w-6xl items-center gap-12 px-5 pb-20 pt-10 sm:px-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:pt-16">
           <div className="max-w-xl">
-            <h1 className="text-balance text-[40px] font-semibold leading-[1.04] tracking-[-0.025em] sm:text-[56px] lg:text-[64px]">
+            <h1 className="text-[40px] font-semibold leading-[1.07] tracking-[-0.025em] sm:text-[56px] lg:text-[52px] xl:text-[64px]">
               Every new ticket, read and sorted before anyone opens it.
             </h1>
-            <p className={`mt-6 text-pretty text-[17px] leading-[1.65] ${graphite}`}>
+            <p className={`mt-6 text-[17px] leading-[1.65] ${graphite}`}>
               Support Triage is a help desk with an AI that reads each ticket as it arrives. It suggests a category, a priority
               with its reason, the right team and a first reply. Your team confirms or corrects it, and a person always sends
               the reply.
@@ -306,7 +309,7 @@ export default async function WelcomePage() {
             <h2 id="demo-title" className={sectionHeading}>
               See it work in two minutes
             </h2>
-            <p className={`mt-4 max-w-xl text-pretty text-[17px] leading-[1.65] ${graphite}`}>
+            <p className={`mt-4 max-w-xl text-[17px] leading-[1.65] ${graphite}`}>
               A ticket arrives, the AI reads it, an agent decides, and Sage answers from the team&apos;s own notes. Narrated,
               with captions.
             </p>
@@ -343,8 +346,8 @@ export default async function WelcomePage() {
               {SEQUENCE.map((step, i) => (
                 <li key={step.title} className="sm:border-t sm:border-[#E3E5EA] sm:pt-5">
                   <p className={`text-[14px] tabular-nums ${graphite}`}>{i + 1}</p>
-                  <h3 className="mt-1 text-balance text-[18px] font-semibold leading-snug">{step.title}</h3>
-                  <p className={`mt-2 text-pretty text-[15px] leading-[1.6] ${graphite}`}>{step.text}</p>
+                  <h3 className="mt-1 text-[18px] font-semibold leading-snug">{step.title}</h3>
+                  <p className={`mt-2 text-[15px] leading-[1.6] ${graphite}`}>{step.text}</p>
                 </li>
               ))}
             </ol>
@@ -362,7 +365,7 @@ export default async function WelcomePage() {
             <h2 id="in-the-app" className={sectionHeading}>
               On the desk and on the phone
             </h2>
-            <p className={`mt-4 max-w-xl text-pretty text-[17px] leading-[1.65] ${onDarkCopy}`}>
+            <p className={`mt-4 max-w-xl text-[17px] leading-[1.65] ${onDarkCopy}`}>
               Your team works the queue on a laptop. Customers file and follow their tickets from wherever they are.
             </p>
             <div className="relative mt-12 pb-10 lg:pb-0 lg:pr-36">
@@ -478,7 +481,7 @@ export default async function WelcomePage() {
             <div className="mt-10 grid border-y border-[#E3E5EA] md:grid-cols-2">
               <div className="py-8 md:pr-10">
                 <h3 className="text-[20px] font-semibold">Free</h3>
-                <p className="mt-3 text-[44px] font-semibold leading-none tracking-[-0.025em] tabular-nums">€0</p>
+                <p className="mt-3 text-[44px] font-semibold leading-none tracking-[-0.025em]">€0</p>
                 <p className={`mt-3 text-[15px] leading-[1.6] ${graphite}`}>
                   Every feature listed here, at no cost. Your team gets agent access once you request it.
                 </p>
@@ -526,7 +529,7 @@ export default async function WelcomePage() {
         <section className="border-t border-[#E3E5EA]">
           <div className="mx-auto flex w-full max-w-6xl flex-col items-start gap-6 px-5 py-16 sm:flex-row sm:items-center sm:justify-between sm:px-8">
             <div>
-              <h2 className="text-balance text-[26px] font-semibold tracking-[-0.015em]">Use it with your team.</h2>
+              <h2 className="text-[26px] font-semibold tracking-[-0.015em]">Use it with your team.</h2>
               <p className={`mt-1 max-w-xl text-[15px] leading-[1.6] ${graphite}`}>
                 Create an account, then open a ticket telling us about your team. We&apos;ll set you up with agent
                 access. It&apos;s free.
