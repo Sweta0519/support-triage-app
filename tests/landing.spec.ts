@@ -51,8 +51,24 @@ test.describe("signed out", () => {
     await queueShot.click();
     await page.mouse.click(5, 5); // the backdrop, well outside the image
     await expect(lightbox).toBeHidden();
+    // The MCP connector (SUP-65): the setup for each tool, and only tools
+    // that connect with a token today.
     const mcp = page.getByRole("region", { name: "From your AI assistant, too" });
-    await expect(mcp).toContainText("Coming soon");
+    await expect(mcp).not.toContainText("Coming soon");
+    await expect(mcp.getByRole("tabpanel")).toContainText("claude mcp add --transport http support-triage");
+    await expect(mcp.getByRole("tabpanel")).toContainText("/api/mcp");
+    await mcp.getByRole("tab", { name: "Cursor" }).click();
+    await expect(mcp.getByRole("tab", { name: "Cursor" })).toHaveAttribute("aria-selected", "true");
+    await expect(mcp.getByRole("tabpanel")).toContainText('"mcpServers"');
+    await mcp.getByRole("tab", { name: "Cursor" }).press("ArrowRight");
+    await expect(mcp.getByRole("tab", { name: "VS Code" })).toBeFocused();
+    await expect(mcp.getByRole("tabpanel")).toContainText('"type": "http"');
+    await expect(mcp.getByRole("list", { name: "Works with" }).getByRole("listitem")).toHaveText([
+      "Claude Code",
+      "Cursor",
+      "VS Code + Copilot",
+      "OpenAI Codex",
+    ]);
     // Every header link points at a section on the page.
     for (const href of await page.getByRole("navigation", { name: "Page", exact: true }).getByRole("link").evaluateAll((links) => links.map((a) => a.getAttribute("href")))) {
       await expect(page.locator(href!)).toHaveCount(1);

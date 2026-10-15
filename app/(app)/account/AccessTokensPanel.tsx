@@ -37,7 +37,11 @@ export function AccessTokensPanel({ tokens }: { tokens: AccessToken[] }) {
         <h3 className="text-base font-semibold text-black dark:text-zinc-50">Access tokens</h3>
         <p className={body}>
           Tokens let an AI assistant that supports MCP (the Model Context Protocol) use Support Triage as you, with
-          your account&apos;s permissions. Connecting assistants is coming soon; tokens you create now will work then.
+          your account&apos;s permissions. How to add one to Claude Code, Cursor, VS Code or Codex is on{" "}
+          <a href="/welcome#ai-assistants" className="font-medium underline underline-offset-2">
+            the homepage
+          </a>
+          .
           Treat a token like a password, and revoke it if it may have leaked.
         </p>
       </div>
