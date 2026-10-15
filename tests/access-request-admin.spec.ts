@@ -77,8 +77,7 @@ test("an admin sees the count, reviews requests in one place, and grants one in 
   await login(page, admin.email, admin.password);
 
   // The sidebar shows how many are waiting, ours included.
-  const before = await sidebarCount(page);
-  expect(before).toBeGreaterThanOrEqual(1);
+  expect(await sidebarCount(page)).toBeGreaterThanOrEqual(1);
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: /^Access requests/ }).click();
   await expect(page).toHaveURL(/\/admin\/access-requests$/);
 
@@ -102,9 +101,11 @@ test("an admin sees the count, reviews requests in one place, and grants one in 
   const { data: comments } = await db.from("ticket_comments").select("author_id, body, is_internal").eq("ticket_id", profile!.access_request_ticket_id);
   expect(comments).toEqual([expect.objectContaining({ author_id: admin.id, is_internal: false, body: expect.stringContaining("agent access") })]);
 
-  // The count goes down, and the history says who decided.
+  // They leave the Waiting list (the count is global, and other tests file
+  // requests in parallel, so it's not compared exactly), and the history
+  // says who decided.
   await page.reload();
-  expect(await sidebarCount(page)).toBe(before - 1);
+  await expect(page.getByRole("listitem", { name: `Request from ${requester.name}` })).toHaveCount(0);
   await expect(page.getByRole("list", { name: "Handled requests" })).toContainText(`${requester.name}`);
   await expect(page.getByRole("list", { name: "Handled requests" })).toContainText(`Granted by ${admin.name}`);
   // And the Users page marks them.
