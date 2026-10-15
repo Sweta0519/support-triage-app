@@ -55,10 +55,15 @@ const primaryButton =
   "inline-flex items-center whitespace-nowrap rounded-lg bg-[#4F46E5] px-4 py-2.5 text-[15px] font-medium text-white hover:bg-[#4338CA] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
 const secondaryButton =
   "inline-flex items-center rounded-lg border border-[#C9CCD3] bg-white px-4 py-2.5 text-[15px] font-medium text-[#15171C] hover:border-[#9EA3AE] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
-const quietFooterLink =
-  "rounded underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
+// Navigation links (SUP-64): quiet grey that darkens on hover, no underline.
+// Underlines are kept for links inside sentences.
+const navLink =
+  "rounded text-[15px] font-medium text-[#5B606B] transition-colors duration-150 hover:text-[#15171C] focus-visible:text-[#15171C] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#4F46E5]";
+const footerLink =
+  "rounded text-[14px] text-[#5B606B] transition-colors duration-150 hover:text-[#15171C] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
+// A text action next to a primary button (hero): ink, no underline.
 const quietLink =
-  "rounded text-[15px] font-medium text-[#15171C] underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
+  "rounded text-[15px] font-medium text-[#15171C] transition-colors duration-150 hover:text-[#4F46E5] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
 
 // The hero: the real demo ticket and the AI's real read of it.
 const TICKET = {
@@ -189,6 +194,31 @@ const SECTIONS = [
   { href: "#pricing", label: "Pricing" },
 ];
 
+// The footer's link groups; the account links depend on being signed in.
+function FOOTER_GROUPS(signedIn: boolean) {
+  return [
+    {
+      title: "Product",
+      links: [
+        { href: "#demo", label: "Demo" },
+        { href: "#how-it-works", label: "How it works" },
+        { href: "#features", label: "Features" },
+        { href: "#pricing", label: "Pricing" },
+      ],
+    },
+    {
+      title: "Account",
+      links: signedIn
+        ? [{ href: "/", label: "Open the app" }]
+        : [
+            { href: "/login", label: "Sign in" },
+            { href: "/signup", label: "Request access" },
+          ],
+    },
+    { title: "Legal", links: [{ href: "/privacy", label: "Privacy policy" }] },
+  ];
+}
+
 // What the Free tier includes: the shipped app (README), nothing promised.
 const FREE_INCLUDES = [
   "AI triage on every ticket, with a drafted first reply",
@@ -210,14 +240,14 @@ export default async function WelcomePage() {
         </Link>
         <nav aria-label="Page" className="hidden items-center gap-6 lg:flex">
           {SECTIONS.map((section) => (
-            <a key={section.href} href={section.href} className={quietLink}>
+            <a key={section.href} href={section.href} className={navLink}>
               {section.label}
             </a>
           ))}
         </nav>
         <nav aria-label="Account" className="flex items-center gap-4 sm:gap-5">
           {/* Phones and tablets: the same section links behind one button. */}
-          <SectionMenu sections={signedIn ? SECTIONS : [...SECTIONS, { href: "/login", label: "Sign in" }]} linkClass={quietLink} />
+          <SectionMenu sections={signedIn ? SECTIONS : [...SECTIONS, { href: "/login", label: "Sign in" }]} linkClass={navLink} />
           {signedIn ? (
             <Link href="/" className={primaryButton}>
               Open the app
@@ -225,7 +255,7 @@ export default async function WelcomePage() {
           ) : (
             <>
               {/* On phones, Sign in lives in the menu to keep the header on one line. */}
-              <Link href="/login" className={`${quietLink} hidden sm:inline`}>
+              <Link href="/login" className={`${navLink} hidden sm:inline`}>
                 Sign in
               </Link>
               <Link href="/signup" className={primaryButton}>
@@ -478,16 +508,33 @@ export default async function WelcomePage() {
       </main>
 
       <footer className="border-t border-[#E3E5EA]">
-        <div className={`mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-5 py-6 text-[14px] sm:px-8 ${graphite}`}>
-          <span>Support Triage</span>
-          <Link href="/privacy" className={quietFooterLink}>
-            Privacy policy
-          </Link>
-          {signedIn ? null : (
-            <Link href="/login" className={quietFooterLink}>
-              Sign in
-            </Link>
-          )}
+        <div className="mx-auto grid w-full max-w-6xl gap-10 px-5 py-14 sm:px-8 md:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]">
+          <div className="max-w-xs">
+            <Logo size={24} />
+            <p className={`mt-3 text-[14px] leading-[1.6] ${graphite}`}>
+              A help desk where AI reads every ticket and people make every decision.
+            </p>
+          </div>
+          {FOOTER_GROUPS(signedIn).map((group) => (
+            <nav key={group.title} aria-label={group.title}>
+              <h2 className="text-[13px] font-semibold text-[#15171C]">{group.title}</h2>
+              <ul className="mt-3 flex flex-col gap-2.5">
+                {group.links.map((link) => (
+                  <li key={link.href}>
+                    {link.href.startsWith("#") ? (
+                      <a href={link.href} className={footerLink}>
+                        {link.label}
+                      </a>
+                    ) : (
+                      <Link href={link.href} className={footerLink}>
+                        {link.label}
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ))}
         </div>
       </footer>
     </div>
