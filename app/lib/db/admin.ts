@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
+import { OPEN_STATUSES } from "@/app/lib/ticket-status";
 
 export type AdminStats = {
   total: number;
@@ -75,7 +76,7 @@ export async function getAdminStats(): Promise<AdminStats> {
   const tickets = ticketsRes.data as unknown as TicketRow[];
   const triage = triageRes.data as TriageRow[];
 
-  const openStatuses = new Set(["new", "triaged", "assigned", "in_progress"]);
+  const openStatuses = new Set<string>(OPEN_STATUSES);
   const unassignedOpen = tickets.filter(
     (t) => t.assignee_id === null && openStatuses.has(t.status)
   ).length;

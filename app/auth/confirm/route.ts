@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 import type { NextRequest } from "next/server";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
+import { SITE_URL } from "@/app/lib/site-url";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
 const OTP_TYPES: readonly EmailOtpType[] = [
   "signup",

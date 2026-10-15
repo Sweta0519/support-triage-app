@@ -13,7 +13,19 @@ export function isUuid(value: string): boolean {
 export const SUBJECT_MAX_LENGTH = 200;
 export const BODY_MAX_LENGTH = 20_000;
 
-export { ALLOWED_STATUS_TRANSITIONS, type TicketStatus } from "@/app/lib/ticket-status";
+// A new ticket's subject and description, checked the way the database's
+// constraints will: a friendly message instead of a constraint error. Shared
+// by the web forms and the MCP create_ticket tool. Pass trimmed values.
+export function ticketFieldsError(subject: string, body: string): string | null {
+  if (!subject || !body) return "Subject and description are both required.";
+  if (subject.length > SUBJECT_MAX_LENGTH) return `Subject must be at most ${SUBJECT_MAX_LENGTH} characters.`;
+  if (body.length > BODY_MAX_LENGTH) {
+    return `Description must be at most ${BODY_MAX_LENGTH.toLocaleString()} characters.`;
+  }
+  return null;
+}
+
+export { ALLOWED_STATUS_TRANSITIONS, OPEN_STATUSES, TICKET_STATUSES, type TicketStatus } from "@/app/lib/ticket-status";
 import type { TicketStatus } from "@/app/lib/ticket-status";
 
 // AI-derived working state lives in ticketing.ticket_triage_state, a
@@ -101,16 +113,45 @@ export async function listMyTickets(userId: string): Promise<TicketSummary[]> {
   return data;
 }
 
-export async function getMyTicketById(
+// The newest of the customer's tickets with one of these statuses (all when
+// none are given), at most `limit`, and how many match in all.
+export async function listMyTicketsPage(
   userId: string,
-  ticketId: string
-): Promise<Ticket | null> {
+  { statuses, limit }: { statuses?: readonly TicketStatus[]; limit: number }
+): Promise<{ tickets: (TicketSummary & { updated_at: string })[]; total: number }> {
+  const supabase = await createServerSupabaseClient();
+  let query = supabase
+    .from("tickets")
+    .select("id, number, subject, status, created_at, updated_at", { count: "exact" })
+    .eq("customer_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (statuses) query = query.in("status", statuses);
+
+  const { data, count, error } = await query;
+  if (error) {
+    throw new Error(error.message);
+  }
+  return { tickets: data, total: count ?? data.length };
+}
+
+// One of the customer's tickets, by its id (pages) or its short number
+// (#1042, the MCP tools).
+export async function getMyTicketById(userId: string, ticketId: string): Promise<Ticket | null> {
+  return getMyTicket(userId, "id", ticketId);
+}
+
+export async function getMyTicketByNumber(userId: string, number: number): Promise<Ticket | null> {
+  return getMyTicket(userId, "number", number);
+}
+
+async function getMyTicket(userId: string, column: "id" | "number", value: string | number): Promise<Ticket | null> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("tickets")
     .select(TICKET_COLUMNS)
     .eq("customer_id", userId)
-    .eq("id", ticketId)
+    .eq(column, value)
     .maybeSingle();
 
   if (error) {
@@ -126,12 +167,12 @@ export async function createTicket(
   userId: string,
   subject: string,
   body: string
-): Promise<{ id: string }> {
+): Promise<{ id: string; number: number }> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("tickets")
     .insert({ customer_id: userId, subject, body })
-    .select("id")
+    .select("id, number")
     .single();
 
   if (error) {

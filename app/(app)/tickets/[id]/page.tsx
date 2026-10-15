@@ -44,8 +44,8 @@ import { listMyFlaggedTicketIds } from "@/app/lib/db/flags";
 import { listLabels, listLabelsForTickets } from "@/app/lib/db/labels";
 import { LabelsPanel } from "./LabelsPanel";
 import { Stars } from "@/app/components/Stars";
+import { SITE_URL } from "@/app/lib/site-url";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
 // A comment's author by name where the viewer may see it (profile_cards,
 // RLS-scoped), else by role: the only possible authors are the ticket's
