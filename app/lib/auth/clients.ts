@@ -39,18 +39,30 @@ export function runWithUserSession<T>(accessToken: string, fn: () => Promise<T>)
   return userSession.run(accessToken, fn);
 }
 
+// The JWT of the session runWithUserSession() set up, if any. session.ts
+// verifies it in getUser(), so requireUser()/requireProfile()/requireRole()
+// work inside the MCP endpoint as they do on pages.
+export function currentUserSessionToken(): string | undefined {
+  return userSession.getStore();
+}
+
+// A client with no stored session: for one request's JWT (above), or for
+// signing a user in server-side (app/lib/db/mcp-auth.ts).
+export function createSessionlessClient(accessToken?: string) {
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    ...DB_OPTIONS,
+    ...(accessToken ? { global: { headers: { Authorization: `Bearer ${accessToken}` } } } : {}),
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+}
+
 export async function createServerSupabaseClient() {
   const accessToken = userSession.getStore();
   if (accessToken) {
-    // Typed as the cookie client: callers use only the shared query and RPC
-    // surface. supabase.auth has no session here (getClaims() returns
-    // nothing), so session.ts's requireUser()/requireProfile() don't apply
-    // inside the MCP endpoint, which loads the profile itself.
-    return createClient(supabaseUrl, supabaseAnonKey, {
-      ...DB_OPTIONS,
-      global: { headers: { Authorization: `Bearer ${accessToken}` } },
-      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-    }) as unknown as ReturnType<typeof createCookieClient>;
+    // Typed as the cookie client: callers use the shared query, RPC and
+    // auth.getClaims(jwt) surface. It holds no session, so session.ts passes
+    // the JWT to getClaims() explicitly (currentUserSessionToken()).
+    return createSessionlessClient(accessToken) as unknown as ReturnType<typeof createCookieClient>;
   }
   return createCookieClient(await cookies());
 }

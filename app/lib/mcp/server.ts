@@ -10,6 +10,12 @@ import { profileName } from "@/app/lib/people";
 // database, so the tools on offer always follow their current role: a demoted
 // agent loses staff tools on their next call, not when a cache expires.
 // Every tool reads and writes through app/lib/db/ as that user, under RLS.
+//
+// Tools take the person from the `profile` passed in here. session.ts's
+// helpers do work here (they verify the request's JWT), but a role check that
+// fails redirects, which a tool would report as a bare error: check
+// `profile.role` and answer in words instead. Work a tool defers with after()
+// must be checked to still run as the owner.
 
 const INSTRUCTIONS =
   "Support Triage is a support ticketing app with AI triage. These tools act as the signed-in person, " +

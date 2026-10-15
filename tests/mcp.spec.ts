@@ -37,11 +37,17 @@ async function throwawayWithToken() {
   const password = `Pw-${randomUUID()}`;
   const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
   expect(error).toBeNull();
-  const user = await signedIn(email, password);
-  expect((await user.db.rpc("ensure_profile")).error).toBeNull();
-  const { data: token, error: tokenError } = await user.db.rpc("create_access_token", { p_name: "E2E MCP", p_expires_in_days: 30 });
-  expect(tokenError).toBeNull();
-  return { id: data.user!.id, email, db: user.db, token: token as string, remove: () => admin.auth.admin.deleteUser(data.user!.id) };
+  const remove = () => admin.auth.admin.deleteUser(data.user!.id);
+  try {
+    const user = await signedIn(email, password);
+    expect((await user.db.rpc("ensure_profile")).error).toBeNull();
+    const { data: token, error: tokenError } = await user.db.rpc("create_access_token", { p_name: "E2E MCP", p_expires_in_days: 30 });
+    expect(tokenError).toBeNull();
+    return { id: data.user!.id, email, db: user.db, token: token as string, remove };
+  } catch (err) {
+    await remove();
+    throw err;
+  }
 }
 
 function rpc(method: string, params: Record<string, unknown> = {}) {
@@ -96,6 +102,14 @@ test("a token signs in as its owner: initialize, list tools, whoami; revoked, it
 
     // Not stateful: no stream to open, no session to end.
     expect((await request.get(ENDPOINT, { headers: { authorization: `Bearer ${user.token}` } })).status()).toBe(405);
+    expect((await request.delete(ENDPOINT, { headers: { authorization: `Bearer ${user.token}` } })).status()).toBe(405);
+
+    // Bodies over 256 KB are refused before they're parsed.
+    const big = await request.post(ENDPOINT, {
+      headers: { ...HEADERS, authorization: `Bearer ${user.token}` },
+      data: rpc("tools/list", { padding: "x".repeat(300 * 1024) }),
+    });
+    expect(big.status()).toBe(413);
 
     // Revoked by its owner, as on the Account page: the next request is refused.
     expect((await user.db.rpc("revoke_access_token", { p_id: row!.id })).data).toBe(true);
@@ -127,20 +141,68 @@ test("the role is read on every request: a promoted, then demoted, user sees eac
   }
 });
 
+test("an expired token stops working", async ({ request }) => {
+  const user = await throwawayWithToken();
+  try {
+    const call = () => request.post(ENDPOINT, { headers: { ...HEADERS, authorization: `Bearer ${user.token}` }, data: rpc("tools/list") });
+    expect((await call()).status()).toBe(200);
+    await service()
+      .from("access_tokens")
+      .update({ created_at: new Date(Date.now() - 2 * 86_400_000).toISOString(), expires_at: new Date(Date.now() - 86_400_000).toISOString() })
+      .eq("owner_id", user.id);
+    expect((await call()).status()).toBe(401);
+  } finally {
+    await user.remove();
+  }
+});
+
 test("a deleted account's token stops working", async ({ request }) => {
   const user = await throwawayWithToken();
-  const call = () => request.post(ENDPOINT, { headers: { ...HEADERS, authorization: `Bearer ${user.token}` }, data: rpc("tools/list") });
-  expect((await call()).status()).toBe(200);
-  await user.remove();
-  expect((await call()).status()).toBe(401);
+  let removed = false;
+  try {
+    const call = () => request.post(ENDPOINT, { headers: { ...HEADERS, authorization: `Bearer ${user.token}` }, data: rpc("tools/list") });
+    expect((await call()).status()).toBe(200);
+    await user.remove();
+    removed = true;
+    expect((await call()).status()).toBe(401);
+  } finally {
+    if (!removed) await user.remove();
+  }
+});
+
+test("two people's tokens each act as their own owner, even when used at once", async ({ request }) => {
+  const [one, two] = await Promise.all([throwawayWithToken(), throwawayWithToken()]);
+  try {
+    const whoami = async (token: string) => {
+      const res = await request.post(ENDPOINT, {
+        headers: { ...HEADERS, authorization: `Bearer ${token}` },
+        data: rpc("tools/call", { name: "whoami", arguments: {} }),
+      });
+      expect(res.status()).toBe(200);
+      return JSON.parse((await res.json()).result.content[0].text).email;
+    };
+    // Interleaved first calls (both sign-ins in flight together), then cached ones.
+    for (let round = 0; round < 2; round++) {
+      const results = await Promise.all([whoami(one.token), whoami(two.token), whoami(one.token), whoami(two.token)]);
+      expect(results).toEqual([one.email, two.email, one.email, two.email]);
+    }
+  } finally {
+    await Promise.all([one.remove(), two.remove()]);
+  }
 });
 
 test("requests are rate limited per person", async ({ request }) => {
   const user = await throwawayWithToken();
   try {
-    // Fill this window's budget (120 per 10 minutes) directly.
-    const windowStart = new Date(Math.floor(Date.now() / 600_000) * 600_000).toISOString();
-    expect((await service().from("rate_limits").upsert({ key: `${user.id}:mcp_request`, window_start: windowStart, count: 120 })).error).toBeNull();
+    // Fill the budget (120 per 10 minutes) directly: this window and the next,
+    // in case the request lands after a boundary or the clocks disagree.
+    const window = Math.floor(Date.now() / 600_000) * 600_000;
+    const rows = [window - 600_000, window, window + 600_000].map((t) => ({
+      key: `${user.id}:mcp_request`,
+      window_start: new Date(t).toISOString(),
+      count: 120,
+    }));
+    expect((await service().from("rate_limits").upsert(rows)).error).toBeNull();
     const res = await request.post(ENDPOINT, { headers: { ...HEADERS, authorization: `Bearer ${user.token}` }, data: rpc("tools/list") });
     expect(res.status()).toBe(429);
     expect(res.headers()["retry-after"]).toBeTruthy();

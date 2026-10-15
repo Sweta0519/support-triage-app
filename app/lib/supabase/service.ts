@@ -16,11 +16,11 @@ import { createClient } from "@supabase/supabase-js";
 // (run in the background with no signed-in user; no ticket content
 // returned to pages), and the MCP endpoint's sign-in in app/lib/db/mcp-auth.ts
 // (resolving an access token's hash, and starting a session for its owner,
-// after which everything runs as that user) may import it. Never pass a client-supplied ticket id into a service-role
-// read without the caller having already proven it may see that ticket --
-// the one exception is shares.ts's token-based public read, where an
-// unguessable 128-bit token is itself the proof of authorization, the same
-// trust model as a password-reset link.
+// after which everything runs as that user) may import it. Never pass a
+// client-supplied ticket id into a service-role read without the caller having
+// already proven it may see that ticket -- the one exception is shares.ts's
+// token-based public read, where an unguessable 128-bit token is itself the
+// proof of authorization, the same trust model as a password-reset link.
 export function createServiceSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;

@@ -1,8 +1,8 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
 import { runWithUserSession } from "@/app/lib/auth/clients";
-import { accessTokenForUser, resolveAccessTokenOwner } from "@/app/lib/db/mcp-auth";
-import { getOrCreateProfile } from "@/app/lib/db/profiles";
+import { getProfile } from "@/app/lib/auth/session";
+import { accessTokenForUser, McpSignInRefused, resolveAccessTokenOwner } from "@/app/lib/db/mcp-auth";
 import { checkRateLimit, RateLimitError } from "@/app/lib/db/rate-limit";
 import { createMcpServer } from "@/app/lib/mcp/server";
 
@@ -18,7 +18,7 @@ import { createMcpServer } from "@/app/lib/mcp/server";
 // The token resolves to its owner, who gets a real Supabase session; the
 // request then runs as them (runWithUserSession), so RLS applies exactly as
 // in the web app. The role is read from ticketing.profiles on every request,
-// after ensure_profile().
+// after ensure_profile(). The proxy doesn't run for this path (proxy.ts).
 
 const MAX_BODY_BYTES = 256 * 1024;
 
@@ -30,27 +30,42 @@ function unauthorized(message: string) {
   return jsonRpcError(401, -32001, message, { "WWW-Authenticate": 'Bearer realm="support-triage"' });
 }
 
+// Our side failed (the database, or Supabase Auth). Logged here, never
+// detailed to the caller.
+function unavailable(err: unknown) {
+  console.error("MCP request failed:", err);
+  return jsonRpcError(503, -32603, "Support Triage is unavailable right now. Try again shortly.", { "Retry-After": "30" });
+}
+
 export async function POST(request: Request) {
   const match = /^Bearer\s+(\S+)\s*$/i.exec(request.headers.get("authorization") ?? "");
   if (!match) return unauthorized("Send a personal access token: Authorization: Bearer <token>.");
 
-  const ownerId = await resolveAccessTokenOwner(match[1]);
-  if (!ownerId) return unauthorized("That access token is invalid, expired or revoked.");
+  let ownerId: string | null;
+  let session: string;
+  try {
+    ownerId = await resolveAccessTokenOwner(match[1]);
+    if (!ownerId) return unauthorized("That access token is invalid, expired or revoked.");
+    session = await accessTokenForUser(ownerId);
+  } catch (err) {
+    if (err instanceof McpSignInRefused) return unauthorized("That access token's account can't sign in.");
+    return unavailable(err);
+  }
 
-  return runWithUserSession(await accessTokenForUser(ownerId), async () => {
-    const profile = await getOrCreateProfile();
-    if (!profile || profile.id !== ownerId) return unauthorized("That access token's account isn't available.");
-
-    try {
-      await checkRateLimit("mcp_request");
-    } catch (err) {
-      if (err instanceof RateLimitError) {
+  return runWithUserSession(session, async () => {
+    // The budget is counted as soon as there's a session, alongside loading
+    // the profile (ensure_profile(), so the role is the current one).
+    const [limit, profile] = await Promise.allSettled([checkRateLimit("mcp_request"), getProfile()]);
+    if (limit.status === "rejected") {
+      if (limit.reason instanceof RateLimitError) {
         return jsonRpcError(429, -32002, "Too many requests. Wait a few minutes and try again.", { "Retry-After": "600" });
       }
-      throw err;
+      return unavailable(limit.reason);
     }
+    if (profile.status === "rejected") return unavailable(profile.reason);
+    if (!profile.value || profile.value.id !== ownerId) return unauthorized("That access token's account isn't available.");
 
-    const server = createMcpServer(profile);
+    const server = createMcpServer(profile.value);
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
