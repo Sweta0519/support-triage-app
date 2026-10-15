@@ -348,7 +348,7 @@ export default async function WelcomePage() {
                 />
               </Enlargeable>
               <div className="mt-10 flex justify-center lg:absolute lg:-bottom-10 lg:right-0 lg:mt-0">
-                <Enlargeable src="/marketing/phone-ticket.webp" alt="A customer's view of their ticket on a phone, with the agent's reply">
+                <Enlargeable src="/marketing/phone-ticket.webp" alt="A customer's view of their ticket on a phone, with the agent's reply" fit>
                   <Phone
                     src="/marketing/phone-ticket.webp"
                     alt="A customer's view of their ticket on a phone, with the agent's reply"
