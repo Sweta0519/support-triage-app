@@ -30,6 +30,13 @@ const ink = "text-[#15171C]";
 const graphite = "text-[#5B606B]";
 // Copy on the dark product band (about 9:1 on its lightest stop).
 const onDarkCopy = "text-[#C4C0E8]";
+
+// Typography (SUP-61): one section-heading style, and one vertical rhythm for
+// the content sections. The hero and the closing call to action keep their
+// own, tighter padding on purpose. Line wrapping is set once on <main>:
+// balanced headings, "pretty" paragraphs (no lonely last word).
+const sectionHeading = "max-w-2xl text-[30px] font-semibold leading-[1.15] tracking-[-0.02em] sm:text-[38px]";
+const sectionPad = "py-24";
 const primaryButton =
   "inline-flex items-center whitespace-nowrap rounded-lg bg-[#4F46E5] px-4 py-2.5 text-[15px] font-medium text-white hover:bg-[#4338CA] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
 const secondaryButton =
@@ -207,10 +214,10 @@ export default async function WelcomePage() {
         </div>
       </header>
 
-      <main className="flex-1">
+      <main className="flex-1 text-pretty [&_h1]:text-balance [&_h2]:text-balance [&_h3]:text-balance">
         <section className="mx-auto grid w-full max-w-6xl items-center gap-12 px-5 pb-20 pt-10 sm:px-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:pt-16">
           <div className="max-w-xl">
-            <h1 className="text-[40px] font-semibold leading-[1.08] tracking-[-0.02em] sm:text-[56px]">
+            <h1 className="text-[40px] font-semibold leading-[1.07] tracking-[-0.025em] sm:text-[56px] lg:text-[52px] xl:text-[64px]">
               Every new ticket, read and sorted before anyone opens it.
             </h1>
             <p className={`mt-6 text-[17px] leading-[1.65] ${graphite}`}>
@@ -231,8 +238,8 @@ export default async function WelcomePage() {
         </section>
 
         <section id="demo" aria-labelledby="demo-title" className="scroll-mt-6 border-t border-[#E3E5EA]">
-          <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
-            <h2 id="demo-title" className="max-w-xl text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
+          <div className={`mx-auto w-full max-w-6xl px-5 sm:px-8 ${sectionPad}`}>
+            <h2 id="demo-title" className={sectionHeading}>
               See it work in two minutes
             </h2>
             <p className={`mt-4 max-w-xl text-[17px] leading-[1.65] ${graphite}`}>
@@ -264,8 +271,8 @@ export default async function WelcomePage() {
         </section>
 
         <section id="how-it-works" aria-labelledby="sequence" className="scroll-mt-6 border-t border-[#E3E5EA]">
-          <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
-            <h2 id="sequence" className="max-w-xl text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
+          <div className={`mx-auto w-full max-w-6xl px-5 sm:px-8 ${sectionPad}`}>
+            <h2 id="sequence" className={sectionHeading}>
               How a ticket moves through Support Triage
             </h2>
             <ol className="mt-10 grid gap-x-12 gap-y-8 border-l border-[#E3E5EA] pl-6 sm:grid-cols-2 sm:border-l-0 sm:pl-0 lg:grid-cols-4">
@@ -287,8 +294,8 @@ export default async function WelcomePage() {
           aria-labelledby="in-the-app"
           className="scroll-mt-6 bg-[#14112F] bg-[radial-gradient(120%_80%_at_20%_0%,#2A2170_0%,#14112F_45%,#0B0A1A_100%)] text-white print:bg-white print:text-[#15171C] forced-colors:bg-[Canvas] forced-colors:text-[CanvasText]"
         >
-          <div className="mx-auto w-full max-w-6xl px-5 py-24 sm:px-8">
-            <h2 id="in-the-app" className="max-w-xl text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
+          <div className={`mx-auto w-full max-w-6xl px-5 sm:px-8 ${sectionPad}`}>
+            <h2 id="in-the-app" className={sectionHeading}>
               On the desk and on the phone
             </h2>
             <p className={`mt-4 max-w-xl text-[17px] leading-[1.65] ${onDarkCopy}`}>
@@ -332,8 +339,8 @@ export default async function WelcomePage() {
         </section>
 
         <section id="features" aria-labelledby="also" className="scroll-mt-6">
-          <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
-            <h2 id="also" className="text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
+          <div className={`mx-auto w-full max-w-6xl px-5 sm:px-8 ${sectionPad}`}>
+            <h2 id="also" className={sectionHeading}>
               Also included
             </h2>
             <dl className="mt-10 grid gap-x-12 gap-y-7 sm:grid-cols-2">
@@ -348,9 +355,9 @@ export default async function WelcomePage() {
         </section>
 
         <section id="ai-assistants" aria-labelledby="mcp" className="scroll-mt-6 border-t border-[#E3E5EA]">
-          <div className="mx-auto grid w-full max-w-6xl gap-6 px-5 py-20 sm:px-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-12">
+          <div className={`mx-auto grid w-full max-w-6xl gap-6 px-5 sm:px-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-12 ${sectionPad}`}>
             <div>
-              <h2 id="mcp" className="text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
+              <h2 id="mcp" className={sectionHeading}>
                 From your AI assistant, too
               </h2>
               <p className={`mt-2 text-[15px] ${graphite}`}>Coming soon</p>
@@ -369,14 +376,14 @@ export default async function WelcomePage() {
         </section>
 
         <section id="pricing" aria-labelledby="pricing-title" className="scroll-mt-6 border-t border-[#E3E5EA]">
-          <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
-            <h2 id="pricing-title" className="text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
+          <div className={`mx-auto w-full max-w-6xl px-5 sm:px-8 ${sectionPad}`}>
+            <h2 id="pricing-title" className={sectionHeading}>
               Pricing
             </h2>
             <div className="mt-10 grid border-y border-[#E3E5EA] md:grid-cols-2">
               <div className="py-8 md:pr-10">
                 <h3 className="text-[20px] font-semibold">Free</h3>
-                <p className="mt-3 text-[40px] font-semibold leading-none tracking-[-0.02em]">€0</p>
+                <p className="mt-3 text-[44px] font-semibold leading-none tracking-[-0.025em]">€0</p>
                 <p className={`mt-3 text-[15px] leading-[1.6] ${graphite}`}>
                   Every feature listed here, at no cost. Your team gets agent access once you request it.
                 </p>
@@ -394,7 +401,7 @@ export default async function WelcomePage() {
               </div>
               <div className="border-t border-[#E3E5EA] py-8 md:border-l md:border-t-0 md:pl-10">
                 <h3 className="text-[20px] font-semibold">Custom</h3>
-                <p className="mt-3 text-[40px] font-semibold leading-none tracking-[-0.02em]">Let&apos;s talk</p>
+                <p className="mt-3 text-[44px] font-semibold leading-none tracking-[-0.025em]">Let&apos;s talk</p>
                 <p className={`mt-3 text-[15px] leading-[1.6] ${graphite}`}>For larger teams, or teams with particular needs.</p>
                 <p className={`mt-6 max-w-md text-[15px] leading-[1.6] ${ink}`}>
                   Tell us about rolling it out to a bigger team, moving your existing tickets over, or something you need that
@@ -424,7 +431,7 @@ export default async function WelcomePage() {
         <section className="border-t border-[#E3E5EA]">
           <div className="mx-auto flex w-full max-w-6xl flex-col items-start gap-6 px-5 py-16 sm:flex-row sm:items-center sm:justify-between sm:px-8">
             <div>
-              <h2 className="text-[26px] font-semibold tracking-[-0.01em]">Use it with your team.</h2>
+              <h2 className="text-[26px] font-semibold tracking-[-0.015em]">Use it with your team.</h2>
               <p className={`mt-1 max-w-xl text-[15px] leading-[1.6] ${graphite}`}>
                 Create an account, then open a ticket telling us about your team. We&apos;ll set you up with agent
                 access. It&apos;s free.
