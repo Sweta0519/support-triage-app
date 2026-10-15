@@ -15,17 +15,6 @@ test.describe("signed out", () => {
     const example = page.getByRole("figure", { name: "An example ticket and the AI's suggestions for it" });
     await expect(example).toContainText("Charged twice for Pro this month");
     await expect(example).toContainText("Drafted reply, for an agent to edit and send");
-    // The demo video (SUP-50): reachable from the hero, captioned, and not
-    // downloaded until played.
-    await page.getByRole("link", { name: "Watch the 2-minute demo" }).click();
-    expect(new URL(page.url()).hash).toBe("#demo");
-    const video = page.locator("video");
-    await expect(video).toHaveAttribute("preload", "none");
-    await expect(video.locator("track[kind=captions]")).toHaveAttribute("src", "/marketing/demo.vtt");
-    const mp4 = await page.request.head("/marketing/demo.mp4");
-    expect(mp4.ok()).toBe(true);
-    expect(mp4.headers()["content-type"]).toBe("video/mp4");
-    expect(await (await page.request.get("/marketing/demo.vtt")).text()).toMatch(/^WEBVTT/);
     // Real product screenshots in device frames (SUP-49), and the MCP note,
     // which says plainly that it isn't available yet.
     // Loaded, not just present: a 404 would still be "visible" (lazy images
@@ -75,6 +64,23 @@ test.describe("signed out", () => {
     await page.goto("/");
     await page.getByRole("navigation", { name: "Account" }).getByRole("link", { name: "Sign in" }).click();
     await expect(page).toHaveURL(/\/login$/);
+  });
+
+  test("the demo video is reachable from the hero, captioned, and served to signed-out visitors", async ({ page }) => {
+    // SUP-50: not downloaded until played; captions on by default.
+    await page.goto("/");
+    await page.getByRole("link", { name: "Watch the 2-minute demo" }).click();
+    await expect(page).toHaveURL(/#demo$/);
+    const video = page.locator("#demo video");
+    await expect(video).toHaveAttribute("preload", "none");
+    const track = video.locator("track[kind=captions]");
+    await expect(track).toHaveAttribute("src", "/marketing/demo.vtt");
+    await expect(track).toHaveAttribute("default", "");
+    const mp4 = await page.request.head("/marketing/demo.mp4");
+    expect(mp4.ok()).toBe(true);
+    expect(mp4.headers()["content-type"]).toContain("video/mp4");
+    expect(await (await page.request.get("/marketing/demo.vtt")).text()).toMatch(/^WEBVTT/);
+    expect((await page.request.get("/marketing/demo-poster.webp")).ok()).toBe(true);
   });
 
   test("/ with a query string, and /welcome itself, show the homepage; /privacy stays public", async ({ page }) => {
