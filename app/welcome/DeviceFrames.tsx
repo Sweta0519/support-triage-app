@@ -9,7 +9,9 @@ import Image from "next/image";
 // `sizes` is the window's rendered width, so the browser picks the right file.
 export function MacWindow({ src, alt, title, sizes }: { src: string; alt: string; title: string; sizes: string }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-black/[.12] bg-white shadow-[0_1px_2px_rgba(21,23,28,0.06),0_24px_48px_-24px_rgba(21,23,28,0.28)]">
+    // Shown on the homepage's dark band (SUP-60): a light hairline and a deep
+    // shadow keep the window's edge readable against the indigo.
+    <div className="overflow-hidden rounded-xl bg-white shadow-[0_30px_70px_-24px_rgba(0,0,0,0.7)] ring-1 ring-white/15">
       <div className="relative flex h-9 items-center border-b border-black/[.08] bg-[#F3F4F6] px-3.5">
         <span aria-hidden="true" className="flex gap-2">
           <span className="h-3 w-3 rounded-full bg-[#FF5F57] ring-1 ring-black/10" />
@@ -27,7 +29,8 @@ export function MacWindow({ src, alt, title, sizes }: { src: string; alt: string
 // corners and the Dynamic Island over a 3x capture.
 export function Phone({ src, alt }: { src: string; alt: string }) {
   return (
-    <div className="relative w-[230px] rounded-[44px] bg-[#1C1D21] p-[9px] shadow-[0_2px_4px_rgba(21,23,28,0.12),0_28px_56px_-20px_rgba(21,23,28,0.45)] ring-1 ring-black/40 sm:w-[260px] sm:rounded-[50px] sm:p-[10px]">
+    // The bezel's light hairline separates it from the dark band behind it.
+    <div className="relative w-[230px] rounded-[44px] bg-[#1C1D21] p-[9px] shadow-[0_30px_70px_-20px_rgba(0,0,0,0.75)] ring-1 ring-white/20 sm:w-[260px] sm:rounded-[50px] sm:p-[10px]">
       <div className="relative overflow-hidden rounded-[35px] bg-white sm:rounded-[40px]">
         <span aria-hidden="true" className="absolute left-1/2 top-2.5 z-10 h-[22px] w-[74px] -translate-x-1/2 rounded-full bg-black sm:h-[25px] sm:w-[84px]" />
         {/* The status bar the screenshot lacks, so the island doesn't sit on the app's header. */}
