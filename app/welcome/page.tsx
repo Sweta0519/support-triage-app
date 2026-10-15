@@ -6,6 +6,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { Logo } from "@/app/components/Logo";
 import { MacWindow, Phone } from "./DeviceFrames";
 import { SectionMenu } from "./SectionMenu";
+import { Enlargeable } from "./Enlargeable";
 import { getProfile, getUser } from "@/app/lib/auth/session";
 import styles from "./welcome.module.css";
 
@@ -302,36 +303,44 @@ export default async function WelcomePage() {
               Your team works the queue on a laptop. Customers file and follow their tickets from wherever they are.
             </p>
             <div className="relative mt-12 pb-10 lg:pb-0 lg:pr-36">
-              <MacWindow
-                src="/marketing/desktop-queue.webp"
-                alt="The queue: tickets assigned to the agent, each with its priority, AI signals and response-time status"
-                title="Queue"
-                sizes="(min-width: 1152px) 944px, (min-width: 1024px) calc(100vw - 208px), calc(100vw - 40px)"
-              />
-              <div className="mt-10 flex justify-center lg:absolute lg:-bottom-10 lg:right-0 lg:mt-0">
-                <Phone
-                  src="/marketing/phone-ticket.webp"
-                  alt="A customer's view of their ticket on a phone, with the agent's reply"
+              <Enlargeable src="/marketing/desktop-queue.webp" alt="The queue: tickets assigned to the agent, each with its priority, AI signals and response-time status">
+                <MacWindow
+                  src="/marketing/desktop-queue.webp"
+                  alt="The queue: tickets assigned to the agent, each with its priority, AI signals and response-time status"
+                  title="Queue"
+                  sizes="(min-width: 1152px) 944px, (min-width: 1024px) calc(100vw - 208px), calc(100vw - 40px)"
                 />
+              </Enlargeable>
+              <div className="mt-10 flex justify-center lg:absolute lg:-bottom-10 lg:right-0 lg:mt-0">
+                <Enlargeable src="/marketing/phone-ticket.webp" alt="A customer's view of their ticket on a phone, with the agent's reply" fit>
+                  <Phone
+                    src="/marketing/phone-ticket.webp"
+                    alt="A customer's view of their ticket on a phone, with the agent's reply"
+                  />
+                </Enlargeable>
               </div>
             </div>
             <div className="mt-24 grid gap-10 lg:grid-cols-2">
               <figure>
-                <MacWindow
-                  src="/marketing/desktop-incident.webp"
-                  alt="An incident: three tickets about the same webhook problem from different customers, with an AI-drafted update for staff to post"
-                  title="Incident"
-                  sizes="(min-width: 1152px) 528px, (min-width: 1024px) calc(50vw - 64px), calc(100vw - 40px)"
-                />
+                <Enlargeable src="/marketing/desktop-incident.webp" alt="An incident: three tickets about the same webhook problem from different customers, with an AI-drafted update for staff to post">
+                  <MacWindow
+                    src="/marketing/desktop-incident.webp"
+                    alt="An incident: three tickets about the same webhook problem from different customers, with an AI-drafted update for staff to post"
+                    title="Incident"
+                    sizes="(min-width: 1152px) 528px, (min-width: 1024px) calc(50vw - 64px), calc(100vw - 40px)"
+                  />
+                </Enlargeable>
                 <figcaption className={`mt-3 text-[15px] ${onDarkCopy}`}>One problem, many tickets: grouped, with one update for staff to post.</figcaption>
               </figure>
               <figure>
-                <MacWindow
-                  src="/marketing/desktop-analytics.webp"
-                  alt="Analytics: tickets per day, replies on time, customer satisfaction and how often the AI's triage is accepted"
-                  title="Analytics"
-                  sizes="(min-width: 1152px) 528px, (min-width: 1024px) calc(50vw - 64px), calc(100vw - 40px)"
-                />
+                <Enlargeable src="/marketing/desktop-analytics.webp" alt="Analytics: tickets per day, replies on time, customer satisfaction and how often the AI's triage is accepted">
+                  <MacWindow
+                    src="/marketing/desktop-analytics.webp"
+                    alt="Analytics: tickets per day, replies on time, customer satisfaction and how often the AI's triage is accepted"
+                    title="Analytics"
+                    sizes="(min-width: 1152px) 528px, (min-width: 1024px) calc(50vw - 64px), calc(100vw - 40px)"
+                  />
+                </Enlargeable>
                 <figcaption className={`mt-3 text-[15px] ${onDarkCopy}`}>Response times, ratings and how often the AI gets it right, in one place.</figcaption>
               </figure>
             </div>

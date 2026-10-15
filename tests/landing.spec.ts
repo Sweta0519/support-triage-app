@@ -22,12 +22,35 @@ test.describe("signed out", () => {
     // which says plainly that it isn't available yet.
     // Loaded, not just present: a 404 would still be "visible" (lazy images
     // load once scrolled into view).
-    for (const name of [/^The queue: tickets assigned to the agent/, /^A customer's view of their ticket on a phone/, /^An incident:/, /^Analytics:/]) {
-      const img = page.getByRole("img", { name });
+    for (const name of ["The queue", "A customer's view of their ticket", "An incident", "Analytics"]) {
+      // Each screenshot is a button that enlarges it (SUP-62).
+      const shot = page.getByRole("button", { name: `Enlarge: ${name}` });
+      const img = shot.locator("img");
       await img.scrollIntoViewIfNeeded();
       await expect(img).toBeVisible();
       await expect.poll(() => img.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth > 0)).toBe(true);
     }
+    // Enlarging opens the full image in a dialog, sharper than the framed one,
+    // with the page behind locked; Escape, Close and a click outside each
+    // close it, and focus goes back to the screenshot.
+    const queueShot = page.getByRole("button", { name: "Enlarge: The queue" });
+    const lightbox = page.getByRole("dialog", { name: /^The queue/ });
+    const shown = await queueShot.locator("img").evaluate((i: HTMLImageElement) => i.clientWidth);
+    await queueShot.click();
+    await expect(lightbox).toBeVisible();
+    await expect(lightbox.getByRole("button", { name: "Close" })).toBeFocused();
+    await expect.poll(() => lightbox.locator("img").evaluate((i: HTMLImageElement, w) => i.complete && i.naturalWidth > w, shown)).toBe(true);
+    await expect(page.locator("html")).toHaveCSS("overflow", "hidden");
+    await page.keyboard.press("Escape");
+    await expect(lightbox).toBeHidden();
+    await expect(queueShot).toBeFocused();
+    await expect(page.locator("html")).not.toHaveCSS("overflow", "hidden");
+    await queueShot.click();
+    await lightbox.getByRole("button", { name: "Close" }).click();
+    await expect(lightbox).toBeHidden();
+    await queueShot.click();
+    await page.mouse.click(5, 5); // the backdrop, well outside the image
+    await expect(lightbox).toBeHidden();
     const mcp = page.getByRole("region", { name: "From your AI assistant, too" });
     await expect(mcp).toContainText("Coming soon");
     // Every header link points at a section on the page.
