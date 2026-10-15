@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState, useState, useTransition } from "react";
 
 import { createAccessTokenAction, revokeAccessTokenAction } from "./actions";
+import { McpConnect } from "@/app/components/mcp/McpConnect";
 import { MAX_ACTIVE_TOKENS, TOKEN_LIFETIMES, TOKEN_NAME_MAX_LENGTH } from "@/app/lib/access-token-options";
 import type { AccessToken } from "@/app/lib/db/access-tokens";
 import { formatRelativeTime } from "@/app/lib/format";
@@ -23,7 +24,15 @@ function tokenState(t: AccessToken): "revoked" | "expired" | "active" {
 
 // Personal access tokens for the MCP connector (SUP-53): create one (its
 // secret is shown once, here), see when each was last used, revoke them.
-export function AccessTokensPanel({ tokens, isStaff }: { tokens: AccessToken[]; isStaff: boolean }) {
+export function AccessTokensPanel({
+  tokens,
+  isStaff,
+  mcpEndpoint,
+}: {
+  tokens: AccessToken[];
+  isStaff: boolean;
+  mcpEndpoint: string;
+}) {
   const [state, action, pending] = useActionState(createAccessTokenAction, undefined);
   const [copied, setCopied] = useState(false);
   const [revoking, startRevoke] = useTransition();
@@ -83,6 +92,14 @@ export function AccessTokensPanel({ tokens, isStaff }: { tokens: AccessToken[]; 
               Done
             </button>
           </div>
+          {/* The setup with this token already in it (SUP-66): one copy-paste. */}
+          <h4 className="mt-2 text-sm font-medium text-emerald-900 dark:text-emerald-200">Add it to your AI assistant</h4>
+          <McpConnect endpoint={mcpEndpoint} token={state.token} />
+          <p className="text-xs text-emerald-900/80 dark:text-emerald-200/80">
+            VS Code asks for the token the first time it starts the server: paste it there. Codex reads it from
+            your environment: run <code className="break-all font-mono">export SUPPORT_TRIAGE_TOKEN={state.token}</code>{" "}
+            before starting it.
+          </p>
         </div>
       ) : null}
 

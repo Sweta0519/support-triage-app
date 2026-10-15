@@ -1,5 +1,7 @@
 import Image from "next/image";
 
+import { TrafficLights } from "@/app/components/TrafficLights";
+
 // Device frames for the homepage's product screenshots (SUP-49), drawn in
 // CSS rather than taken from Apple's device artwork: a macOS window and an
 // iPhone 16-proportioned phone. The screenshots inside are real captures of
@@ -18,17 +20,6 @@ export function MacWindow({ src, alt, title, sizes }: { src: string; alt: string
       </div>
       <Image src={src} alt={alt} width={2400} height={1500} sizes={sizes} className="block h-auto w-full" />
     </div>
-  );
-}
-
-// A macOS window's close, minimise and zoom buttons (decoration only).
-export function TrafficLights() {
-  return (
-    <span aria-hidden="true" className="flex gap-2">
-      <span className="h-3 w-3 rounded-full bg-[#FF5F57] ring-1 ring-black/10" />
-      <span className="h-3 w-3 rounded-full bg-[#FEBC2E] ring-1 ring-black/10" />
-      <span className="h-3 w-3 rounded-full bg-[#28C840] ring-1 ring-black/10" />
-    </span>
   );
 }
 
