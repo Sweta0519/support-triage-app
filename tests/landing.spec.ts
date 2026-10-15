@@ -28,8 +28,14 @@ test.describe("signed out", () => {
     expect(await (await page.request.get("/marketing/demo.vtt")).text()).toMatch(/^WEBVTT/);
     // Real product screenshots in device frames (SUP-49), and the MCP note,
     // which says plainly that it isn't available yet.
-    await expect(page.getByRole("img", { name: /^The queue: tickets assigned to the agent/ })).toBeVisible();
-    await expect(page.getByRole("img", { name: /^A customer's view of their ticket on a phone/ })).toBeAttached();
+    // Loaded, not just present: a 404 would still be "visible" (lazy images
+    // load once scrolled into view).
+    for (const name of [/^The queue: tickets assigned to the agent/, /^A customer's view of their ticket on a phone/, /^An incident:/, /^Analytics:/]) {
+      const img = page.getByRole("img", { name });
+      await img.scrollIntoViewIfNeeded();
+      await expect(img).toBeVisible();
+      await expect.poll(() => img.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth > 0)).toBe(true);
+    }
     const mcp = page.getByRole("region", { name: "From your AI assistant, too" });
     await expect(mcp).toContainText("Coming soon");
     // Every header link points at a section on the page.
