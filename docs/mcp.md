@@ -8,14 +8,39 @@ who connected it, with exactly the permissions that person has in the web app.
 - **Sign-in:** `Authorization: Bearer <personal access token>`. People create tokens on the
   Account page (SUP-53).
 - **Tools:** see [Tools](#tools). The tools on offer depend on the person's role, as it is now.
+- **Security review** of the whole connector: `docs/security/mcp-review.md` (SUP-57).
+
+### What MCP is
+
+The Model Context Protocol is an open standard for connecting AI assistants to other software.
+A server (here, Support Triage) describes the tools it offers: a name, what each one does, and
+its inputs. An assistant that speaks MCP can then call those tools while you talk to it. Ask
+Claude Code "what's waiting for me in the queue?" and it calls `list_queue` and answers from the
+result. Every call is made as you, and the assistant only sees what the tool returns.
+
+### Creating and revoking a token
+
+1. Sign in, open **Account**, and under **Access tokens** give the token a name (for example
+   "Claude on my laptop") and an expiry: 30, 90 or 365 days, or none.
+2. **Create token.** The token (`st_…`) is shown once, together with the setup for each assistant
+   with the token already filled in. Copy what you need; it can't be shown again.
+3. To stop a token working, press **Revoke…** next to it and confirm. The next request made with
+   it is refused. A token also stops working when it expires or the account is deleted.
+
+Each person can have up to 10 active tokens. Use one per assistant or device, so you can revoke
+one without breaking the others.
 
 ### Connecting an assistant
 
 The homepage shows the same setups with a copy button (SUP-65), and the Account page shows them
 once, right after a token is created, with that token filled in (SUP-66). Both use
 `app/components/mcp/McpConnect.tsx`.
-They're the clients that accept a URL and a bearer token. ChatGPT's and the Claude apps'
-connectors sign in with OAuth, which this server doesn't support yet.
+They're the clients that accept a URL and a bearer token.
+
+**Not supported yet:** ChatGPT's connectors, and the Claude apps' connectors (Claude Desktop and
+claude.ai), sign in with OAuth, which this server doesn't offer. Claude Desktop's config file
+doesn't take a URL plus a token directly. It would need a local bridge, which isn't covered or
+tested here. Use Claude Code, Cursor, VS Code or Codex.
 
 **Claude Code:**
 

@@ -188,6 +188,11 @@ const ALSO = [
   { name: "Analytics", text: "Response times, customer ratings, and how often the AI's suggestions are kept as they are." },
   { name: "Status pages", text: "Share a read-only summary of any ticket through a link." },
   { name: "Customer ratings", text: "Customers rate resolved tickets, and admins see the results for each person on the team." },
+  { name: "Team labels and flags", text: "Labels the team defines, edited right on the cards, and private flags for what to follow up." },
+  {
+    name: "MCP connector",
+    text: "Use Support Triage from Claude Code, Cursor, VS Code or Codex with a personal access token. The assistant acts as you, with exactly your permissions, and each action it takes is a step you see in it. Support Triage's own AI still only suggests.",
+  },
 ];
 
 // "Safe by design" (SUP-63): each line is how the app actually works
@@ -244,6 +249,7 @@ const FREE_INCLUDES = [
   "Sage, the private assistant for agents",
   "Incident detection and learning from corrections",
   "Analytics, customer ratings and status pages",
+  "The MCP connector for your AI assistant",
 ];
 
 export default async function WelcomePage() {
