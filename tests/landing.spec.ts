@@ -54,7 +54,7 @@ test.describe("signed out", () => {
     const mcp = page.getByRole("region", { name: "From your AI assistant, too" });
     await expect(mcp).toContainText("Coming soon");
     // Every header link points at a section on the page.
-    for (const href of await page.getByRole("navigation", { name: "Page" }).getByRole("link").evaluateAll((links) => links.map((a) => a.getAttribute("href")))) {
+    for (const href of await page.getByRole("navigation", { name: "Page", exact: true }).getByRole("link").evaluateAll((links) => links.map((a) => a.getAttribute("href")))) {
       await expect(page.locator(href!)).toHaveCount(1);
     }
     // "Safe by design" (SUP-63): three statements and the privacy policy.
@@ -72,17 +72,17 @@ test.describe("signed out", () => {
     await expect(safe).toContainText("checked against a strict format");
     // Pricing (SUP-51): Free and Custom; Custom's "Contact us" goes through
     // Support Triage itself (sign up, then a ticket).
-    await page.getByRole("navigation", { name: "Page" }).getByRole("link", { name: "Pricing", exact: true }).click();
+    await page.getByRole("navigation", { name: "Page", exact: true }).getByRole("link", { name: "Pricing", exact: true }).click();
     await expect(page).toHaveURL(/#pricing$/);
     const pricing = page.getByRole("region", { name: "Pricing" });
     await expect(pricing.getByRole("heading", { name: "Free" })).toBeVisible();
     await expect(pricing.getByRole("heading", { name: "Custom" })).toBeVisible();
     await expect(pricing.getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/signup");
 
-    await page.getByRole("navigation", { name: "Account" }).getByRole("link", { name: "Request access", exact: true }).click();
+    await page.getByRole("navigation", { name: "Account", exact: true }).getByRole("link", { name: "Request access", exact: true }).click();
     await expect(page).toHaveURL(/\/signup$/);
     await page.goto("/");
-    await page.getByRole("navigation", { name: "Account" }).getByRole("link", { name: "Sign in" }).click();
+    await page.getByRole("navigation", { name: "Account", exact: true }).getByRole("link", { name: "Sign in" }).click();
     await expect(page).toHaveURL(/\/login$/);
   });
 
@@ -122,6 +122,21 @@ test.describe("signed out", () => {
     await expect(page.getByText("Drafted reply, for an agent to edit and send")).toBeVisible();
     await page.waitForTimeout(500);
     expect(errors).toEqual([]);
+  });
+
+  test("the footer links the sections, the account pages and the privacy policy", async ({ page }) => {
+    await page.goto("/");
+    const footer = page.getByRole("navigation", { name: "Footer", exact: true });
+    const product = footer.getByRole("list", { name: "Product" });
+    for (const href of await product.getByRole("link").evaluateAll((links) => links.map((a) => a.getAttribute("href")))) {
+      await expect(page.locator(href!)).toHaveCount(1);
+    }
+    const account = footer.getByRole("list", { name: "Account" });
+    await expect(account.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
+    await expect(account.getByRole("link", { name: "Request access" })).toHaveAttribute("href", "/signup");
+    await expect(footer.getByRole("list", { name: "Legal" }).getByRole("link", { name: "Privacy policy" })).toHaveAttribute("href", "/privacy");
+    // Group titles are labels, not headings: no "Product" heading on the page.
+    await expect(page.getByRole("heading", { name: "Product", exact: true })).toHaveCount(0);
   });
 
   test("the demo video is reachable from the hero, captioned, and served to signed-out visitors", async ({ page }) => {
@@ -165,8 +180,10 @@ test("signed in, / is the app, not the homepage", async ({ page }) => {
   await expect(page.getByRole("heading", { name: HEADLINE })).toHaveCount(0);
   // Visiting the homepage directly offers the app instead of requesting access.
   await page.goto("/welcome");
-  await expect(page.getByRole("navigation", { name: "Account" }).getByRole("link", { name: "Open the app" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Account", exact: true }).getByRole("link", { name: "Open the app" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Request access", exact: true })).toHaveCount(0);
+  // The footer's account group offers the app instead.
+  await expect(page.getByRole("navigation", { name: "Footer", exact: true }).getByRole("list", { name: "Account" }).getByRole("link")).toHaveText(["Open the app"]);
   // A signed-in customer's "Contact us" opens a new ticket straight away.
   await expect(page.getByRole("region", { name: "Pricing" }).getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/tickets/new");
 });
