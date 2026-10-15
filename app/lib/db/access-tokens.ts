@@ -1,12 +1,12 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
-import { generateAccessToken } from "@/app/lib/access-tokens";
 import { RateLimitError } from "@/app/lib/db/rate-limit";
 
 // Personal access tokens (SUP-53). Every function runs with the caller's own
-// session: RLS shows and creates only their own tokens, the token hash is
-// never readable by clients (no column grant), and revoking goes through
+// session: RLS shows only their own tokens, the token hash is never readable
+// by clients (no column grant), the secret is generated and hashed by
+// ticketing.create_access_token(), and revoking goes through
 // ticketing.revoke_access_token(). Resolving a presented token for the MCP
 // endpoint is service-role only (ticketing.resolve_access_token).
 
@@ -39,26 +39,16 @@ export async function listMyAccessTokens(): Promise<AccessToken[]> {
 }
 
 // Creates a token for the caller and returns its secret, which is shown once
-// and never stored.
-export async function createAccessToken(
-  ownerId: string,
-  name: string,
-  expiresInDays: number | null
-): Promise<{ token: string; row: AccessToken }> {
+// and never stored: the database generates it and keeps only its hash.
+export async function createAccessToken(name: string, expiresInDays: number | null): Promise<string> {
   const supabase = await createServerSupabaseClient();
-  const { token, prefix, hash } = generateAccessToken();
-  const expires_at = expiresInDays ? new Date(Date.now() + expiresInDays * 86_400_000).toISOString() : null;
-  const { data, error } = await supabase
-    .from("access_tokens")
-    .insert({ owner_id: ownerId, name, token_hash: hash, prefix, expires_at })
-    .select(TOKEN_COLUMNS)
-    .single();
+  const { data, error } = await supabase.rpc("create_access_token", { p_name: name, p_expires_in_days: expiresInDays });
   if (error) {
     if (error.message.includes("too_many_tokens")) throw new TooManyTokensError();
     if (error.message.includes("rate_limited")) throw new RateLimitError("access_token");
     throw new Error(error.message);
   }
-  return { token, row: data };
+  return data as string;
 }
 
 export async function revokeAccessToken(id: string): Promise<boolean> {

@@ -10,6 +10,9 @@ import { inputClass, primaryButtonClass, secondaryButtonClass } from "@/app/lib/
 
 const labelClass = "text-xs font-medium text-zinc-600 dark:text-zinc-400";
 const body = "text-sm text-zinc-600 dark:text-zinc-400";
+// A fixed locale and time zone, so the server render and the browser's
+// hydration print the same date.
+const expiryDate = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" });
 
 function tokenState(t: AccessToken): "revoked" | "expired" | "active" {
   if (t.revoked_at) return "revoked";
@@ -24,6 +27,9 @@ export function AccessTokensPanel({ tokens }: { tokens: AccessToken[] }) {
   const [copied, setCopied] = useState(false);
   const [revoking, startRevoke] = useTransition();
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
+  // The new secret stays on screen until dismissed (or the page is left).
+  const [dismissed, setDismissed] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col gap-4">
@@ -36,7 +42,7 @@ export function AccessTokensPanel({ tokens }: { tokens: AccessToken[] }) {
         </p>
       </div>
 
-      {state?.status === "created" ? (
+      {state?.status === "created" && dismissed !== state.token ? (
         <div role="status" className="flex flex-col gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/30">
           <p className="text-sm font-medium text-emerald-900 dark:text-emerald-200">
             Created &ldquo;{state.name}&rdquo;. Copy it now: you won&apos;t be able to see it again.
@@ -53,11 +59,20 @@ export function AccessTokensPanel({ tokens }: { tokens: AccessToken[] }) {
               type="button"
               className={secondaryButtonClass}
               onClick={async () => {
-                await navigator.clipboard.writeText(state.token);
-                setCopied(true);
+                try {
+                  await navigator.clipboard.writeText(state.token);
+                  setCopied(true);
+                } catch {
+                  // No clipboard access (permission or an insecure page): the
+                  // field is still there to select and copy by hand.
+                  setCopied(false);
+                }
               }}
             >
               {copied ? "Copied" : "Copy"}
+            </button>
+            <button type="button" className={secondaryButtonClass} onClick={() => setDismissed(state.token)}>
+              Done
             </button>
           </div>
         </div>
@@ -100,6 +115,12 @@ export function AccessTokensPanel({ tokens }: { tokens: AccessToken[] }) {
         </p>
       ) : null}
 
+      {revokeError ? (
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+          {revokeError}
+        </p>
+      ) : null}
+
       {tokens.length ? (
         <ul aria-label="Your access tokens" className="flex flex-col divide-y divide-black/[.06] rounded-xl border border-black/[.08] dark:divide-white/[.08] dark:border-white/[.145]">
           {tokens.map((t) => {
@@ -108,12 +129,13 @@ export function AccessTokensPanel({ tokens }: { tokens: AccessToken[] }) {
               <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
                 <div className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-sm font-medium text-black dark:text-zinc-50">{t.name}</span>
-                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                  {/* Relative times can tick over between the server render and hydration. */}
+                  <span suppressHydrationWarning className="text-xs text-zinc-500 dark:text-zinc-400">
                     <span className="font-mono">{t.prefix}…</span>
                     {" · "}created {formatRelativeTime(t.created_at)}
                     {" · "}
                     {t.last_used_at ? `last used ${formatRelativeTime(t.last_used_at)}` : "never used"}
-                    {s === "active" && t.expires_at ? ` · expires ${new Date(t.expires_at).toLocaleDateString()}` : ""}
+                    {s === "active" && t.expires_at ? ` · expires ${expiryDate.format(new Date(t.expires_at))}` : ""}
                   </span>
                 </div>
                 {s !== "active" ? (
@@ -123,10 +145,17 @@ export function AccessTokensPanel({ tokens }: { tokens: AccessToken[] }) {
                     <button
                       type="button"
                       disabled={revoking}
-                      onClick={() => startRevoke(async () => {
-                        await revokeAccessTokenAction(t.id);
-                        setConfirming(null);
-                      })}
+                      onClick={() =>
+                        startRevoke(async () => {
+                          try {
+                            const result = await revokeAccessTokenAction(t.id);
+                            setRevokeError(result.ok ? null : result.error);
+                          } catch {
+                            setRevokeError("That didn't work. Try again.");
+                          }
+                          setConfirming(null);
+                        })
+                      }
                       className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60"
                     >
                       {revoking ? "Revoking…" : `Revoke ${t.name}`}

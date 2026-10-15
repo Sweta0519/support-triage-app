@@ -15,8 +15,7 @@ const card =
 const body = "text-sm text-zinc-600 dark:text-zinc-400";
 
 export default async function AccountPage() {
-  const profile = await requireProfile();
-  const tokens = await listMyAccessTokens();
+  const [profile, tokens] = await Promise.all([requireProfile(), listMyAccessTokens()]);
 
   return (
     <div className={readablePageClass}>

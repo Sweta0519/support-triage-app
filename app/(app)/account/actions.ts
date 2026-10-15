@@ -13,6 +13,7 @@ import { removeOwnAvatar, replaceOwnAvatar } from "@/app/lib/db/avatars";
 import { AVATAR_MAX_UPLOAD_BYTES, AvatarImageError, toAvatarWebp } from "@/app/lib/avatar-image";
 import { fullNameError, isQueueFilter, isQueueSort, isTheme } from "@/app/lib/preferences";
 import { createAccessToken, revokeAccessToken, TooManyTokensError } from "@/app/lib/db/access-tokens";
+import { isUuid } from "@/app/lib/db/tickets";
 import { TOKEN_LIFETIMES, TOKEN_NAME_MAX_LENGTH } from "@/app/lib/access-token-options";
 
 // On an error the submitted values come back: React resets an uncontrolled
@@ -208,7 +209,7 @@ export type CreateTokenState =
   | undefined;
 
 export async function createAccessTokenAction(_prevState: CreateTokenState, formData: FormData): Promise<CreateTokenState> {
-  const profile = await requireProfile();
+  await requireProfile();
   const name = String(formData.get("name") ?? "").trim();
   const lifetime = String(formData.get("lifetime") ?? "");
   if (!name) return { status: "error", error: "Give the token a name, like the assistant you'll use it with.", name };
@@ -218,7 +219,7 @@ export async function createAccessTokenAction(_prevState: CreateTokenState, form
   const choice = TOKEN_LIFETIMES.find((l) => String(l.days ?? "never") === lifetime);
   if (!choice) return { status: "error", error: "Choose when the token expires.", name };
   try {
-    const { token } = await createAccessToken(profile.id, name, choice.days);
+    const token = await createAccessToken(name, choice.days);
     revalidatePath("/account");
     return { status: "created", token, name };
   } catch (err) {
@@ -228,9 +229,11 @@ export async function createAccessTokenAction(_prevState: CreateTokenState, form
   }
 }
 
-export async function revokeAccessTokenAction(id: string): Promise<{ ok: boolean }> {
+export async function revokeAccessTokenAction(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireProfile();
-  const ok = await revokeAccessToken(String(id));
+  const tokenId = String(id);
+  if (!isUuid(tokenId)) return { ok: false, error: "That token no longer exists." };
+  const revoked = await revokeAccessToken(tokenId);
   revalidatePath("/account");
-  return { ok };
+  return revoked ? { ok: true } : { ok: false, error: "That token was already revoked, or isn't yours." };
 }
