@@ -3,8 +3,8 @@
 A review of the whole connector as merged: personal access tokens (SUP-53, PR #65), the endpoint
 (SUP-54, PR #67), the customer and staff tools (SUP-55, PR #68; SUP-56, PR #71), and the setup
 UI (SUP-65, SUP-66, PRs #69 and #70). How it works is in `docs/mcp.md`. This page checks it
-against the risks SUP-57 lists, each with where the evidence is. Every PR also had two reviews
-with their findings fixed or answered on the PR (`docs/reviews/README.md`).
+against the risks SUP-57 lists, each with where the evidence is. Each of those PRs also had the
+two reviews `docs/reviews/README.md` describes, with every finding answered inline on the PR.
 
 ## Tokens: entropy and storage
 
@@ -37,20 +37,25 @@ with their findings fixed or answered on the PR (`docs/reviews/README.md`).
 - **As the owner, never as the service role.** The owner gets a real Supabase session
   (a one-time sign-in link exchanged server-side). The request then runs inside
   `runWithUserSession()`, so every `app/lib/db/` function runs under the owner's RLS. The service
-  role is used only to resolve the hash and to start that session. Owners who are gone,
-  unconfirmed or banned get `401`.
+  role is used to resolve the hash and start that session, and for the background triage run
+  that `create_ticket` starts, as the web form does. Owners who are gone or unconfirmed get
+  `401`.
+- **How fast it applies:** revoking, expiry and deleting the account apply on the next request.
+  A ban or a sign-out everywhere applies within 5 minutes, when the cached session is next
+  renewed (`SESSION_REUSE_SECONDS`).
 - **The role is read on every request** from `ticketing.profiles` (after `ensure_profile()`),
   never from a JWT claim. The tool set is built from it, so a demoted agent loses the staff tools
   on the next call (`tests/mcp.spec.ts`). Only `agent` and `admin` get staff tools.
-- **Known trade-off:** a new sign-in replaces any pending sign-in link for that user, and adds a
-  session. It's documented in `docs/mcp.md`, with the fix it would take.
+- **Known trade-off:** a new sign-in adds a session, and may replace a pending sign-in link for
+  that user (not verified against Supabase Auth's source). It's documented in `docs/mcp.md`, with
+  the fix it would take.
 
 ## Rate limits
 
 | What | Limit | Where |
 |---|---|---|
 | Creating tokens | 10 an hour per person | `access_token` in `consume_rate_limit()` |
-| MCP requests | 120 per 10 minutes per person (all their tokens) | `mcp_request`, answered with `429` and `Retry-After` |
+| MCP requests | 120 per fixed 10-minute window per person (all their tokens; a burst across a window boundary can reach about twice that) | `mcp_request`, answered with `429` and `Retry-After` |
 | Filing tickets, replies | The web app's own limits | The same insert triggers (`create_ticket`, `add_comment`) |
 | Unknown tokens | Not counted by the app (one indexed lookup each) | Vercel firewall rule in `docs/security/vercel-waf.md` (not yet confirmed in the dashboard) |
 
@@ -60,7 +65,8 @@ addresses, so one abuser could block everyone using that client.
 ## RLS coverage, tool by tool
 
 Every tool reads and writes through `app/lib/db/` as the owner, so the same RLS policies as the
-web app apply. Nothing in the tools uses the service role.
+web app apply. The one service-role use is the background triage run that `create_ticket` starts,
+exactly as the web form does (it reads that one ticket and writes only its triage).
 
 | Tool | Who | What decides visibility | Tested in |
 |---|---|---|---|
@@ -84,7 +90,8 @@ The assistant on the other end is a language model, and tickets are written by a
 - **Results are JSON,** so a ticket's text can't break out of its field.
 - **Every human- or model-written field is wrapped** as `{"untrusted_text": …}`: subjects,
   descriptions, replies and notes, AI summaries and reasons, the draft reply, what's still
-  needed, display names, and label names.
+  needed, other people's display names, and label names. (`whoami` returns your own
+  name as is.)
 - **The server's instructions** (`app/lib/mcp/server.ts`) tell the assistant to treat wrapped
   text as information, never as instructions.
 - **The tools limit the damage** if an assistant is fooled anyway. It can only do what the person
@@ -103,8 +110,9 @@ another site's page can't call it with a token either (tested: the preflight has
 
 - **What's logged:** our-side failures (database or Auth errors) in the route and in tool
   handlers, through `guarded()`, plus the owner's user id when a session refresh fails.
-- **What isn't:** the token, its hash in clear text, and the session's JWT or refresh token never
-  appear in a log line or an error message.
+- **What isn't:** no token, token hash, JWT or refresh token is passed to any log call or error
+  message. This is checked by reading every log call (`route.ts`, `results.ts`, `mcp-auth.ts`),
+  not by a test.
 - **What callers see:** errors they get never include the underlying message: a tool failure is
   "a problem on our side", and the route answers `503`.
 
@@ -114,3 +122,4 @@ another site's page can't call it with a token either (tested: the preflight has
   dashboard.
 - OAuth sign-in, needed for ChatGPT's and the Claude apps' connectors, isn't supported. It would
   also remove the sign-in-link side effect.
+- Whether a new MCP sign-in really replaces a pending sign-in link (above) is unverified.

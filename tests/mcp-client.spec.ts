@@ -10,12 +10,12 @@ import { service, setRole, throwawayWithToken } from "./mcp-helpers";
 // offered. The finer rules are in mcp.spec.ts, mcp-customer-tools.spec.ts and
 // mcp-staff-tools.spec.ts; this proves a real client can drive them all.
 
-const ENDPOINT = new URL("/api/mcp", "http://localhost:3000");
-
-async function connect(token: string): Promise<Client> {
+async function connect(baseURL: string, token: string): Promise<Client> {
   const client = new Client({ name: "e2e", version: "1.0.0" });
   await client.connect(
-    new StreamableHTTPClientTransport(ENDPOINT, { requestInit: { headers: { Authorization: `Bearer ${token}` } } })
+    new StreamableHTTPClientTransport(new URL("/api/mcp", baseURL), {
+      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+    })
   );
   return client;
 }
@@ -30,20 +30,27 @@ async function call(client: Client, name: string, args: Record<string, unknown> 
 
 const names = async (client: Client) => (await client.listTools()).tools.map((t) => t.name).sort();
 
-test("a real MCP client connects as each role and uses every tool it's offered", async () => {
+test("a real MCP client connects as each role and uses every tool it's offered", async ({ baseURL }) => {
   test.setTimeout(120_000);
-  const [customer, agent, admin] = await Promise.all([
+  // allSettled: if one account fails to set up, the others are still removed.
+  const made = await Promise.allSettled([
     throwawayWithToken("mcp-e2e-cust"),
     throwawayWithToken("mcp-e2e-agent"),
     throwawayWithToken("mcp-e2e-admin"),
   ]);
+  const users = made.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+  if (users.length < 3) {
+    await Promise.allSettled(users.map((u) => u.remove()));
+    throw new Error("Couldn't set up the test accounts");
+  }
+  const [customer, agent, admin] = users;
   const clients: Client[] = [];
   try {
     await setRole(agent.id, "agent");
     await setRole(admin.id, "admin");
 
     // The customer: every customer tool.
-    const asCustomer = await connect(customer.token);
+    const asCustomer = await connect(baseURL!, customer.token);
     clients.push(asCustomer);
     expect(asCustomer.getServerVersion()?.name).toBe("support-triage");
     expect(asCustomer.getInstructions()).toContain("untrusted_text");
@@ -55,21 +62,19 @@ test("a real MCP client connects as each role and uses every tool it's offered",
     expect((await call(asCustomer, "add_reply", { number, message: "It happens in every browser." })).replied_to).toBe(filed.number);
     expect((await call(asCustomer, "get_ticket", { number })).replies).toHaveLength(1);
 
-    // Let the background triage finish first, so it can't land between the
+    // Let the background triage settle first, so it can't land between the
     // agent's read and review (which would rightly be refused as stale).
-    if (process.env.OPENROUTER_API_KEY) {
-      await expect
-        .poll(
-          async () =>
-            (await service().from("tickets").select("triage_state:ticket_triage_state(triage_status)").eq("number", number).single()).data
-              ?.triage_state as unknown as { triage_status: string } | null,
-          { timeout: 90_000 }
-        )
-        .toMatchObject({ triage_status: expect.stringMatching(/^(completed|failed)$/) });
+    // Where the app has no working model it stays pending, and the wait just
+    // ends: then there's no run to race.
+    const triageStatus = async () =>
+      ((await service().from("ticket_triage_state").select("triage_status, tickets!inner(number)").eq("tickets.number", number).maybeSingle()).data
+        ?.triage_status as string | undefined) ?? "pending";
+    for (let waited = 0; waited < 90_000 && !["completed", "failed"].includes(await triageStatus()); waited += 1_000) {
+      await new Promise((r) => setTimeout(r, 1_000));
     }
 
     // The agent: every staff tool, on that ticket.
-    const asAgent = await connect(agent.token);
+    const asAgent = await connect(baseURL!, agent.token);
     clients.push(asAgent);
     expect(await names(asAgent)).toEqual(["claim_ticket", "get_ticket", "list_queue", "post_reply", "review_triage", "set_status", "whoami"]);
     expect((await call(asAgent, "list_queue", { search: filed.number })).tickets.map((t: { number: string }) => t.number)).toEqual([filed.number]);
@@ -90,7 +95,7 @@ test("a real MCP client connects as each role and uses every tool it's offered",
     expect((await call(asAgent, "set_status", { number, status: "in_progress" })).status).toBe("in_progress");
 
     // The admin: sees the agent's ticket in the queue and can read it.
-    const asAdmin = await connect(admin.token);
+    const asAdmin = await connect(baseURL!, admin.token);
     clients.push(asAdmin);
     expect(await names(asAdmin)).toEqual(await names(asAgent));
     expect((await call(asAdmin, "list_queue", { search: filed.number })).tickets).toHaveLength(1);
@@ -103,8 +108,9 @@ test("a real MCP client connects as each role and uses every tool it's offered",
       "Thanks, we're on it.",
     ]);
   } finally {
-    await Promise.all(clients.map((c) => c.close()));
-    expect((await service().from("tickets").delete().eq("customer_id", customer.id)).error).toBeNull();
-    await Promise.all([customer.remove(), agent.remove(), admin.remove()]);
+    // Every step runs even if an earlier one fails, so no account is left behind.
+    await Promise.allSettled(clients.map((c) => c.close()));
+    await service().from("tickets").delete().eq("customer_id", customer.id);
+    await Promise.allSettled(users.map((u) => u.remove()));
   }
 });

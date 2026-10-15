@@ -191,7 +191,7 @@ const ALSO = [
   { name: "Team labels and flags", text: "Labels the team defines, edited right on the cards, and private flags for what to follow up." },
   {
     name: "MCP connector",
-    text: "Use Support Triage from Claude Code, Cursor, VS Code or Codex with a personal access token, with exactly your own permissions.",
+    text: "Use Support Triage from Claude Code, Cursor, VS Code or Codex with a personal access token. The assistant acts as you, with exactly your permissions, and each action it takes is a step you see in it. Support Triage's own AI still only suggests.",
   },
 ];
 

@@ -38,9 +38,9 @@ once, right after a token is created, with that token filled in (SUP-66). Both u
 They're the clients that accept a URL and a bearer token.
 
 **Not supported yet:** ChatGPT's connectors, and the Claude apps' connectors (Claude Desktop and
-claude.ai), sign in with OAuth, which this server doesn't offer. Claude Desktop's own config file
-runs local servers only, so it can't point at this URL with a token either. Use Claude Code,
-Cursor, VS Code or Codex.
+claude.ai), sign in with OAuth, which this server doesn't offer. Claude Desktop's config file
+doesn't take a URL plus a token directly. It would need a local bridge, which isn't covered or
+tested here. Use Claude Code, Cursor, VS Code or Codex.
 
 **Claude Code:**
 
