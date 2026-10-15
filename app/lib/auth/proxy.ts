@@ -6,7 +6,9 @@ import { AUTH_COOKIE_OPTIONS } from "./clients";
 const PUBLIC_PATHS = ["/login", "/signup", "/auth/confirm", "/s/", "/privacy"];
 // Exact, unlike the prefixes above, so a later /welcome-something route
 // isn't public by accident.
-const PUBLIC_EXACT = ["/welcome"];
+// /api/mcp signs its requests in with access tokens, never cookies, and
+// answers 401 itself (SUP-54).
+const PUBLIC_EXACT = ["/welcome", "/api/mcp"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });

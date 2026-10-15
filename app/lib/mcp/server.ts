@@ -1,0 +1,36 @@
+import "server-only";
+
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+
+import type { Profile } from "@/app/lib/db/profiles";
+import { profileName } from "@/app/lib/people";
+
+// The MCP server one request talks to (SUP-54). It's built per request for
+// the signed-in token owner, from their profile as just read from the
+// database, so the tools on offer always follow their current role: a demoted
+// agent loses staff tools on their next call, not when a cache expires.
+// Every tool reads and writes through app/lib/db/ as that user, under RLS.
+
+const INSTRUCTIONS =
+  "Support Triage is a support ticketing app with AI triage. These tools act as the signed-in person, " +
+  "with exactly their permissions in the web app (a customer, a support agent, or an admin). " +
+  "Call whoami to see who that is. Nothing here sends anything to a customer unless a tool says it does.";
+
+export function createMcpServer(profile: Profile): McpServer {
+  const server = new McpServer({ name: "support-triage", version: "1.0.0" }, { instructions: INSTRUCTIONS });
+
+  server.registerTool(
+    "whoami",
+    {
+      title: "Who am I",
+      description: "The person these tools act as: their name, email and role (customer, agent or admin).",
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async () => {
+      const me = { name: profileName(profile), email: profile.email, role: profile.role };
+      return { content: [{ type: "text", text: JSON.stringify(me) }] };
+    }
+  );
+
+  return server;
+}
