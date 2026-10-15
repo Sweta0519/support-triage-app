@@ -10,7 +10,9 @@ import { linkClass } from "@/app/lib/styles";
 const card = "rounded-xl border border-black/[.08] p-4 dark:border-white/[.145]";
 const muted = "text-xs text-zinc-500 dark:text-zinc-400";
 
-// The answers from the request's ticket, without its fixed first line.
+// The answers from the request's ticket, without its fixed first line. That
+// line is written by ticketing.file_access_request(); if it's ever reworded
+// there, change it here too (the whole body shows until then, nothing worse).
 function answers(request: AccessRequest): string | null {
   const body = request.ticket?.body;
   if (!body) return null;
@@ -65,7 +67,7 @@ export default async function AccessRequestsPage() {
                     <p className={`mt-2 ${muted}`}>Already {r.role === "admin" ? "an admin" : "an agent"}.</p>
                   ) : null}
                   <div className="mt-3">
-                    <AccessRequestActions userId={r.userId} name={name} />
+                    <AccessRequestActions userId={r.userId} name={name} alreadyStaff={r.role !== "customer"} />
                   </div>
                 </li>
               );

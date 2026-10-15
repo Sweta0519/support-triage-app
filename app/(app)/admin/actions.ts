@@ -68,10 +68,12 @@ export async function decideAccessRequestAction(
           ? "This request has already been decided."
           : err.reason === "own_request"
             ? "You can't decide your own request."
-            : "Only admins can decide access requests.",
+            : err.reason === "rate_limited"
+              ? "You've posted a lot of replies just now. Wait a few minutes and try again."
+              : "Only admins can decide access requests.",
     };
-  } finally {
-    // The count, the lists, the ticket and the person's role all changed.
-    revalidatePath("/", "layout");
   }
+  // No revalidatePath here: it would re-render the page at once, moving the
+  // card out of the Waiting list before its confirmation could be read. The
+  // client refreshes the page (count, lists, ticket) a moment later.
 }

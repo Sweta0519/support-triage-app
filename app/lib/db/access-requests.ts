@@ -58,7 +58,9 @@ export async function listAccessRequests(): Promise<AccessRequest[]> {
       "id, email, full_name, role, access_requested_at, access_request_status, access_decided_by, access_decided_at, ticket:tickets!profiles_access_request_ticket_id_fkey(id, number, body)"
     )
     .not("access_request_status", "is", null)
-    .order("access_requested_at", { ascending: false });
+    .order("access_requested_at", { ascending: false })
+    // The page shows the most recent; older history isn't needed there.
+    .limit(200);
   if (error) {
     throw new Error(error.message);
   }
@@ -87,7 +89,7 @@ export async function listAccessRequests(): Promise<AccessRequest[]> {
 }
 
 export class AccessDecisionError extends Error {
-  constructor(readonly reason: "not_pending" | "not_allowed" | "own_request") {
+  constructor(readonly reason: "not_pending" | "not_allowed" | "own_request" | "rate_limited") {
     super(`decide_access_request refused: ${reason}`);
   }
 }
@@ -99,8 +101,12 @@ export async function decideAccessRequest(userId: string, grant: boolean): Promi
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.rpc("decide_access_request", { p_user: userId, p_grant: grant });
   if (error) {
+    // The function's own refusals, by their exact text (checked before the
+    // shared 42501 code, which own_request also uses).
     if (error.message === "not_pending") throw new AccessDecisionError("not_pending");
     if (error.message === "own_request") throw new AccessDecisionError("own_request");
+    // The reply counts against the admin's comment limit.
+    if (error.message.startsWith("rate_limited")) throw new AccessDecisionError("rate_limited");
     if (error.code === "42501") throw new AccessDecisionError("not_allowed");
     throw new Error(error.message);
   }

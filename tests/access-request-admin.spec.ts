@@ -11,6 +11,8 @@ import { login, requireEnv } from "./helpers";
 // before and after rather than asserted outright.
 
 test.use({ storageState: { cookies: [], origins: [] } });
+// One at a time: the tests decide requests, and the sidebar count is global.
+test.describe.configure({ mode: "serial" });
 
 function service() {
   return createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
@@ -124,6 +126,26 @@ test("an admin declines from the request's ticket; the requester stays a custome
   expect(after).toEqual({ role: "customer", access_request_status: "declined" });
   const { data: ticket } = await service().from("tickets").select("status").eq("id", profile!.access_request_ticket_id).single();
   expect(ticket!.status).toBe("resolved");
+});
+
+test("granting a request from someone already on the staff never demotes them", async () => {
+  const otherAdmin = await account("Staffer", { request: true });
+  await service().from("profiles").update({ role: "admin" }).eq("id", otherAdmin.id);
+  const admin = await account("Admin", { role: "admin" });
+  const adminDb = await signedIn(admin.email, admin.password);
+  expect((await adminDb.rpc("decide_access_request", { p_user: otherAdmin.id, p_grant: true })).data).toBe("granted");
+  const { data: after } = await service().from("profiles").select("role, access_request_status").eq("id", otherAdmin.id).single();
+  expect(after).toEqual({ role: "admin", access_request_status: "granted" });
+});
+
+test("promoting a requester on the Users page settles their request too", async () => {
+  const requester = await account("Requester", { request: true });
+  const admin = await account("Admin", { role: "admin" });
+  const adminDb = await signedIn(admin.email, admin.password);
+  // What the Users page's role change calls.
+  expect((await adminDb.rpc("admin_set_role", { target_user_id: requester.id, new_role: "agent" })).error).toBeNull();
+  const { data } = await service().from("profiles").select("role, access_request_status, access_decided_by").eq("id", requester.id).single();
+  expect(data).toEqual({ role: "agent", access_request_status: "granted", access_decided_by: admin.id });
 });
 
 test("only admins can see or decide requests, a request is decided once, and never your own", async ({ page }) => {
