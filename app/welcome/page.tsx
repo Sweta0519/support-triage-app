@@ -5,7 +5,8 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { Logo } from "@/app/components/Logo";
 import { MacWindow, Phone } from "./DeviceFrames";
-import { getUser } from "@/app/lib/auth/session";
+import { SectionMenu } from "./SectionMenu";
+import { getProfile, getUser } from "@/app/lib/auth/session";
 import styles from "./welcome.module.css";
 
 // The public homepage (SUP-48). Signed-out visitors see it at / (the session
@@ -28,7 +29,9 @@ export const metadata: Metadata = {
 const ink = "text-[#15171C]";
 const graphite = "text-[#5B606B]";
 const primaryButton =
-  "inline-flex items-center rounded-lg bg-[#4F46E5] px-4 py-2.5 text-[15px] font-medium text-white hover:bg-[#4338CA] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
+  "inline-flex items-center whitespace-nowrap rounded-lg bg-[#4F46E5] px-4 py-2.5 text-[15px] font-medium text-white hover:bg-[#4338CA] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
+const secondaryButton =
+  "inline-flex items-center rounded-lg border border-[#C9CCD3] bg-white px-4 py-2.5 text-[15px] font-medium text-[#15171C] hover:border-[#9EA3AE] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
 const quietFooterLink =
   "rounded underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
 const quietLink =
@@ -135,32 +138,70 @@ const ALSO = [
   { name: "Customer ratings", text: "Customers rate resolved tickets, and admins see the results for each person on the team." },
 ];
 
+// The page's sections, linked from the header.
+const SECTIONS = [
+  { href: "#demo", label: "Demo" },
+  { href: "#how-it-works", label: "How it works" },
+  { href: "#product", label: "Product" },
+  { href: "#features", label: "Features" },
+  { href: "#ai-assistants", label: "AI assistants" },
+  { href: "#pricing", label: "Pricing" },
+];
+
+// What the Free tier includes: the shipped app (README), nothing promised.
+const FREE_INCLUDES = [
+  "AI triage on every ticket, with a drafted first reply",
+  "Queue and board with response-time targets",
+  "Sage, the private assistant for agents",
+  "Incident detection and learning from corrections",
+  "Analytics, customer ratings and status pages",
+];
+
 export default async function WelcomePage() {
   const signedIn = Boolean(await getUser());
+  // Staff are the team "Contact us" would reach, and /tickets/new shows them
+  // the log-a-ticket-for-a-customer form, so the Custom plan points them at
+  // the app instead. (getProfile ensures the profile row first.)
+  const isStaff = signedIn && (await getProfile())?.role !== "customer";
   return (
     // A light-only design: data-theme="light" turns off the app's dark:
     // variants inside and paints the page background light (globals.css).
     <div data-theme="light" className={`flex min-h-screen flex-col bg-[#FBFBFC] font-sans ${ink}`}>
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-5 sm:px-8">
-        <Link href="/" className="rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#4F46E5]">
+        <Link href="/" className="whitespace-nowrap rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#4F46E5]">
           <Logo size={28} />
         </Link>
-        <nav aria-label="Account" className="flex items-center gap-5">
-          {signedIn ? (
-            <Link href="/" className={primaryButton}>
-              Open the app
-            </Link>
-          ) : (
-            <>
-              <Link href="/login" className={quietLink}>
-                Sign in
-              </Link>
-              <Link href="/signup" className={primaryButton}>
-                Request access
-              </Link>
-            </>
-          )}
+        <nav aria-label="Page" className="hidden items-center gap-6 xl:flex">
+          {SECTIONS.map((section) => (
+            <a key={section.href} href={section.href} className={quietLink}>
+              {section.label}
+            </a>
+          ))}
         </nav>
+        <div className="flex items-center gap-4 sm:gap-5">
+          {/* Below xl: the same section links behind one button; on phones it
+              also carries Sign in, which the header has no room for there. */}
+          <SectionMenu
+            links={signedIn ? SECTIONS : [...SECTIONS, { href: "/login", label: "Sign in", className: "sm:hidden" }]}
+            linkClass={quietLink}
+          />
+          <nav aria-label="Account" className="flex items-center gap-4 sm:gap-5">
+            {signedIn ? (
+              <Link href="/" className={primaryButton}>
+                Open the app
+              </Link>
+            ) : (
+              <>
+                <Link href="/login" className={`${quietLink} hidden sm:inline`}>
+                  Sign in
+                </Link>
+                <Link href="/signup" className={primaryButton}>
+                  Request access
+                </Link>
+              </>
+            )}
+          </nav>
+        </div>
       </header>
 
       <main className="flex-1">
@@ -219,7 +260,7 @@ export default async function WelcomePage() {
           </div>
         </section>
 
-        <section aria-labelledby="sequence" className="border-t border-[#E3E5EA]">
+        <section id="how-it-works" aria-labelledby="sequence" className="scroll-mt-6 border-t border-[#E3E5EA]">
           <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
             <h2 id="sequence" className="max-w-xl text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
               How a ticket moves through Support Triage
@@ -236,7 +277,7 @@ export default async function WelcomePage() {
           </div>
         </section>
 
-        <section aria-labelledby="in-the-app" className="border-t border-[#E3E5EA]">
+        <section id="product" aria-labelledby="in-the-app" className="scroll-mt-6 border-t border-[#E3E5EA]">
           <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
             <h2 id="in-the-app" className="max-w-xl text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
               On the desk and on the phone
@@ -281,7 +322,7 @@ export default async function WelcomePage() {
           </div>
         </section>
 
-        <section aria-labelledby="also" className="border-t border-[#E3E5EA]">
+        <section id="features" aria-labelledby="also" className="scroll-mt-6 border-t border-[#E3E5EA]">
           <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
             <h2 id="also" className="text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
               Also included
@@ -297,7 +338,7 @@ export default async function WelcomePage() {
           </div>
         </section>
 
-        <section aria-labelledby="mcp" className="border-t border-[#E3E5EA]">
+        <section id="ai-assistants" aria-labelledby="mcp" className="scroll-mt-6 border-t border-[#E3E5EA]">
           <div className="mx-auto grid w-full max-w-6xl gap-6 px-5 py-20 sm:px-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-12">
             <div>
               <h2 id="mcp" className="text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
@@ -314,6 +355,59 @@ export default async function WelcomePage() {
                 The plan: customers file and follow their tickets, and agents work the queue, reading a ticket with the
                 AI&apos;s suggestions, replying and changing its status. It isn&apos;t available yet.
               </p>
+            </div>
+          </div>
+        </section>
+
+        <section id="pricing" aria-labelledby="pricing-title" className="scroll-mt-6 border-t border-[#E3E5EA]">
+          <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
+            <h2 id="pricing-title" className="text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
+              Pricing
+            </h2>
+            <div className="mt-10 grid border-y border-[#E3E5EA] md:grid-cols-2">
+              <div className="py-8 md:pr-10">
+                <h3 className="text-[20px] font-semibold">Free</h3>
+                <p className="mt-3 text-[40px] font-semibold leading-none tracking-[-0.02em]">€0</p>
+                <p className={`mt-3 text-[15px] leading-[1.6] ${graphite}`}>
+                  Every feature listed here, at no cost. Your team gets agent access once you request it.
+                </p>
+                <ul className={`mt-6 flex flex-col gap-2.5 text-[15px] leading-[1.5] ${ink}`}>
+                  {FREE_INCLUDES.map((item) => (
+                    <li key={item} className="flex gap-3">
+                      <span aria-hidden="true" className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#30A46C]" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+                <Link href={signedIn ? "/" : "/signup"} className={`${primaryButton} mt-8`}>
+                  {signedIn ? "Open the app" : "Request access"}
+                </Link>
+              </div>
+              <div className="border-t border-[#E3E5EA] py-8 md:border-l md:border-t-0 md:pl-10">
+                <h3 className="text-[20px] font-semibold">Custom</h3>
+                <p className="mt-3 text-[40px] font-semibold leading-none tracking-[-0.02em]">Let&apos;s talk</p>
+                <p className={`mt-3 text-[15px] leading-[1.6] ${graphite}`}>For larger teams, or teams with particular needs.</p>
+                <p className={`mt-6 max-w-md text-[15px] leading-[1.6] ${ink}`}>
+                  Tell us about rolling it out to a bigger team, moving your existing tickets over, or something you need that
+                  isn&apos;t here yet. We&apos;ll work it out with you.
+                </p>
+                {isStaff ? (
+                  <p className={`mt-8 text-[15px] ${graphite}`}>
+                    You&apos;re on the team: requests from customers arrive in your queue.
+                  </p>
+                ) : (
+                  <>
+                    <Link href={signedIn ? "/tickets/new" : "/signup"} className={`${secondaryButton} mt-8`}>
+                      Contact us
+                    </Link>
+                    <p className={`mt-3 text-[13px] ${graphite}`}>
+                      {signedIn
+                        ? "Opens a new ticket: tell us what you need."
+                        : "Create an account, then open a ticket telling us what you need."}
+                    </p>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </section>
