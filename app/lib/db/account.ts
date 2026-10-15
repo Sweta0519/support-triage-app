@@ -3,6 +3,7 @@ import "server-only";
 import { createClient } from "@supabase/supabase-js";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
+import { listMyAccessTokens } from "@/app/lib/db/access-tokens";
 import { AVATAR_BUCKET } from "@/app/lib/avatars";
 import { createServiceSupabaseClient } from "@/app/lib/supabase/service";
 
@@ -17,7 +18,9 @@ export async function exportOwnData(): Promise<unknown> {
   if (error) {
     throw new Error(error.message);
   }
-  return data;
+  // Personal access tokens (SUP-53): names, prefixes and dates under the
+  // same RLS scope; secrets are never stored, and hashes aren't readable.
+  return { ...(data as Record<string, unknown>), access_tokens: await listMyAccessTokens() };
 }
 
 export class LastAdminError extends Error {

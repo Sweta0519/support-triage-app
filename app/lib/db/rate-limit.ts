@@ -11,7 +11,8 @@ export type RateLimitedAction =
   | "save_note"
   | "rate_ticket"
   | "update_profile"
-  | "update_avatar";
+  | "update_avatar"
+  | "access_token";
 
 // The one user-facing wording for a tripped limit, shared by every action.
 export const RATE_LIMITED_MESSAGE =
