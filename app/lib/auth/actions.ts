@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "./clients";
 import { AUTH_RATE_LIMITED_MESSAGE, consumeAuthRateLimit, refundAuthAttempt } from "@/app/lib/db/auth-rate-limit";
 import { SITE_URL } from "@/app/lib/site-url";
+import { afterSignIn } from "./after-sign-in";
+import { ACCESS_PURPOSE_MAX, ACCESS_TEAM_MAX, TEAM_SIZES, type AccessRequestAnswers } from "@/app/lib/access-request-options";
 
 export type AuthFormState = { error: string } | undefined;
 
@@ -13,6 +15,18 @@ function parseCredentials(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   return { email, password };
+}
+
+// The "Request access" answers (SUP-58), when the form came from it: all
+// optional, trimmed and capped. Null for a plain sign-up.
+function accessRequest(formData: FormData): AccessRequestAnswers | null {
+  if (formData.get("access") !== "1") return null;
+  const size = String(formData.get("size") ?? "");
+  return {
+    team: String(formData.get("team") ?? "").trim().slice(0, ACCESS_TEAM_MAX),
+    size: (TEAM_SIZES as readonly string[]).includes(size) ? size : "",
+    purpose: String(formData.get("purpose") ?? "").trim().slice(0, ACCESS_PURPOSE_MAX),
+  };
 }
 
 export async function signUpAction(
@@ -29,10 +43,16 @@ export async function signUpAction(
   // No `options.data` role is ever passed here -- role is hard-coded to
   // 'customer' server-side by the ticketing.handle_new_user() trigger, which
   // ignores raw_user_meta_data entirely. Never add a role field to this call.
+  // The only metadata ever sent is the access request's answers: text that
+  // becomes a ticket, never a role.
+  const request = accessRequest(formData);
   const { error } = await supabase.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: `${SITE_URL}/auth/confirm` },
+    options: {
+      emailRedirectTo: `${SITE_URL}/auth/confirm`,
+      ...(request ? { data: { access_request: request } } : {}),
+    },
   });
 
   if (error) {
@@ -71,7 +91,7 @@ export async function signInAction(
     return { error: error.message };
   }
 
-  redirect("/");
+  redirect((await afterSignIn()) ?? "/");
 }
 
 export async function signOutAction() {

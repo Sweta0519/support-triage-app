@@ -10,8 +10,11 @@ import { statusBadgeClasses, statusLabel } from "@/app/lib/badges";
 import { formatTicketNumber } from "@/app/lib/format";
 import { primaryButtonClass, readablePageClass } from "@/app/lib/styles";
 
-export default async function TicketsPage() {
+export default async function TicketsPage({ searchParams }: { searchParams: Promise<{ requested?: string | string[] }> }) {
   const profile = await requireRole("customer");
+  // Arriving from "Request access" (SUP-58): the request was just filed.
+  const { requested } = await searchParams;
+  const justRequested = (Array.isArray(requested) ? requested[0] : requested) === "1";
   const tickets = await listMyTickets(profile.id);
 
   return (
@@ -25,6 +28,15 @@ export default async function TicketsPage() {
           New ticket
         </Link>
       </div>
+
+      {justRequested ? (
+        <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
+          <p className="font-medium">Thanks, we&apos;ve got your request.</p>
+          <p className="mt-1">
+            It&apos;s the access request below. Our team will reply on it, and you can add anything else there.
+          </p>
+        </div>
+      ) : null}
 
       {tickets.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-black/[.15] py-16 text-center dark:border-white/[.2]">

@@ -2,6 +2,7 @@ import type { EmailOtpType } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import type { NextRequest } from "next/server";
 
+import { afterSignIn } from "@/app/lib/auth/after-sign-in";
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import { SITE_URL } from "@/app/lib/site-url";
 
@@ -57,7 +58,8 @@ export async function GET(request: NextRequest) {
       token_hash: tokenHash,
     });
     if (!error) {
-      redirect(next);
+      // A first sign-in from "Request access" files the request (SUP-58).
+      redirect((await afterSignIn()) ?? next);
     }
   }
 

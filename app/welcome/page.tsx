@@ -63,6 +63,11 @@ const MCP_STEPS = [
   },
 ];
 
+// Every "Request access" button: the sign-up form with the access-request
+// questions, which files a request ticket on the first sign-in (SUP-58).
+// (Custom's "Contact us" is a plain sign-up, to file a ticket.)
+const REQUEST_ACCESS = "/signup?access=1";
+
 const ink = "text-[#15171C]";
 const graphite = "text-[#5B606B]";
 // Copy on the dark product band (about 9:1 on its lightest stop).
@@ -237,7 +242,7 @@ function footerGroups(signedIn: boolean) {
     ? [{ href: "/", label: "Open the app" }]
     : [
         { href: "/login", label: "Sign in" },
-        { href: "/signup", label: "Request access" },
+        { href: REQUEST_ACCESS, label: "Request access" },
       ];
   return [FOOTER_PRODUCT, { id: "account", title: "Account", links: account }, FOOTER_LEGAL];
 }
@@ -291,7 +296,7 @@ export default async function WelcomePage() {
                 <Link href="/login" className={`${navLink} hidden sm:inline`}>
                   Sign in
                 </Link>
-                <Link href="/signup" className={primaryButton}>
+                <Link href={REQUEST_ACCESS} className={primaryButton}>
                   Request access
                 </Link>
               </>
@@ -312,7 +317,7 @@ export default async function WelcomePage() {
               the reply.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-6">
-              <Link href={signedIn ? "/" : "/signup"} className={primaryButton}>
+              <Link href={signedIn ? "/" : REQUEST_ACCESS} className={primaryButton}>
                 {signedIn ? "Open the app" : "Request access"}
               </Link>
               <a href="#demo" className={quietLink}>
@@ -543,7 +548,7 @@ export default async function WelcomePage() {
                     </li>
                   ))}
                 </ul>
-                <Link href={signedIn ? "/" : "/signup"} className={`${primaryButton} mt-8`}>
+                <Link href={signedIn ? "/" : REQUEST_ACCESS} className={`${primaryButton} mt-8`}>
                   {signedIn ? "Open the app" : "Request access"}
                 </Link>
               </div>
@@ -585,7 +590,7 @@ export default async function WelcomePage() {
                 access. It&apos;s free.
               </p>
             </div>
-            <Link href={signedIn ? "/" : "/signup"} className={primaryButton}>
+            <Link href={signedIn ? "/" : REQUEST_ACCESS} className={primaryButton}>
               {signedIn ? "Open the app" : "Request access"}
             </Link>
           </div>
