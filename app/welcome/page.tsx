@@ -5,6 +5,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { Logo } from "@/app/components/Logo";
 import { MacWindow, Phone } from "./DeviceFrames";
+import { SectionMenu } from "./SectionMenu";
 import { getUser } from "@/app/lib/auth/session";
 import styles from "./welcome.module.css";
 
@@ -28,7 +29,7 @@ export const metadata: Metadata = {
 const ink = "text-[#15171C]";
 const graphite = "text-[#5B606B]";
 const primaryButton =
-  "inline-flex items-center rounded-lg bg-[#4F46E5] px-4 py-2.5 text-[15px] font-medium text-white hover:bg-[#4338CA] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
+  "inline-flex items-center whitespace-nowrap rounded-lg bg-[#4F46E5] px-4 py-2.5 text-[15px] font-medium text-white hover:bg-[#4338CA] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
 const secondaryButton =
   "inline-flex items-center rounded-lg border border-[#C9CCD3] bg-white px-4 py-2.5 text-[15px] font-medium text-[#15171C] hover:border-[#9EA3AE] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
 const quietFooterLink =
@@ -137,6 +138,16 @@ const ALSO = [
   { name: "Customer ratings", text: "Customers rate resolved tickets, and admins see the results for each person on the team." },
 ];
 
+// The page's sections, linked from the header.
+const SECTIONS = [
+  { href: "#demo", label: "Demo" },
+  { href: "#how-it-works", label: "How it works" },
+  { href: "#product", label: "Product" },
+  { href: "#features", label: "Features" },
+  { href: "#ai-assistants", label: "AI assistants" },
+  { href: "#pricing", label: "Pricing" },
+];
+
 // What the Free tier includes: the shipped app (README), nothing promised.
 const FREE_INCLUDES = [
   "AI triage on every ticket, with a drafted first reply",
@@ -153,25 +164,27 @@ export default async function WelcomePage() {
     // variants inside and paints the page background light (globals.css).
     <div data-theme="light" className={`flex min-h-screen flex-col bg-[#FBFBFC] font-sans ${ink}`}>
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-5 sm:px-8">
-        <Link href="/" className="rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#4F46E5]">
+        <Link href="/" className="whitespace-nowrap rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#4F46E5]">
           <Logo size={28} />
         </Link>
-        <nav aria-label="Page" className="hidden items-center gap-6 md:flex">
-          <a href="#demo" className={quietLink}>
-            Demo
-          </a>
-          <a href="#pricing" className={quietLink}>
-            Pricing
-          </a>
+        <nav aria-label="Page" className="hidden items-center gap-6 lg:flex">
+          {SECTIONS.map((section) => (
+            <a key={section.href} href={section.href} className={quietLink}>
+              {section.label}
+            </a>
+          ))}
         </nav>
-        <nav aria-label="Account" className="flex items-center gap-5">
+        <nav aria-label="Account" className="flex items-center gap-4 sm:gap-5">
+          {/* Phones and tablets: the same section links behind one button. */}
+          <SectionMenu sections={signedIn ? SECTIONS : [...SECTIONS, { href: "/login", label: "Sign in" }]} linkClass={quietLink} />
           {signedIn ? (
             <Link href="/" className={primaryButton}>
               Open the app
             </Link>
           ) : (
             <>
-              <Link href="/login" className={quietLink}>
+              {/* On phones, Sign in lives in the menu to keep the header on one line. */}
+              <Link href="/login" className={`${quietLink} hidden sm:inline`}>
                 Sign in
               </Link>
               <Link href="/signup" className={primaryButton}>
@@ -230,7 +243,7 @@ export default async function WelcomePage() {
           </div>
         </section>
 
-        <section aria-labelledby="sequence" className="border-t border-[#E3E5EA]">
+        <section id="how-it-works" aria-labelledby="sequence" className="scroll-mt-6 border-t border-[#E3E5EA]">
           <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
             <h2 id="sequence" className="max-w-xl text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
               How a ticket moves through Support Triage
@@ -247,7 +260,7 @@ export default async function WelcomePage() {
           </div>
         </section>
 
-        <section aria-labelledby="in-the-app" className="border-t border-[#E3E5EA]">
+        <section id="product" aria-labelledby="in-the-app" className="scroll-mt-6 border-t border-[#E3E5EA]">
           <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
             <h2 id="in-the-app" className="max-w-xl text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
               On the desk and on the phone
@@ -289,7 +302,7 @@ export default async function WelcomePage() {
           </div>
         </section>
 
-        <section aria-labelledby="also" className="border-t border-[#E3E5EA]">
+        <section id="features" aria-labelledby="also" className="scroll-mt-6 border-t border-[#E3E5EA]">
           <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
             <h2 id="also" className="text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
               Also included
@@ -305,7 +318,7 @@ export default async function WelcomePage() {
           </div>
         </section>
 
-        <section aria-labelledby="mcp" className="border-t border-[#E3E5EA]">
+        <section id="ai-assistants" aria-labelledby="mcp" className="scroll-mt-6 border-t border-[#E3E5EA]">
           <div className="mx-auto grid w-full max-w-6xl gap-6 px-5 py-20 sm:px-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-12">
             <div>
               <h2 id="mcp" className="text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">

@@ -32,6 +32,10 @@ test.describe("signed out", () => {
     await expect(page.getByRole("img", { name: /^A customer's view of their ticket on a phone/ })).toBeAttached();
     const mcp = page.getByRole("region", { name: "From your AI assistant, too" });
     await expect(mcp).toContainText("Coming soon");
+    // Every header link points at a section on the page.
+    for (const href of await page.getByRole("navigation", { name: "Page" }).getByRole("link").evaluateAll((links) => links.map((a) => a.getAttribute("href")))) {
+      await expect(page.locator(href!)).toHaveCount(1);
+    }
     // Pricing (SUP-51): Free and Custom; Custom's "Contact us" goes through
     // Support Triage itself (sign up, then a ticket).
     await page.getByRole("navigation", { name: "Page" }).getByRole("link", { name: "Pricing" }).click();
