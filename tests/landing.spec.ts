@@ -32,6 +32,13 @@ test.describe("signed out", () => {
     await expect(page.getByRole("img", { name: /^A customer's view of their ticket on a phone/ })).toBeAttached();
     const mcp = page.getByRole("region", { name: "From your AI assistant, too" });
     await expect(mcp).toContainText("Coming soon");
+    // Pricing (SUP-51): Free and Custom; Custom's "Contact us" goes through
+    // Support Triage itself (sign up, then a ticket).
+    await page.getByRole("navigation", { name: "Page" }).getByRole("link", { name: "Pricing" }).click();
+    const pricing = page.getByRole("region", { name: "Pricing" });
+    await expect(pricing.getByRole("heading", { name: "Free" })).toBeVisible();
+    await expect(pricing.getByRole("heading", { name: "Custom" })).toBeVisible();
+    await expect(pricing.getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/signup");
 
     await page.getByRole("navigation", { name: "Account" }).getByRole("link", { name: "Request access", exact: true }).click();
     await expect(page).toHaveURL(/\/signup$/);
@@ -66,4 +73,6 @@ test("signed in, / is the app, not the homepage", async ({ page }) => {
   await page.goto("/welcome");
   await expect(page.getByRole("navigation", { name: "Account" }).getByRole("link", { name: "Open the app" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Request access", exact: true })).toHaveCount(0);
+  // A signed-in user's "Contact us" opens a new ticket straight away.
+  await expect(page.getByRole("region", { name: "Pricing" }).getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/tickets/new");
 });

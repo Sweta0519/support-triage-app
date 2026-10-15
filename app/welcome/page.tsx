@@ -29,6 +29,8 @@ const ink = "text-[#15171C]";
 const graphite = "text-[#5B606B]";
 const primaryButton =
   "inline-flex items-center rounded-lg bg-[#4F46E5] px-4 py-2.5 text-[15px] font-medium text-white hover:bg-[#4338CA] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
+const secondaryButton =
+  "inline-flex items-center rounded-lg border border-[#C9CCD3] bg-white px-4 py-2.5 text-[15px] font-medium text-[#15171C] hover:border-[#9EA3AE] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
 const quietFooterLink =
   "rounded underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]";
 const quietLink =
@@ -135,6 +137,15 @@ const ALSO = [
   { name: "Customer ratings", text: "Customers rate resolved tickets, and admins see the results for each person on the team." },
 ];
 
+// What the Free tier includes: the shipped app (README), nothing promised.
+const FREE_INCLUDES = [
+  "AI triage on every ticket, with a drafted first reply",
+  "Queue and board with response-time targets",
+  "Sage, the private assistant for agents",
+  "Incident detection and learning from corrections",
+  "Analytics, customer ratings and status pages",
+];
+
 export default async function WelcomePage() {
   const signedIn = Boolean(await getUser());
   return (
@@ -145,6 +156,14 @@ export default async function WelcomePage() {
         <Link href="/" className="rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#4F46E5]">
           <Logo size={28} />
         </Link>
+        <nav aria-label="Page" className="hidden items-center gap-6 md:flex">
+          <a href="#demo" className={quietLink}>
+            Demo
+          </a>
+          <a href="#pricing" className={quietLink}>
+            Pricing
+          </a>
+        </nav>
         <nav aria-label="Account" className="flex items-center gap-5">
           {signedIn ? (
             <Link href="/" className={primaryButton}>
@@ -304,6 +323,47 @@ export default async function WelcomePage() {
                 with the AI&apos;s suggestions, claim it, reply and change its status. It acts with your own account&apos;s
                 permissions, nothing more.
               </p>
+            </div>
+          </div>
+        </section>
+
+        <section id="pricing" aria-labelledby="pricing-title" className="scroll-mt-6 border-t border-[#E3E5EA]">
+          <div className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
+            <h2 id="pricing-title" className="text-[30px] font-semibold leading-tight tracking-[-0.015em] sm:text-[36px]">
+              Pricing
+            </h2>
+            <div className="mt-10 grid border-y border-[#E3E5EA] md:grid-cols-2">
+              <div className="py-8 md:pr-10">
+                <h3 className="text-[20px] font-semibold">Free</h3>
+                <p className="mt-3 text-[40px] font-semibold leading-none tracking-[-0.02em]">€0</p>
+                <p className={`mt-3 text-[15px] leading-[1.6] ${graphite}`}>Everything in the app, for your whole team.</p>
+                <ul className={`mt-6 flex flex-col gap-2.5 text-[15px] leading-[1.5] ${ink}`}>
+                  {FREE_INCLUDES.map((item) => (
+                    <li key={item} className="flex gap-3">
+                      <span aria-hidden="true" className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#30A46C]" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+                <Link href={signedIn ? "/" : "/signup"} className={`${primaryButton} mt-8`}>
+                  {signedIn ? "Open the app" : "Request access"}
+                </Link>
+              </div>
+              <div className="border-t border-[#E3E5EA] py-8 md:border-l md:border-t-0 md:pl-10">
+                <h3 className="text-[20px] font-semibold">Custom</h3>
+                <p className="mt-3 text-[40px] font-semibold leading-none tracking-[-0.02em]">Let&apos;s talk</p>
+                <p className={`mt-3 text-[15px] leading-[1.6] ${graphite}`}>For larger teams, or teams with particular needs.</p>
+                <p className={`mt-6 max-w-md text-[15px] leading-[1.6] ${ink}`}>
+                  Tell us about rolling it out to a bigger team, moving your existing tickets over, or something you need that
+                  isn&apos;t here yet. We&apos;ll work it out with you.
+                </p>
+                <Link href={signedIn ? "/tickets/new" : "/signup"} className={`${secondaryButton} mt-8`}>
+                  Contact us
+                </Link>
+                <p className={`mt-3 text-[13px] ${graphite}`}>
+                  {signedIn ? "Opens a new ticket to our team." : "Create an account, then open a ticket to our team."}
+                </p>
+              </div>
             </div>
           </div>
         </section>
