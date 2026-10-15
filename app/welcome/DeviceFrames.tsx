@@ -13,15 +13,22 @@ export function MacWindow({ src, alt, title, sizes }: { src: string; alt: string
     // shadow keep the window's edge readable against the indigo.
     <div className="overflow-hidden rounded-xl bg-white shadow-[0_30px_70px_-24px_rgba(0,0,0,0.7)] ring-1 ring-white/15">
       <div className="relative flex h-9 items-center border-b border-black/[.08] bg-[#F3F4F6] px-3.5">
-        <span aria-hidden="true" className="flex gap-2">
-          <span className="h-3 w-3 rounded-full bg-[#FF5F57] ring-1 ring-black/10" />
-          <span className="h-3 w-3 rounded-full bg-[#FEBC2E] ring-1 ring-black/10" />
-          <span className="h-3 w-3 rounded-full bg-[#28C840] ring-1 ring-black/10" />
-        </span>
+        <TrafficLights />
         <span className="absolute inset-x-0 text-center text-[12px] font-medium text-[#5B606B]">{title}</span>
       </div>
       <Image src={src} alt={alt} width={2400} height={1500} sizes={sizes} className="block h-auto w-full" />
     </div>
+  );
+}
+
+// A macOS window's close, minimise and zoom buttons (decoration only).
+export function TrafficLights() {
+  return (
+    <span aria-hidden="true" className="flex gap-2">
+      <span className="h-3 w-3 rounded-full bg-[#FF5F57] ring-1 ring-black/10" />
+      <span className="h-3 w-3 rounded-full bg-[#FEBC2E] ring-1 ring-black/10" />
+      <span className="h-3 w-3 rounded-full bg-[#28C840] ring-1 ring-black/10" />
+    </span>
   );
 }
 

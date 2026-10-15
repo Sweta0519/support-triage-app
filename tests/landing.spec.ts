@@ -63,6 +63,23 @@ test.describe("signed out", () => {
     await mcp.getByRole("tab", { name: "Cursor" }).press("ArrowRight");
     await expect(mcp.getByRole("tab", { name: "VS Code" })).toBeFocused();
     await expect(mcp.getByRole("tabpanel")).toContainText('"type": "http"');
+    // In a workspace file the token comes from VS Code's secret prompt, never the file.
+    await expect(mcp.getByRole("tabpanel")).toContainText("${input:support-triage-token}");
+    await expect(mcp.getByRole("tabpanel")).not.toContainText("st_your_token");
+    await page.keyboard.press("End");
+    await expect(mcp.getByRole("tab", { name: "Codex" })).toBeFocused();
+    await expect(mcp.getByRole("tabpanel")).toContainText('bearer_token_env_var = "SUPPORT_TRIAGE_TOKEN"');
+    await page.keyboard.press("ArrowRight");
+    await expect(mcp.getByRole("tab", { name: "Claude Code" })).toBeFocused();
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("Home");
+    await expect(mcp.getByRole("tab", { name: "Claude Code" })).toHaveAttribute("aria-selected", "true");
+    // Copy puts exactly the setup on the clipboard, and says so.
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await mcp.getByRole("button", { name: /^Copy/ }).click();
+    await expect(mcp.getByRole("button", { name: /^Copied/ })).toBeVisible();
+    await expect(mcp.getByRole("status")).toHaveText("Copied");
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^claude mcp add --transport http support-triage \\\n/);
     await expect(mcp.getByRole("list", { name: "Works with" }).getByRole("listitem")).toHaveText([
       "Claude Code",
       "Cursor",

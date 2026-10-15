@@ -8,8 +8,8 @@ import { MacWindow, Phone } from "./DeviceFrames";
 import { SectionMenu } from "./SectionMenu";
 import { Enlargeable } from "./Enlargeable";
 import { McpConnect } from "./McpConnect";
-import { AssistantLogo, type AssistantMark } from "./AssistantLogos";
-import { SITE_URL } from "@/app/lib/site-url";
+import { AssistantLogo, ASSISTANTS } from "./AssistantLogos";
+import { PUBLIC_SITE_URL } from "@/app/lib/site-url";
 import { getProfile, getUser } from "@/app/lib/auth/session";
 import styles from "./welcome.module.css";
 
@@ -61,14 +61,6 @@ const MCP_STEPS = [
     title: "Ask in your own words",
     text: "\u201cFile a ticket: my invoice won't download.\u201d \u201cAny news on #1484?\u201d The assistant does the rest.",
   },
-];
-
-// Only clients that connect with a URL and a bearer token today.
-const WORKS_WITH: { name: string; mark: AssistantMark }[] = [
-  { name: "Claude Code", mark: "claude" },
-  { name: "Cursor", mark: "cursor" },
-  { name: "VS Code + Copilot", mark: "githubcopilot" },
-  { name: "OpenAI Codex", mark: "openai" },
 ];
 
 const ink = "text-[#15171C]";
@@ -504,11 +496,11 @@ export default async function WelcomePage() {
               </p>
             </div>
             <div className="min-w-0">
-              <McpConnect endpoint={`${SITE_URL}/api/mcp`} />
+              <McpConnect endpoint={`${PUBLIC_SITE_URL}/api/mcp`} />
               <div className="mt-6">
                 <p className={`text-[13px] font-medium ${graphite}`}>Works with</p>
                 <ul aria-label="Works with" className="mt-3 flex flex-wrap gap-x-6 gap-y-3">
-                  {WORKS_WITH.map((tool) => (
+                  {ASSISTANTS.map((tool) => (
                     <li key={tool.name} className="flex items-center gap-2 text-[14px] font-medium text-[#3D414B]">
                       <AssistantLogo mark={tool.mark} className="h-[18px] w-[18px] text-[#5B606B]" />
                       {tool.name}
@@ -517,7 +509,7 @@ export default async function WelcomePage() {
                 </ul>
                 <p className={`mt-4 text-[13px] leading-[1.6] ${graphite}`}>
                   Any MCP client that can send a token works. ChatGPT and the Claude apps&apos; connectors sign in with
-                  OAuth, which isn&apos;t supported yet.
+                  OAuth, which isn&apos;t supported yet. Product names and logos are trademarks of their owners.
                 </p>
               </div>
             </div>

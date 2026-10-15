@@ -14,6 +14,16 @@ const PATHS = {
 
 export type AssistantMark = keyof typeof PATHS;
 
+// The AI tools the MCP connector works with, in the order the setup panel's tabs (McpConnect.tsx) and the homepage's
+// "Works with" row show them: only clients that connect with a URL and a
+// bearer token today. `name` is the full name; `label` fits a tab.
+export const ASSISTANTS: { id: string; label: string; name: string; mark: AssistantMark }[] = [
+  { id: "claude-code", label: "Claude Code", name: "Claude Code", mark: "claude" },
+  { id: "cursor", label: "Cursor", name: "Cursor", mark: "cursor" },
+  { id: "vscode", label: "VS Code + Copilot", name: "VS Code + Copilot", mark: "githubcopilot" },
+  { id: "codex", label: "Codex", name: "OpenAI Codex", mark: "openai" },
+];
+
 export function AssistantLogo({ mark, className }: { mark: AssistantMark; className?: string }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className={className} fill="currentColor">

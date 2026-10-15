@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState, useTransition } from "react";
 
 import { createAccessTokenAction, revokeAccessTokenAction } from "./actions";
@@ -22,7 +23,7 @@ function tokenState(t: AccessToken): "revoked" | "expired" | "active" {
 
 // Personal access tokens for the MCP connector (SUP-53): create one (its
 // secret is shown once, here), see when each was last used, revoke them.
-export function AccessTokensPanel({ tokens }: { tokens: AccessToken[] }) {
+export function AccessTokensPanel({ tokens, isStaff }: { tokens: AccessToken[]; isStaff: boolean }) {
   const [state, action, pending] = useActionState(createAccessTokenAction, undefined);
   const [copied, setCopied] = useState(false);
   const [revoking, startRevoke] = useTransition();
@@ -38,10 +39,13 @@ export function AccessTokensPanel({ tokens }: { tokens: AccessToken[] }) {
         <p className={body}>
           Tokens let an AI assistant that supports MCP (the Model Context Protocol) use Support Triage as you, with
           your account&apos;s permissions. How to add one to Claude Code, Cursor, VS Code or Codex is on{" "}
-          <a href="/welcome#ai-assistants" className="font-medium underline underline-offset-2">
+          <Link href="/welcome#ai-assistants" className="font-medium underline underline-offset-2">
             the homepage
-          </a>
-          .
+          </Link>
+          .{" "}
+          {isStaff
+            ? "For now the tools are for customers: tools for working the queue are coming soon, so a staff token can only say who you are. "
+            : null}
           Treat a token like a password, and revoke it if it may have leaked.
         </p>
       </div>
