@@ -44,7 +44,7 @@ export default async function AccountPage() {
       </section>
 
       <section className={card} aria-label="Access tokens">
-        <AccessTokensPanel tokens={tokens} />
+        <AccessTokensPanel tokens={tokens} isStaff={profile.role !== "customer"} />
       </section>
 
       <h2 className="mt-2 text-base font-semibold text-black dark:text-zinc-50">Your data</h2>

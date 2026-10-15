@@ -9,12 +9,52 @@ who connected it, with exactly the permissions that person has in the web app.
   Account page (SUP-53).
 - **Tools:** see [Tools](#tools). The tools on offer depend on the person's role, as it is now.
 
-Connecting Claude Code, for example:
+### Connecting an assistant
+
+The homepage shows the same setups, with a copy button (`app/welcome/McpConnect.tsx`, SUP-65).
+They're the clients that accept a URL and a bearer token. ChatGPT's and the Claude apps'
+connectors sign in with OAuth, which this server doesn't support yet.
+
+**Claude Code:**
 
 ```sh
 claude mcp add --transport http support-triage https://support-triage-app-one.vercel.app/api/mcp \
   --header "Authorization: Bearer st_..."
 ```
+
+**Cursor**, in `~/.cursor/mcp.json` (user-level, so the token isn't in a project):
+
+```json
+{ "mcpServers": { "support-triage": {
+  "url": "https://support-triage-app-one.vercel.app/api/mcp",
+  "headers": { "Authorization": "Bearer st_..." } } } }
+```
+
+**VS Code** (GitHub Copilot), in `.vscode/mcp.json`. VS Code asks for the token and keeps it in
+its secret storage, so the file can be committed:
+
+```json
+{
+  "inputs": [{ "type": "promptString", "id": "support-triage-token", "description": "Support Triage access token", "password": true }],
+  "servers": { "support-triage": {
+    "type": "http",
+    "url": "https://support-triage-app-one.vercel.app/api/mcp",
+    "headers": { "Authorization": "Bearer ${input:support-triage-token}" } } }
+}
+```
+
+**OpenAI Codex**, in `~/.codex/config.toml`, with the token in `SUPPORT_TRIAGE_TOKEN`:
+
+```toml
+[mcp_servers.support-triage]
+url = "https://support-triage-app-one.vercel.app/api/mcp"
+bearer_token_env_var = "SUPPORT_TRIAGE_TOKEN"
+```
+
+Each tool's own docs: [Claude Code](https://code.claude.com/docs/en/mcp),
+[Cursor](https://cursor.com/docs/mcp),
+[VS Code](https://code.visualstudio.com/docs/agents/reference/mcp-configuration),
+[Codex](https://developers.openai.com/codex/mcp).
 
 ## How a request is signed in (SUP-54)
 

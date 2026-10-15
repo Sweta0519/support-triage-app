@@ -7,6 +7,9 @@ import { Logo } from "@/app/components/Logo";
 import { MacWindow, Phone } from "./DeviceFrames";
 import { SectionMenu } from "./SectionMenu";
 import { Enlargeable } from "./Enlargeable";
+import { McpConnect } from "./McpConnect";
+import { AssistantLogo, ASSISTANTS } from "./AssistantLogos";
+import { PUBLIC_SITE_URL } from "@/app/lib/site-url";
 import { getProfile, getUser } from "@/app/lib/auth/session";
 import styles from "./welcome.module.css";
 
@@ -48,6 +51,17 @@ export const metadata: Metadata = {
   // Title, description and image come from openGraph (Next copies them).
   twitter: { card: "summary_large_image" },
 };
+
+// The MCP connector (SUP-65). Every step and tool named here works today;
+// docs/mcp.md is the reference.
+const MCP_STEPS = [
+  { title: "Create an access token", text: "On your Account page. It's shown once, and you can revoke it any time." },
+  { title: "Add Support Triage to your assistant", text: "One command, or a few lines of its config." },
+  {
+    title: "Ask in your own words",
+    text: "\u201cFile a ticket: my invoice won't download.\u201d \u201cAny news on #1484?\u201d The assistant does the rest.",
+  },
+];
 
 const ink = "text-[#15171C]";
 const graphite = "text-[#5B606B]";
@@ -455,22 +469,49 @@ export default async function WelcomePage() {
         </section>
 
         <section id="ai-assistants" aria-labelledby="mcp" className="scroll-mt-6 border-t border-[#E3E5EA]">
-          <div className={`mx-auto grid w-full max-w-6xl gap-6 px-5 sm:px-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-12 ${sectionPad}`}>
+          <div className={`mx-auto grid w-full max-w-6xl items-start gap-12 px-5 sm:px-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] ${sectionPad}`}>
             <div>
               <h2 id="mcp" className={sectionHeading}>
                 From your AI assistant, too
               </h2>
-              <p className={`mt-2 text-[15px] ${graphite}`}>Coming soon</p>
+              <p className={`mt-5 max-w-xl text-[17px] leading-[1.65] ${graphite}`}>
+                Support Triage is an MCP server. Connect an AI assistant that speaks the Model Context Protocol, and it
+                works with your tickets as you, with exactly your permissions.
+              </p>
+              <ol className="mt-8 flex max-w-xl flex-col gap-5">
+                {MCP_STEPS.map((step, i) => (
+                  <li key={step.title} className="flex gap-4">
+                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#E3E5EA] text-[13px] font-medium text-[#5B606B]">
+                      {i + 1}
+                    </span>
+                    <div>
+                      <h3 className="text-[16px] font-semibold leading-snug">{step.title}</h3>
+                      <p className={`mt-1 text-[15px] leading-[1.6] ${graphite}`}>{step.text}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              <p className={`mt-8 max-w-xl text-[15px] leading-[1.6] ${graphite}`}>
+                Customers can file, follow and reply to their tickets today. Tools for support agents are coming next.
+              </p>
             </div>
-            <div className={`max-w-xl text-[17px] leading-[1.65] ${graphite}`}>
-              <p>
-                We&apos;re building an MCP server for Support Triage, so you&apos;ll be able to use it from AI assistants
-                that speak the Model Context Protocol.
-              </p>
-              <p className="mt-4">
-                The plan: customers file and follow their tickets, and agents work the queue, reading a ticket with the
-                AI&apos;s suggestions, replying and changing its status. It isn&apos;t available yet.
-              </p>
+            <div className="min-w-0">
+              <McpConnect endpoint={`${PUBLIC_SITE_URL}/api/mcp`} />
+              <div className="mt-6">
+                <p className={`text-[13px] font-medium ${graphite}`}>Works with</p>
+                <ul aria-label="Works with" className="mt-3 flex flex-wrap gap-x-6 gap-y-3">
+                  {ASSISTANTS.map((tool) => (
+                    <li key={tool.name} className="flex items-center gap-2 text-[14px] font-medium text-[#3D414B]">
+                      <AssistantLogo mark={tool.mark} className="h-[18px] w-[18px] text-[#5B606B]" />
+                      {tool.name}
+                    </li>
+                  ))}
+                </ul>
+                <p className={`mt-4 text-[13px] leading-[1.6] ${graphite}`}>
+                  Any MCP client that can send a token works. ChatGPT and the Claude apps&apos; connectors sign in with
+                  OAuth, which isn&apos;t supported yet. Product names and logos are trademarks of their owners.
+                </p>
+              </div>
             </div>
           </div>
         </section>
