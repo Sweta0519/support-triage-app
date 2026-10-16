@@ -85,7 +85,7 @@ test("the Get in touch form asks the optional questions; a plain sign-up doesn't
   await expect(page.getByLabel("Team or company name")).toBeVisible();
   await expect(page.getByLabel("Team size")).toBeVisible();
   await expect(page.getByLabel("What would you use it for?")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign up and send" })).toBeVisible();
 
   await page.goto("/signup");
   await expect(page.getByRole("heading", { name: "Create an account" })).toBeVisible();
@@ -104,11 +104,11 @@ test("the first sign-in files exactly one access-request ticket, as the customer
     await login(page, user.email, user.password);
     await expect(page).toHaveURL(/\/tickets\?requested=1$/);
     await expect(page.getByRole("status")).toContainText("Thanks for getting in touch.");
-    await expect(page.getByRole("link", { name: /Access request: Acme Robotics/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Getting in touch: Acme Robotics/ })).toBeVisible();
 
     const tickets = await user.tickets();
     expect(tickets).toHaveLength(1);
-    expect(tickets[0]).toMatchObject({ subject: "Access request: Acme Robotics", customer_id: user.id });
+    expect(tickets[0]).toMatchObject({ subject: "Getting in touch: Acme Robotics", customer_id: user.id });
     expect(tickets[0].body).toContain("Team size: 6-20");
     expect(tickets[0].body).toContain("What we'd use it for: Triage our support inbox.");
 
@@ -142,7 +142,7 @@ test("signing up through Get in touch files the request straight away when the e
     await page.getByLabel("Team or company name").fill("Globex Support");
     await page.getByLabel("Team size").selectOption("21-100");
     await page.getByLabel("What would you use it for?").fill("Triage a busy inbox.");
-    await page.getByRole("button", { name: "Send" }).click();
+    await page.getByRole("button", { name: "Sign up and send" }).click();
 
     // If the project starts requiring email confirmation, sign-up waits for
     // the email instead; the confirmation-link test below covers that path.
@@ -154,7 +154,7 @@ test("signing up through Get in touch files the request straight away when the e
     expect(profile).toMatchObject({ role: "customer", access_request_status: "pending" });
     const { data: tickets } = await admin.from("tickets").select("subject, body").eq("customer_id", profile!.id);
     expect(tickets).toEqual([
-      expect.objectContaining({ subject: "Access request: Globex Support", body: expect.stringContaining("Team size: 21-100") }),
+      expect.objectContaining({ subject: "Getting in touch: Globex Support", body: expect.stringContaining("Team size: 21-100") }),
     ]);
   } finally {
     const { data: profile } = await admin.from("profiles").select("id").eq("email", email).maybeSingle();
@@ -172,7 +172,7 @@ test("the email confirmation link files it too", async ({ page }) => {
     await page.goto(`/auth/confirm?token_hash=${data.properties!.hashed_token}&type=magiclink`);
     await expect(page).toHaveURL(/\/tickets\?requested=1$/);
     const tickets = await user.tickets();
-    expect(tickets.map((t) => t.subject)).toEqual(["Access request"]);
+    expect(tickets.map((t) => t.subject)).toEqual(["Getting in touch"]);
     expect(tickets[0].body).toContain("Team: (not given)");
   } finally {
     await user.remove();

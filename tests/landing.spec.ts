@@ -113,13 +113,15 @@ test.describe("signed out", () => {
     await expect(safe).toContainText("a read-only status page that staff choose to publish");
     await expect(safe).toContainText("checked against a strict format");
     // Pricing (SUP-51): Free and Custom; Custom's "Contact us" goes through
-    // Support Triage itself (sign up, then a ticket).
+    // Support Triage itself (the Get in touch form, which files a ticket).
     await page.getByRole("navigation", { name: "Page", exact: true }).getByRole("link", { name: "Pricing", exact: true }).click();
     await expect(page).toHaveURL(/#pricing$/);
     const pricing = page.getByRole("region", { name: "Pricing" });
     await expect(pricing.getByRole("heading", { name: "Free" })).toBeVisible();
     await expect(pricing.getByRole("heading", { name: "Custom" })).toBeVisible();
-    await expect(pricing.getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/signup");
+    await expect(pricing.getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/signup?access=1");
+    // Nothing promises agent access: "Get in touch" is a conversation (SUP-72).
+    await expect(page.locator("main")).not.toContainText("agent access");
 
     await page.getByRole("navigation", { name: "Account", exact: true }).getByRole("link", { name: "Get in touch", exact: true }).click();
     await expect(page).toHaveURL(/\/signup\?access=1$/);

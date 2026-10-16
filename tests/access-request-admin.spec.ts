@@ -99,7 +99,7 @@ test("an admin sees the count, reviews requests in one place, and grants one in 
   const { data: ticket } = await db.from("tickets").select("status").eq("id", profile!.access_request_ticket_id).single();
   expect(ticket!.status).toBe("resolved");
   const { data: comments } = await db.from("ticket_comments").select("author_id, body, is_internal").eq("ticket_id", profile!.access_request_ticket_id);
-  expect(comments).toEqual([expect.objectContaining({ author_id: admin.id, is_internal: false, body: expect.stringContaining("agent access") })]);
+  expect(comments).toEqual([expect.objectContaining({ author_id: admin.id, is_internal: false, body: expect.stringContaining("added as an agent") })]);
 
   // They leave the Waiting list (the count is global, and other tests file
   // requests in parallel, so it's not compared exactly), and the history
@@ -110,18 +110,18 @@ test("an admin sees the count, reviews requests in one place, and grants one in 
   await expect(page.getByRole("list", { name: "Handled requests" })).toContainText(`Granted by ${admin.name}`);
   // And the Users page marks them.
   await page.goto("/admin/users");
-  await expect(page.getByRole("row", { name: new RegExp(requester.name) })).toContainText("Access request granted");
+  await expect(page.getByRole("row", { name: new RegExp(requester.name) })).toContainText("Got in touch · added to the team");
 });
 
-test("an admin declines from the request's ticket; the requester stays a customer", async ({ page }) => {
+test("an admin closes a request from its ticket; the requester stays a customer", async ({ page }) => {
   const requester = await account("Requester", { request: true });
   const admin = await account("Admin", { role: "admin" });
   const { data: profile } = await service().from("profiles").select("access_request_ticket_id").eq("id", requester.id).single();
   await login(page, admin.email, admin.password);
   await page.goto(`/tickets/${profile!.access_request_ticket_id}`);
   await page.getByRole("button", { name: "Close request…" }).click();
-  await page.getByRole("button", { name: `Decline ${requester.name}'s request` }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Declined" })).toBeVisible();
+  await page.getByRole("button", { name: `Close ${requester.name}'s request with a reply` }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Closed." })).toBeVisible();
 
   const { data: after } = await service().from("profiles").select("role, access_request_status").eq("id", requester.id).single();
   expect(after).toEqual({ role: "customer", access_request_status: "declined" });

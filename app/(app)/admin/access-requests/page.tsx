@@ -16,10 +16,10 @@ const muted = "text-xs text-zinc-500 dark:text-zinc-400";
 function answers(request: AccessRequest): string | null {
   const body = request.ticket?.body;
   if (!body) return null;
-  return body.replace(/^I'd like access to Support Triage for my team\.\s*/, "");
+  return body.replace(/^(Getting in touch about Support Triage|I'd like access to Support Triage for my team)\.\s*/, "");
 }
 
-// Access requests (SUP-68): everyone who asked through "Request access",
+// Access requests (SUP-68): everyone who got in touch through the homepage,
 // waiting ones first with Grant and Decline, then the history.
 export default async function AccessRequestsPage() {
   await requireAdmin();

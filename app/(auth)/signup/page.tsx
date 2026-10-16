@@ -14,7 +14,7 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
         </h1>
         <p className="text-sm text-zinc-500 dark:text-zinc-500">
           {requestingAccess
-            ? "Create an account and tell us about your team. Your message reaches our team as a ticket, and we reply there."
+            ? "Create an account and tell us about your team. Once your account is ready, your message reaches our team as a ticket, and we reply there."
             : "File and track your own support tickets."}
         </p>
       </div>

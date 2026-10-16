@@ -91,7 +91,7 @@ export default function PrivacyPolicyPage() {
                   <td className={cell}>&quot;Get in touch&quot; answers (optional): team name, size, and use</td>
                   <td className={cell}>
                     If you sign up through &quot;Get in touch&quot;, so our team can reply about your team&apos;s needs. They are
-                    kept with your sign-in until you confirm your email, then moved into an access-request ticket.
+                    kept with your sign-in until you confirm your email, then moved into the ticket your message becomes.
                   </td>
                   <td className={cell}>
                     Steps you ask us to take before an agreement: they are optional, and you can ask us on the

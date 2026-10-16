@@ -76,9 +76,9 @@ export default async function AdminUsersPage({
                                 Got in touch
                               </Link>
                             ) : p.access_request_status === "granted" ? (
-                              "Access request granted"
+                              "Got in touch · added to the team"
                             ) : (
-                              "Access request declined"
+                              "Got in touch · closed"
                             )}
                           </span>
                         ) : null}

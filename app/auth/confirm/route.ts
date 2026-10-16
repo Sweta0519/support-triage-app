@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
       token_hash: tokenHash,
     });
     if (!error) {
-      // A sign-in link may be the first sign-in after "Request access"
+      // A sign-in link may be the first sign-in after "Get in touch"
       // (SUP-58), which files the request. A password reset or an email
       // change always goes on to its own `next`.
       const signInLink = type === "signup" || type === "magiclink" || type === "email";

@@ -67,7 +67,7 @@ const MCP_STEPS = [
 // visitor's team, which files their message as a ticket (SUP-58). It was
 // "Request access" until SUP-72: the app has one support team, so this is a
 // way to reach that team, not access to a team of your own.
-// (Custom's "Contact us" is a plain sign-up, to file a ticket.)
+// Custom's "Contact us" leads to the same form (signed in, to a new ticket).
 const REQUEST_ACCESS = "/signup?access=1";
 
 const ink = "text-[#15171C]";
@@ -540,7 +540,7 @@ export default async function WelcomePage() {
                 <h3 className="text-[20px] font-semibold">Free</h3>
                 <p className="mt-3 text-[44px] font-semibold leading-none tracking-[-0.025em]">€0</p>
                 <p className={`mt-3 text-[15px] leading-[1.6] ${graphite}`}>
-                  Every feature listed here, at no cost. Your team gets agent access once you request it.
+                  Every feature listed here, at no cost. Get in touch and tell us about your team.
                 </p>
                 <ul className={`mt-6 flex flex-col gap-2.5 text-[15px] leading-[1.5] ${ink}`}>
                   {FREE_INCLUDES.map((item) => (
@@ -568,7 +568,7 @@ export default async function WelcomePage() {
                   </p>
                 ) : (
                   <>
-                    <Link href={signedIn ? "/tickets/new" : "/signup"} className={`${secondaryButton} mt-8`}>
+                    <Link href={signedIn ? "/tickets/new" : REQUEST_ACCESS} className={`${secondaryButton} mt-8`}>
                       Contact us
                     </Link>
                     <p className={`mt-3 text-[13px] ${graphite}`}>
@@ -586,10 +586,10 @@ export default async function WelcomePage() {
         <section className="border-t border-[#E3E5EA]">
           <div className="mx-auto flex w-full max-w-6xl flex-col items-start gap-6 px-5 py-16 sm:flex-row sm:items-center sm:justify-between sm:px-8">
             <div>
-              <h2 className="text-[26px] font-semibold tracking-[-0.015em]">Use it with your team.</h2>
+              <h2 className="text-[26px] font-semibold tracking-[-0.015em]">Want to talk it through?</h2>
               <p className={`mt-1 max-w-xl text-[15px] leading-[1.6] ${graphite}`}>
-                Create an account, then open a ticket telling us about your team. We&apos;ll set you up with agent
-                access. It&apos;s free.
+                Create an account and tell us about your team. Your message reaches our team as a ticket, and we
+                reply there.
               </p>
             </div>
             <Link href={signedIn ? "/" : REQUEST_ACCESS} className={primaryButton}>
