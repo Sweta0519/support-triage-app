@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
 import { parseAccessRequest } from "../app/lib/access-request-options";
+import { INCIDENT_MIN_TICKETS, INCIDENT_SIMILARITY, INCIDENT_WINDOW_MINUTES } from "../app/lib/incidents";
 import { login, requireEnv } from "./helpers";
 
 // SUP-58: "Request access" files one access-request ticket the first time the
@@ -14,6 +15,9 @@ import { login, requireEnv } from "./helpers";
 // sign-in paths directly, and don't depend on that setting.
 
 test.use({ storageState: { cookies: [], origins: [] } });
+// Cleanup waits for any background triage to finish, which can take longer
+// than the default 30 seconds; a cleanup cut short leaves accounts behind.
+test.describe.configure({ timeout: 120_000 });
 
 function service() {
   return createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
@@ -220,5 +224,71 @@ test("a plain sign-up files nothing; and two calls at once still file one", asyn
     expect(await requester.tickets()).toHaveLength(1);
   } finally {
     await Promise.all([plain.remove(), requester.remove()]);
+  }
+});
+
+test("access requests never form or join a possible incident, and are never suggested as duplicates", async () => {
+  test.setTimeout(120_000);
+  const admin = service();
+  // Three requesters and three ordinary customers, every ticket with the
+  // same embedding: as alike as tickets can be (SUP-70).
+  const requesters = await Promise.all([1, 2, 3].map(() => newAccount({ access_request: ANSWERS })));
+  const customers = await Promise.all([1, 2, 3].map(() => newAccount(undefined)));
+  const same = `[${Array.from({ length: 1536 }, (_, i) => (i === 0 ? 1 : 0)).join(",")}]`;
+  const embed = async (id: string) =>
+    expect((await admin.from("ticket_embeddings").insert({ ticket_id: id, embedding: same, embedding_model: "test" })).error).toBeNull();
+  const detect = async (id: string) => {
+    const { data, error } = await admin.rpc("detect_incident", {
+      p_ticket_id: id,
+      p_threshold: INCIDENT_SIMILARITY,
+      p_window_minutes: INCIDENT_WINDOW_MINUTES,
+      p_min_tickets: INCIDENT_MIN_TICKETS,
+    });
+    expect(error).toBeNull();
+    return data as { incident_id: string }[];
+  };
+  try {
+    const requests: string[] = [];
+    for (const p of requesters) {
+      const db = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
+        db: { schema: "ticketing" },
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      expect((await db.auth.signInWithPassword({ email: p.email, password: p.password })).error).toBeNull();
+      const id = ((await db.rpc("file_access_request")).data as { ticket_id: string }[])[0].ticket_id;
+      // Marked on the ticket itself.
+      expect((await admin.from("tickets").select("is_access_request").eq("id", id).single()).data!.is_access_request).toBe(true);
+      requests.push(id);
+      await embed(id);
+    }
+    // Three access requests: no incident.
+    for (const id of requests) expect(await detect(id)).toEqual([]);
+
+    // A real ticket next to them doesn't pull them in either (they aren't
+    // neighbours), and they aren't offered as its duplicates.
+    const real: string[] = [];
+    const fileReal = async (customerId: string) => {
+      const { data } = await admin.from("tickets").insert({ customer_id: customerId, subject: "Webhooks stopped", body: "No events since noon." }).select("id").single();
+      real.push(data!.id);
+      await embed(data!.id);
+      return data!.id;
+    };
+    // With only the three access requests around it, a real ticket has no
+    // neighbours: no incident.
+    expect(await detect(await fileReal(customers[0].id))).toEqual([]);
+    const { data: matches } = await admin.rpc("match_tickets", { query_embedding: same, match_count: 20, exclude_ticket_id: real[0] });
+    const offered = (matches as { ticket_id: string }[]).map((m) => m.ticket_id);
+    for (const id of requests) expect(offered).not.toContain(id);
+
+    // Positive control: with two more real tickets alike, they do group.
+    await fileReal(customers[1].id);
+    const grouped = await detect(await fileReal(customers[2].id));
+    expect(grouped).toHaveLength(1);
+    const { data: members } = await admin.from("incident_tickets").select("ticket_id").eq("incident_id", grouped[0].incident_id);
+    const memberIds = (members ?? []).map((m) => m.ticket_id);
+    expect(memberIds.sort()).toEqual([...real].sort());
+    for (const id of requests) expect(memberIds).not.toContain(id);
+  } finally {
+    await Promise.all([...requesters, ...customers].map((p) => p.remove()));
   }
 });
