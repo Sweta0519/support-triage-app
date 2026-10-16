@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
 
 import { publishSummaryAction, revokeShareAction } from "../actions";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 import type { Share } from "@/app/lib/db/shares";
 import { secondaryButtonClass } from "@/app/lib/styles";
 
@@ -19,7 +20,7 @@ export function SharePanel({
   // publish before that.
   canPublish: boolean;
 }) {
-  const [state, action, pending] = useActionState(publishSummaryAction, undefined);
+  const [state, action, pending, formRef] = useSafeActionState(publishSummaryAction, undefined);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
   function copyLink(url: string) {
@@ -83,7 +84,7 @@ export function SharePanel({
       {state?.error ? (
         <p className="text-xs text-red-600 dark:text-red-400">{state.error}</p>
       ) : null}
-      <form action={action}>
+      <form ref={formRef} action={action}>
         <input type="hidden" name="ticketId" value={ticketId} />
         <button
           type="submit"

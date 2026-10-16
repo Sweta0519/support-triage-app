@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useActionState, useState } from "react";
+import { startTransition, useState } from "react";
 
 import { reviewTriageAction } from "../actions";
 import {
@@ -9,6 +9,7 @@ import {
   TRIAGE_PRIORITIES,
   TRIAGE_TEAMS,
 } from "@/app/lib/triage-fields";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 import { primaryButtonClass, secondaryButtonClass } from "@/app/lib/styles";
 
 type Fields = { priority: string; category: string; team: string };
@@ -38,7 +39,7 @@ export function TriageReviewForm({
   ai: Fields | null;
   current: Fields;
 }) {
-  const [state, action, pending] = useActionState(reviewTriageAction, undefined);
+  const [state, action, pending] = useSafeActionState(reviewTriageAction, undefined);
   const [values, setValues] = useState<Fields>(current);
 
   // A new AI run (a Re-run, or the one a stale save was refused for) or

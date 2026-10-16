@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useRef } from "react";
+import { useRef } from "react";
 
 import { addCommentAction } from "../actions";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 import { inputClass, primaryButtonClass, secondaryButtonClass } from "@/app/lib/styles";
 
 export function CommentForm({
@@ -17,7 +18,7 @@ export function CommentForm({
   // the model wrote reaches a customer without an agent's action.
   draft?: string | null;
 }) {
-  const [state, action, pending] = useActionState(addCommentAction, undefined);
+  const [state, action, pending, formRef] = useSafeActionState(addCommentAction, undefined);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   function fillDraft() {
@@ -28,7 +29,7 @@ export function CommentForm({
   }
 
   return (
-    <form action={action} className="flex flex-col gap-2">
+    <form ref={formRef} action={action} className="flex flex-col gap-2">
       <input type="hidden" name="ticketId" value={ticketId} />
       <textarea
         ref={bodyRef}

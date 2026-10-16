@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
 
 import { rateTicketAction } from "../actions";
 import { Stars } from "@/app/components/Stars";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 import { RATING_COMMENT_MAX_LENGTH } from "@/app/lib/ratings";
 import { inputClass, primaryButtonClass } from "@/app/lib/styles";
 
@@ -22,7 +23,7 @@ export function RatingPanel({
   rating: { score: number; comment: string | null } | null;
   editable: boolean;
 }) {
-  const [state, action, pending] = useActionState(rateTicketAction, undefined);
+  const [state, action, pending, formRef] = useSafeActionState(rateTicketAction, undefined);
   const [score, setScore] = useState(rating?.score ?? 0);
 
   if (!editable) {
@@ -49,7 +50,7 @@ export function RatingPanel({
           Your ticket is resolved. Rate the help you got{rating ? " (you can still change it)" : ""}.
         </p>
       </div>
-      <form action={action} className="flex flex-col gap-3">
+      <form ref={formRef} action={action} className="flex flex-col gap-3">
         <input type="hidden" name="ticketId" value={ticketId} />
         <fieldset className="flex items-center gap-1">
           <legend className="sr-only">Rating from 1 to 5 stars</legend>

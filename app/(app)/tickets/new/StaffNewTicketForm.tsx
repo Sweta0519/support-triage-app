@@ -1,8 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
-
 import { staffCreateTicketAction } from "../actions";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 import { inputClass, primaryButtonClass } from "@/app/lib/styles";
 
 const labelClass = "text-xs font-medium text-zinc-600 dark:text-zinc-400";
@@ -11,10 +10,10 @@ const labelClass = "text-xs font-medium text-zinc-600 dark:text-zinc-400";
 // belongs to the customer (it appears in their own list) and is marked as
 // filed by this staff member.
 export function StaffNewTicketForm() {
-  const [state, action, pending] = useActionState(staffCreateTicketAction, undefined);
+  const [state, action, pending, formRef] = useSafeActionState(staffCreateTicketAction, undefined);
 
   return (
-    <form action={action} className="flex w-full flex-col gap-4">
+    <form ref={formRef} action={action} className="flex w-full flex-col gap-4">
       <div className="flex flex-col gap-1.5">
         <label htmlFor="customerEmail" className={labelClass}>
           Customer email

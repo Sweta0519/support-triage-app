@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { createAndApplyLabelAction, setTicketLabelAction } from "@/app/(app)/labels/actions";
+import { orFailed } from "@/app/components/useSafeActionState";
 import { labelDot, type TeamLabel } from "@/app/lib/labels";
 
 // The Linear-style label picker (SUP-39/SUP-40), shared by the ticket
@@ -50,8 +51,17 @@ export function useTicketLabels(ticketId: string, appliedIds: string[]) {
       else next.delete(label.id);
       return next;
     });
-    const result = await run(() => setTicketLabelAction(ticketId, label.id, on));
+    const result = await run(() => orFailed(setTicketLabelAction(ticketId, label.id, on)));
     setError(result.ok ? null : result.error);
+    // Refused: undo the optimistic toggle (the refresh may bring back the
+    // same server data, which wouldn't reset it).
+    if (!result.ok)
+      setApplied((prev) => {
+        const next = new Set(prev);
+        if (on) next.delete(label.id);
+        else next.add(label.id);
+        return next;
+      });
     router.refresh();
   }
 
@@ -61,7 +71,7 @@ export function useTicketLabels(ticketId: string, appliedIds: string[]) {
     creating.current = true;
     setPending(true);
     try {
-      const result = await run(() => createAndApplyLabelAction(ticketId, name));
+      const result = await run(() => orFailed(createAndApplyLabelAction(ticketId, name)));
       if (!result.ok) {
         setError(result.error);
         return false;

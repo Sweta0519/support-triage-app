@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 
 import { createAccessTokenAction, revokeAccessTokenAction } from "./actions";
 import { McpConnect } from "@/app/components/mcp/McpConnect";
 import { useCopy } from "@/app/components/useCopy";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 import { MAX_ACTIVE_TOKENS, TOKEN_LIFETIMES, TOKEN_NAME_MAX_LENGTH } from "@/app/lib/access-token-options";
 import type { AccessToken } from "@/app/lib/db/access-tokens";
 import { formatRelativeTime } from "@/app/lib/format";
@@ -32,7 +33,11 @@ export function AccessTokensPanel({
   tokens: AccessToken[];
   mcpEndpoint: string;
 }) {
-  const [state, action, pending] = useActionState(createAccessTokenAction, undefined);
+  const [state, action, pending, formRef] = useSafeActionState(createAccessTokenAction, undefined, (error, sent) => ({
+    status: "error" as const,
+    error,
+    name: String(sent.get("name") ?? ""),
+  }));
   const [tokenCopy, copyToken, resetTokenCopy] = useCopy();
   const [revoking, startRevoke] = useTransition();
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -89,7 +94,7 @@ export function AccessTokensPanel({
         </div>
       ) : null}
 
-      <form action={action} className="flex flex-wrap items-end gap-3" onSubmit={resetTokenCopy}>
+      <form ref={formRef} action={action} className="flex flex-wrap items-end gap-3" onSubmit={resetTokenCopy}>
         <div className="flex min-w-48 flex-1 flex-col gap-1.5">
           <label htmlFor="token-name" className={labelClass}>
             Name

@@ -27,7 +27,8 @@ export type SettingsValues = {
 };
 export type SettingsState =
   | { status: "saved" }
-  | { status: "error"; error: string; values: SettingsValues }
+  // values: what was submitted (absent when the request never reached the server).
+  | { status: "error"; error: string; values?: SettingsValues }
   | undefined;
 
 export async function updateSettingsAction(

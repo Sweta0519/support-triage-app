@@ -1,8 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
-
 import { deleteAccountAction } from "./actions";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 import { inputClass } from "@/app/lib/styles";
 
 const dangerButtonClass =
@@ -13,10 +12,13 @@ const dangerButtonClass =
 // current password proves it's really the account's owner, not someone at
 // an unattended or stolen session.
 export function DeleteAccountForm({ email }: { email: string }) {
-  const [state, action, pending] = useActionState(deleteAccountAction, undefined);
+  const [state, action, pending, formRef] = useSafeActionState(deleteAccountAction, undefined, (error, sent) => ({
+    error,
+    email: String(sent.get("email") ?? ""),
+  }));
 
   return (
-    <form action={action} className="flex w-full flex-col gap-3">
+    <form ref={formRef} action={action} className="flex w-full flex-col gap-3">
       <label htmlFor="confirm" className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
         Type <span className="font-mono text-zinc-800 dark:text-zinc-200">{email}</span> to confirm
       </label>
