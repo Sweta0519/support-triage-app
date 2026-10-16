@@ -1,18 +1,18 @@
 "use client";
 
-import { useActionState } from "react";
 
 import { createNoteAction, updateNoteAction, type NoteFormState } from "./actions";
 import { inputClass, primaryButtonClass } from "@/app/lib/styles";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 
 export function NoteForm({ note }: { note?: { id: string; title: string; body: string } }) {
-  const [state, action, pending] = useActionState<NoteFormState, FormData>(
+  const [state, action, pending, formRef] = useSafeActionState<NoteFormState>(
     note ? updateNoteAction : createNoteAction,
     undefined
   );
 
   return (
-    <form action={action} className="flex w-full flex-col gap-4">
+    <form ref={formRef} action={action} className="flex w-full flex-col gap-4">
       {note ? <input type="hidden" name="noteId" value={note.id} /> : null}
       <div className="flex flex-col gap-1.5">
         <label htmlFor="title" className="text-xs font-medium text-zinc-600 dark:text-zinc-400">

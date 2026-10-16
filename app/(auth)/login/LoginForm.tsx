@@ -1,16 +1,16 @@
 "use client";
 
-import { useActionState } from "react";
 import Link from "next/link";
 
 import { signInAction } from "@/app/lib/auth/actions";
 import { inputClass, linkClass, primaryButtonClass } from "@/app/lib/styles";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 
 export function LoginForm() {
-  const [state, action, pending] = useActionState(signInAction, undefined);
+  const [state, action, pending, formRef] = useSafeActionState(signInAction, undefined);
 
   return (
-    <form action={action} className="flex w-full flex-col gap-4">
+    <form ref={formRef} action={action} className="flex w-full flex-col gap-4">
       <input name="email" type="email" placeholder="Email" required className={inputClass} />
       <input
         name="password"

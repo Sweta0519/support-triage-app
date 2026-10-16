@@ -1,19 +1,19 @@
 "use client";
 
-import { useActionState } from "react";
 import Link from "next/link";
 
 import { signUpAction } from "@/app/lib/auth/actions";
 import { ACCESS_PURPOSE_MAX, ACCESS_TEAM_MAX, TEAM_SIZES } from "@/app/lib/access-request-options";
 import { inputClass, linkClass, primaryButtonClass } from "@/app/lib/styles";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 
 const labelClass = "text-xs font-medium text-zinc-600 dark:text-zinc-400";
 
 export function SignupForm({ requestingAccess = false }: { requestingAccess?: boolean }) {
-  const [state, action, pending] = useActionState(signUpAction, undefined);
+  const [state, action, pending, formRef] = useSafeActionState(signUpAction, undefined);
 
   return (
-    <form action={action} className="flex w-full flex-col gap-4">
+    <form ref={formRef} action={action} className="flex w-full flex-col gap-4">
       <input name="email" type="email" placeholder="Email" required className={inputClass} />
       <input
         name="password"

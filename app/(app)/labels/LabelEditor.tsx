@@ -6,6 +6,7 @@ import { useState } from "react";
 import { createLabelAction, deleteLabelAction, updateLabelAction } from "./actions";
 import { LABEL_COLORS, LABEL_NAME_MAX_LENGTH, labelDot, type LabelColor, type TeamLabel } from "@/app/lib/labels";
 import { inputClass, primaryButtonClass, secondaryButtonClass } from "@/app/lib/styles";
+import { orFailed } from "@/app/components/useSafeActionState";
 
 const COLORS = Object.keys(LABEL_COLORS) as LabelColor[];
 
@@ -61,7 +62,7 @@ export function LabelEditor({ label }: { label: TeamLabel }) {
               type="button"
               className={`${primaryButtonClass} !px-3 !py-1 !text-xs`}
               onClick={async () => {
-                const r = await updateLabelAction(label.id, name, color);
+                const r = await orFailed(updateLabelAction(label.id, name, color));
                 setError(r.ok ? null : r.error);
                 router.refresh();
               }}
@@ -75,7 +76,7 @@ export function LabelEditor({ label }: { label: TeamLabel }) {
                 type="button"
                 className="rounded-full bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-500"
                 onClick={async () => {
-                  const r = await deleteLabelAction(label.id);
+                  const r = await orFailed(deleteLabelAction(label.id));
                   if (!r.ok) setError(r.error);
                   router.refresh();
                 }}
@@ -115,7 +116,7 @@ export function NewLabelForm() {
       className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-black/[.15] p-4 dark:border-white/[.2]"
       onSubmit={async (e) => {
         e.preventDefault();
-        const r = await createLabelAction(name, color);
+        const r = await orFailed(createLabelAction(name, color));
         if (!r.ok) {
           setError(r.error);
           return;

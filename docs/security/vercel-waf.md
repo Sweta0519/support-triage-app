@@ -53,11 +53,17 @@ dashboard change. It also catches floods of `/api/mcp` requests with unknown tok
 app doesn't count (`docs/mcp.md`).
 
 The cost is that a burst of more than 30 POSTs in a minute from one IP is refused with a 429.
-That 429 comes from Vercel before the app runs, and the app doesn't handle it:
-- there is no `error.tsx` or `global-error.tsx`, and the `useActionState` forms don't catch a
-  rejected action (only the board's drag-and-drop does);
-- so Next.js shows its default "Application error" screen instead of the app's "Too many
-  attempts", and whatever the person had typed, such as a reply, is lost.
+That 429 comes from Vercel before the app runs. Since SUP-75 the app handles it:
+- **Forms** (`useSafeActionState`, `app/components/`) show "That didn't go through: too many
+  requests, or the connection dropped. Nothing was saved…" in place, and keep what was typed (a
+  password excepted). This covers new tickets, replies, sign-in, sign-up, settings, notes and so on.
+- **Label edits**, made from click handlers, show the same message (`orFailed`).
+- **Other one-click actions** (claim, status, sign out…) show a calm "That didn't go through"
+  page with **Try again** (`app/error.tsx`, `app/(app)/error.tsx`), not Next's default "This
+  page couldn't load".
+
+`tests/action-errors.spec.ts` simulates the 429. Before SUP-75 the whole page was replaced, and
+a typed reply was lost.
 
 It can happen to:
 - a very busy person;

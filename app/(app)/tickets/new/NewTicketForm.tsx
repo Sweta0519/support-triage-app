@@ -1,16 +1,16 @@
 "use client";
 
-import { useActionState } from "react";
 import Link from "next/link";
 
 import { createTicketAction } from "../actions";
 import { inputClass, linkClass, primaryButtonClass } from "@/app/lib/styles";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 
 export function NewTicketForm() {
-  const [state, action, pending] = useActionState(createTicketAction, undefined);
+  const [state, action, pending, formRef] = useSafeActionState(createTicketAction, undefined);
 
   return (
-    <form action={action} className="flex w-full flex-col gap-4">
+    <form ref={formRef} action={action} className="flex w-full flex-col gap-4">
       <div className="flex flex-col gap-1.5">
         <label htmlFor="subject" className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
           Subject

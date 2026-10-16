@@ -1,12 +1,12 @@
 "use client";
 
-import { useActionState } from "react";
 
 import { updateSettingsAction } from "./actions";
 import { FULL_NAME_MAX_LENGTH, THEMES, type Theme } from "@/app/lib/preferences";
 import { QUEUE_FILTERS, type QueueFilterKey } from "@/app/lib/queue-filters";
 import { QUEUE_SORTS, type QueueSort } from "@/app/lib/queue";
 import { inputClass, primaryButtonClass } from "@/app/lib/styles";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 
 const labelClass = "text-xs font-medium text-zinc-600 dark:text-zinc-400";
 const legendClass = "text-base font-semibold text-black dark:text-zinc-50";
@@ -26,13 +26,13 @@ export function SettingsForm({
   queueDefaultFilter: QueueFilterKey;
   queueDefaultSort: QueueSort;
 }) {
-  const [state, action, pending] = useActionState(updateSettingsAction, undefined);
+  const [state, action, pending, formRef] = useSafeActionState(updateSettingsAction, undefined, (error) => ({ status: "error" as const, error }));
   // After a refused save, show what was submitted rather than the stored
   // values (React resets the form to these defaults after the action).
-  const shown = state?.status === "error" ? state.values : null;
+  const shown = state?.status === "error" ? (state.values ?? null) : null;
 
   return (
-    <form action={action} className="flex flex-col gap-6">
+    <form ref={formRef} action={action} className="flex flex-col gap-6">
       <fieldset className="flex flex-col gap-3">
         <legend className={`mb-3 ${legendClass}`}>Profile</legend>
         <div className="flex flex-col gap-1.5">

@@ -1,10 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
 
 import { removeAvatarAction, uploadAvatarAction, type AvatarState } from "./actions";
 import { Avatar } from "@/app/components/Avatar";
 import { secondaryButtonClass } from "@/app/lib/styles";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 
@@ -31,10 +31,10 @@ export function AvatarForm({
   name: string;
   avatarPath: string | null;
 }) {
-  const [state, action, pending] = useActionState(avatarAction, undefined);
+  const [state, action, pending, formRef] = useSafeActionState(avatarAction, undefined, (error) => ({ status: "error" as const, error }));
 
   return (
-    <form action={action} className="flex flex-wrap items-center gap-4">
+    <form ref={formRef} action={action} className="flex flex-wrap items-center gap-4">
       <Avatar id={id} name={name} avatarPath={avatarPath} size={64} />
       <div className="flex flex-col gap-2">
         <label htmlFor="avatar" className="text-xs font-medium text-zinc-600 dark:text-zinc-400">

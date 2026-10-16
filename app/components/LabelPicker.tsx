@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 
 import { createAndApplyLabelAction, setTicketLabelAction } from "@/app/(app)/labels/actions";
 import { labelDot, type TeamLabel } from "@/app/lib/labels";
+import { orFailed } from "@/app/components/useSafeActionState";
 
 // The Linear-style label picker (SUP-39/SUP-40), shared by the ticket
 // page's Labels section and the labels on queue and board cards: search
@@ -50,7 +51,7 @@ export function useTicketLabels(ticketId: string, appliedIds: string[]) {
       else next.delete(label.id);
       return next;
     });
-    const result = await run(() => setTicketLabelAction(ticketId, label.id, on));
+    const result = await run(() => orFailed(setTicketLabelAction(ticketId, label.id, on)));
     setError(result.ok ? null : result.error);
     router.refresh();
   }
@@ -61,7 +62,7 @@ export function useTicketLabels(ticketId: string, appliedIds: string[]) {
     creating.current = true;
     setPending(true);
     try {
-      const result = await run(() => createAndApplyLabelAction(ticketId, name));
+      const result = await run(() => orFailed(createAndApplyLabelAction(ticketId, name)));
       if (!result.ok) {
         setError(result.error);
         return false;
