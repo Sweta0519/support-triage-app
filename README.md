@@ -177,9 +177,9 @@ embeddings) · Vercel.
   - sign-in throttled per IP, per email and IP, and per email; sign-up per IP and per email;
   - an IP-keyed limiter on the public share page.
 
-  A Vercel WAF rule is the intended network-level backstop. It is documented in
-  `docs/security/vercel-waf.md` but lives only in the Vercel dashboard and **is not yet confirmed**
-  as configured. Security headers include a CSP.
+  A Vercel firewall rule is the network-level backstop: 30 POSTs per minute per IP, on every path.
+  It lives only in the Vercel dashboard, and was confirmed live on 2026-10-16
+  (`docs/security/vercel-waf.md`). Security headers include a CSP.
 - `OPENROUTER_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are read only in `server-only` modules.
   Ticket text is treated as untrusted model input (closed strict schema, delimited, candidate-
   restricted ids). See `docs/ai-triage.md` for the prompt-injection and privacy analysis.
@@ -441,7 +441,7 @@ task that went straight to `main` says so, with the commit.
     (`pr-1-diff-review.md`);
   - the security audit of the public share page (`audit-share-feature.md`, PR #3);
   - the `/security-scan` report of 2026-10-11 (SUP-11), with its follow-ups;
-  - the Vercel WAF rules to configure (`vercel-waf.md`);
+  - the Vercel firewall rule, as it is live (`vercel-waf.md`);
   - the security review of the MCP connector (`mcp-review.md`, SUP-57).
 - `docs/mcp.md` -- the MCP connector: what MCP is, tokens, connecting each assistant, how a request
   is signed in, CSRF, and every tool by role.
