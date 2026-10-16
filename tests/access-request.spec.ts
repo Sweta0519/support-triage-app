@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
 import { parseAccessRequest } from "../app/lib/access-request-options";
+import { INCIDENT_MIN_TICKETS, INCIDENT_SIMILARITY, INCIDENT_WINDOW_MINUTES } from "../app/lib/incidents";
 import { login, requireEnv } from "./helpers";
 
 // SUP-58: "Request access" files one access-request ticket the first time the
@@ -14,6 +15,9 @@ import { login, requireEnv } from "./helpers";
 // sign-in paths directly, and don't depend on that setting.
 
 test.use({ storageState: { cookies: [], origins: [] } });
+// Cleanup waits for any background triage to finish, which can take longer
+// than the default 30 seconds; a cleanup cut short leaves accounts behind.
+test.describe.configure({ timeout: 120_000 });
 
 function service() {
   return createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
@@ -220,5 +224,41 @@ test("a plain sign-up files nothing; and two calls at once still file one", asyn
     expect(await requester.tickets()).toHaveLength(1);
   } finally {
     await Promise.all([plain.remove(), requester.remove()]);
+  }
+});
+
+test("access requests never form a possible incident, however alike they are", async () => {
+  const admin = service();
+  const people = await Promise.all([1, 2, 3].map(() => newAccount({ access_request: ANSWERS })));
+  try {
+    // Filed as on first sign-in, each with the same embedding: as alike as
+    // tickets can be (SUP-70).
+    const same = `[${Array.from({ length: 1536 }, (_, i) => (i === 0 ? 1 : 0)).join(",")}]`;
+    const ids: string[] = [];
+    for (const p of people) {
+      const db = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
+        db: { schema: "ticketing" },
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      expect((await db.auth.signInWithPassword({ email: p.email, password: p.password })).error).toBeNull();
+      const { data } = await db.rpc("file_access_request");
+      const id = (data as { ticket_id: string }[])[0].ticket_id;
+      ids.push(id);
+      expect((await admin.from("ticket_embeddings").insert({ ticket_id: id, embedding: same, embedding_model: "test" })).error).toBeNull();
+    }
+    for (const id of ids) {
+      const { data, error } = await admin.rpc("detect_incident", {
+        p_ticket_id: id,
+        p_threshold: INCIDENT_SIMILARITY,
+        p_window_minutes: INCIDENT_WINDOW_MINUTES,
+        p_min_tickets: INCIDENT_MIN_TICKETS,
+      });
+      expect(error).toBeNull();
+      expect(data).toEqual([]);
+    }
+    const { count } = await admin.from("incident_tickets").select("ticket_id", { count: "exact", head: true }).in("ticket_id", ids);
+    expect(count).toBe(0);
+  } finally {
+    await Promise.all(people.map((p) => p.remove()));
   }
 });
