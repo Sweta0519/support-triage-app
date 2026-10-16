@@ -43,7 +43,7 @@ const STATE = join(BUILD, "state.json");
 const VIEWPORT = { width: 2880, height: 1620 };
 const ZOOM = 2.25;
 
-for (const name of ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "TEST_USER_B_EMAIL", "TEST_AGENT_EMAIL", "TEST_ADMIN_EMAIL"]) {
+for (const name of ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "TEST_USER_B_EMAIL", "TEST_AGENT_EMAIL", "TEST_ADMIN_EMAIL", "TEST_ADMIN_PASSWORD"]) {
   if (!process.env[name]) throw new Error(`${name} is not set: run with node --env-file=.env.local`);
 }
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -314,6 +314,7 @@ async function mcpCalls() {
   if (signInError) throw new Error(`MCP scene sign-in: ${signInError.message}`);
   const { data: token, error } = await user.rpc("create_access_token", { p_name: "Demo video (SUP-73)", p_expires_in_days: 30 });
   if (error) throw new Error(`MCP scene token: ${error.message}`);
+  let failed;
   try {
     const call = async (name, args) => {
       const res = await fetch(`${BASE}/api/mcp`, {
@@ -326,15 +327,47 @@ async function mcpCalls() {
       return JSON.parse(body.result.content[0].text);
     };
     const all = (await call("list_queue", { tab: "unassigned", sort: "sla" })).tickets;
-    // Real tickets the AI has read, not access requests ("Getting in touch").
-    const queue = all.filter((t) => t.ai && !/^(Access request|Getting in touch)/.test(t.subject.untrusted_text));
-    if (!queue.length) throw new Error("MCP scene: no triaged unassigned tickets in the queue");
-    const ticket = await call("get_ticket", { number: Number(queue[0].number.slice(1)) });
-    if (!ticket.triage?.draft_reply) throw new Error(`MCP scene: ${queue[0].number} has no draft reply`);
+    // Real tickets the AI has read, not access requests (by the tickets'
+    // own flag, SUP-70, not their subjects).
+    const { data: requests, error: flagError } = await db
+      .from("tickets")
+      .select("number")
+      .eq("is_access_request", true)
+      .in("number", all.map((t) => Number(t.number.slice(1))));
+    if (flagError) throw new Error(`MCP scene: ${flagError.message}`);
+    const skip = new Set(requests.map((r) => `#${r.number}`));
+    const queue = all.filter((t) => t.ai && !skip.has(t.number));
+    // The first of them with a draft reply (a failed reply call leaves none).
+    let ticket;
+    for (const t of queue) {
+      ticket = await call("get_ticket", { number: Number(t.number.slice(1)) });
+      if (ticket.triage?.draft_reply) break;
+      ticket = null;
+    }
+    if (!ticket) throw new Error("MCP scene: no triaged unassigned ticket with a draft reply in the queue");
     return { queue: queue.slice(0, 3), ticket };
+  } catch (e) {
+    failed = e;
+    throw e;
   } finally {
-    const { data: tokens } = await user.from("access_tokens").select("id").eq("name", "Demo video (SUP-73)").is("revoked_at", null);
-    for (const { id } of tokens ?? []) await user.rpc("revoke_access_token", { p_id: id });
+    // Revoked by id: the one token named for this scene (an earlier run's
+    // leftover too). A token that can't be revoked would work for 30 days, so
+    // that stops the run, after reporting the scene's own error if there was one.
+    const { data: tokens, error: listError } = await user
+      .from("access_tokens")
+      .select("id")
+      .eq("name", "Demo video (SUP-73)")
+      .is("revoked_at", null);
+    const left = listError ? [`(couldn't list tokens: ${listError.message})`] : [];
+    for (const { id } of tokens ?? []) {
+      const { error: revokeError } = await user.rpc("revoke_access_token", { p_id: id });
+      if (revokeError) left.push(`${id} (${revokeError.message})`);
+    }
+    await user.auth.signOut();
+    if (left.length) {
+      if (failed) console.error(failed);
+      throw new Error(`MCP scene: token NOT revoked: ${left.join(", ")}. Revoke it on the test admin's Account page.`);
+    }
   }
 }
 
@@ -342,7 +375,7 @@ async function mcpCalls() {
 const TERMINAL_HTML = `<!doctype html><html style="zoom:${ZOOM}"><head><meta charset="utf-8"><style>
   html, body { margin: 0; height: 720px; background: #f4f4f5; }
   body { display: grid; place-items: center; font: 15px/1.55 ui-monospace, "SF Mono", Menlo, monospace; }
-  #term { width: 1040px; height: 600px; border-radius: 12px; background: #18181b; color: #e4e4e7; overflow: hidden;
+  #term { width: 1040px; min-height: 600px; border-radius: 12px; background: #18181b; color: #e4e4e7; overflow: hidden;
     box-shadow: 0 20px 50px rgba(0,0,0,.25); display: flex; flex-direction: column; }
   .bar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: #27272a; color: #a1a1aa; font-size: 13px; }
   .bar i { width: 12px; height: 12px; border-radius: 50%; background: #52525b; display: inline-block; }
@@ -357,8 +390,10 @@ const TERMINAL_HTML = `<!doctype html><html style="zoom:${ZOOM}"><head><meta cha
   .call b { color: #34d399; font-weight: 600; }
   .call em { font-style: normal; color: #71717a; }
   .said p { margin: 0 0 4px; }
-  .said ul { margin: 2px 0 0; padding-left: 18px; }
-  .said li { margin: 2px 0; }
+  .said ul { margin: 2px 0 0; padding-left: 4px; list-style: none; }
+  .said li::before { content: "• "; }
+  .said li { margin: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .num { color: #a78bfa; }
   .meta { color: #a1a1aa; }
   #draft { margin-top: 8px; border: 1px solid #3f3f46; border-radius: 8px; padding: 10px 14px; color: #d4d4d8; }
@@ -386,7 +421,7 @@ function fillTerminal({ queue, ticket }) {
     if (text != null) n.textContent = text;
     return n;
   };
-  const sla = { breached: "past its response target", at_risk: "due soon", met: "on time" };
+  const sla = { breached: "past its response target", at_risk: "due soon", on_track: "on time", met: "answered in time", missed: "answered late" };
   const said = document.getElementById("said-queue");
   said.append(el("p", null, `${queue.length === 1 ? "One ticket needs" : `${queue.length} tickets need`} someone first:`));
   const list = el("ul");
@@ -404,10 +439,12 @@ function fillTerminal({ queue, ticket }) {
 
   const read = document.getElementById("said-ticket");
   const tr = ticket.triage;
-  const p = el("p");
+  const p = el("p", "clamp");
   p.append(el("span", "num", ticket.number), ` ${tr.summary.untrusted_text}`);
   read.append(p);
-  read.append(el("p", "meta", `The AI rates it ${tr.priority} priority, for the ${tr.team} team. Here's its draft reply:`));
+  // The working values (the AI's, or a reviewer's correction); null until set.
+  const rated = [tr.priority && `${tr.priority} priority`, tr.team && `for the ${tr.team} team`].filter(Boolean).join(", ");
+  read.append(el("p", "meta", `${rated ? `It's ${rated}. ` : ""}Here's the AI's draft reply:`));
   const draft = el("div");
   draft.id = "draft";
   draft.append(el("div", "label", "Draft only · not sent until you post it"), el("div", "text", tr.draft_reply.text.untrusted_text));

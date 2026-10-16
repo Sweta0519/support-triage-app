@@ -1,6 +1,6 @@
 # Support Triage: product video (every feature)
 
-About 2:20. The narration, captions and timing live in `build.py` (`SCENES`); the
+About 2:15. The narration, captions and timing live in `build.py` (`SCENES`); the
 browser actions and camera moves in `record.mjs`. This page is the overview.
 
 **Look:** the app floats as a window (rounded corners, soft shadow) on a deep indigo
