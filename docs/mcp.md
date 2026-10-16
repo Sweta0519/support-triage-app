@@ -141,11 +141,12 @@ A request whose token is well-formed but unknown costs one indexed lookup by has
 database, and nothing else. It isn't counted against any app limit:
 
 - the per-person limit needs a person;
-- a per-IP limit would throttle hosted MCP clients, which call from shared addresses for
-  everyone using them.
+- a per-IP limit in the app would throttle hosted MCP clients, which call from shared addresses
+  for everyone using them.
 
 A 256-bit token can't be guessed, so this is about load, not access. The Vercel firewall rule is the
-backstop: 30 POSTs per minute per IP, which includes `/api/mcp` (`docs/security/vercel-waf.md`).
+backstop: 30 POSTs per minute per IP, which includes `/api/mcp`. It does limit per IP, the
+trade-off described above, but only coarsely (`docs/security/vercel-waf.md`, "Trade-off").
 
 ## CSRF and browsers
 

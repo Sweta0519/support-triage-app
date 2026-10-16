@@ -60,7 +60,9 @@ two reviews `docs/reviews/README.md` describes, with every finding answered inli
 | Unknown tokens | Not counted by the app (one indexed lookup each) | Vercel firewall rule: 30 POSTs per minute per IP (`docs/security/vercel-waf.md`, confirmed 2026-10-16) |
 
 Unknown tokens aren't throttled per IP in the app on purpose: hosted MCP clients share
-addresses, so one abuser could block everyone using that client.
+addresses, so one abuser could block everyone using that client. The Vercel rule does limit per
+IP, coarsely (30 POSTs a minute across the whole app). That was accepted in SUP-74, because the
+clients the app supports call from the user's own machine (`vercel-waf.md`, "Trade-off").
 
 ## RLS coverage, tool by tool
 
@@ -118,8 +120,11 @@ another site's page can't call it with a token either (tested: the preflight has
 
 ## Open items
 
-- ~~The Vercel firewall rules are not yet confirmed in the dashboard.~~ Confirmed on 2026-10-16
-  (SUP-74). There is one rule for every POST, 30 per minute per IP, which also covers `/api/mcp`.
 - OAuth sign-in, needed for ChatGPT's and the Claude apps' connectors, isn't supported. It would
   also remove the sign-in-link side effect.
 - Whether a new MCP sign-in really replaces a pending sign-in link (above) is unverified.
+
+## Closed since the review
+
+- **The Vercel firewall rule** was confirmed live on 2026-10-16 (SUP-74). There is one rule for
+  every POST, 30 per minute per IP, which also covers `/api/mcp`.

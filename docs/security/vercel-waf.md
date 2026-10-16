@@ -16,7 +16,8 @@ vercel firewall rules list
 vercel firewall rules inspect "Rate limit POSTs by IP"
 ```
 
-(`vercel firewall overview` fails on the Hobby plan, which has no IP bypass; `rules list` works.)
+(`vercel firewall overview` failed on 2026-10-16 with a 402, "IP Bypass is unavailable", which
+the project's plan doesn't include. `rules list` works.)
 
 ## The live rule
 
@@ -25,7 +26,7 @@ vercel firewall rules inspect "Rate limit POSTs by IP"
 | Name | Rate limit POSTs by IP |
 | If | Method *equals* `POST` (every path) |
 | Then | **Rate limit**: fixed window, 60 seconds, 30 requests, keyed by **IP** |
-| Action on limit | Rate limit (429) |
+| Action on limit | Refuse with 429 |
 | Description | Coarse backstop: 30 POST requests/min per IP. App-level per-user limits live in ticketing.consume_rate_limit(). |
 
 Everything that changes data, and every login attempt, is a POST, and every one counts:
@@ -41,8 +42,9 @@ The limit is looser than the app's own sign-in and sign-up limits:
   15 minutes;
 - sign-up: 5 per hour per IP and 3 per hour per email.
 
-So a real user who mistypes still gets the app's friendly "Too many attempts", and the firewall
-only catches floods.
+On its own, a real user who mistypes hits the app's limit first and gets its friendly "Too many
+attempts". But the 30 is shared with every other POST from that IP (see the trade-off below), so
+on a busy or shared address the firewall's 429 can come first.
 
 ### Trade-off: one rule for every POST
 
@@ -50,7 +52,14 @@ The rule covers more than sign-in. That was accepted on 2026-10-16 (SUP-74), rat
 dashboard change. It also catches floods of `/api/mcp` requests with unknown tokens, which the
 app doesn't count (`docs/mcp.md`).
 
-The cost is that a burst of more than 30 POSTs in a minute from one IP is refused with a 429:
+The cost is that a burst of more than 30 POSTs in a minute from one IP is refused with a 429.
+That 429 comes from Vercel before the app runs, and the app doesn't handle it:
+- there is no `error.tsx` or `global-error.tsx`, and the `useActionState` forms don't catch a
+  rejected action (only the board's drag-and-drop does);
+- so Next.js shows its default "Application error" screen instead of the app's "Too many
+  attempts", and whatever the person had typed, such as a reply, is lost.
+
+It can happen to:
 - a very busy person;
 - an AI assistant making many MCP calls at once;
 - several people behind one office address.
@@ -62,14 +71,14 @@ not per minute.
 
 ### If it needs refining
 
-These two path rules would limit only sign-in and sign-up and leave the rest of the app alone.
-The Hobby plan probably allows only one rate-limit rule, which would explain why there's one
-combined rule now.
+These two path rules would limit sign-in and sign-up and `/api/mcp`, and leave the rest of the
+app alone. Check how many rate-limit rules the Vercel plan allows before splitting the rule (not
+verified here).
 
 | Name | If | Then |
 |---|---|---|
-| Throttle sign-in and sign-up | Path *equals* `/login` or `/signup`, and method *equals* `POST` | Rate limit: 60 s, 30 requests, by IP, deny (429) |
-| Throttle MCP endpoint | Path *equals* `/api/mcp` | Rate limit: 60 s, 300 requests, by IP, deny (429) |
+| Throttle sign-in and sign-up | Path *equals* `/login` or `/signup`, and method *equals* `POST` | Rate limit: 60 s, 30 requests, by IP, refuse with 429 |
+| Throttle MCP endpoint | Path *equals* `/api/mcp` | Rate limit: 60 s, 300 requests, by IP, refuse with 429 |
 
 ## Status
 
