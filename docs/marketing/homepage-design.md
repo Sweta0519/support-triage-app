@@ -39,7 +39,7 @@ everything else stays quiet, like the app itself (calm, Linear-style).
 - **Source Serif 4** is used only for the customer's own words, so the hero contrasts a person writing with the system reading.
 - **Scale:** 56/36/20/17/15 px, headline tracking -0.02em, body line length under 70 characters.
 
-**Layout:** left-aligned throughout.
+**Layout:** left-aligned throughout. (The "Request access" buttons below became "Get in touch" in SUP-72, and the bottom CTA now reads "Want to talk it through?".)
 
 ```
 [logo] Support Triage                         Sign in  [Request access]

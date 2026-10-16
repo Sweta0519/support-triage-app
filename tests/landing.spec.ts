@@ -113,15 +113,17 @@ test.describe("signed out", () => {
     await expect(safe).toContainText("a read-only status page that staff choose to publish");
     await expect(safe).toContainText("checked against a strict format");
     // Pricing (SUP-51): Free and Custom; Custom's "Contact us" goes through
-    // Support Triage itself (sign up, then a ticket).
+    // Support Triage itself (the Get in touch form, which files a ticket).
     await page.getByRole("navigation", { name: "Page", exact: true }).getByRole("link", { name: "Pricing", exact: true }).click();
     await expect(page).toHaveURL(/#pricing$/);
     const pricing = page.getByRole("region", { name: "Pricing" });
     await expect(pricing.getByRole("heading", { name: "Free" })).toBeVisible();
     await expect(pricing.getByRole("heading", { name: "Custom" })).toBeVisible();
-    await expect(pricing.getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/signup");
+    await expect(pricing.getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/signup?access=1");
+    // Nothing promises agent access: "Get in touch" is a conversation (SUP-72).
+    await expect(page.locator("main")).not.toContainText("agent access");
 
-    await page.getByRole("navigation", { name: "Account", exact: true }).getByRole("link", { name: "Request access", exact: true }).click();
+    await page.getByRole("navigation", { name: "Account", exact: true }).getByRole("link", { name: "Get in touch", exact: true }).click();
     await expect(page).toHaveURL(/\/signup\?access=1$/);
     await page.goto("/");
     await page.getByRole("navigation", { name: "Account", exact: true }).getByRole("link", { name: "Sign in" }).click();
@@ -175,7 +177,7 @@ test.describe("signed out", () => {
     }
     const account = footer.getByRole("list", { name: "Account" });
     await expect(account.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
-    await expect(account.getByRole("link", { name: "Request access" })).toHaveAttribute("href", "/signup?access=1");
+    await expect(account.getByRole("link", { name: "Get in touch" })).toHaveAttribute("href", "/signup?access=1");
     await expect(footer.getByRole("list", { name: "Legal" }).getByRole("link", { name: "Privacy policy" })).toHaveAttribute("href", "/privacy");
     // Group titles are labels, not headings: no "Product" heading on the page.
     await expect(page.getByRole("heading", { name: "Product", exact: true })).toHaveCount(0);
@@ -223,7 +225,7 @@ test("signed in, / is the app, not the homepage", async ({ page }) => {
   // Visiting the homepage directly offers the app instead of requesting access.
   await page.goto("/welcome");
   await expect(page.getByRole("navigation", { name: "Account", exact: true }).getByRole("link", { name: "Open the app" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Request access", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Get in touch", exact: true })).toHaveCount(0);
   // The footer's account group offers the app instead.
   await expect(page.getByRole("navigation", { name: "Footer", exact: true }).getByRole("list", { name: "Account" }).getByRole("link")).toHaveText(["Open the app"]);
   // A signed-in customer's "Contact us" opens a new ticket straight away.

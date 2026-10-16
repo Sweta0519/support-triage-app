@@ -2,7 +2,7 @@ import "server-only";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 
-// "Request access" (SUP-58). The sign-up form keeps the visitor's answers in
+// "Get in touch" (SUP-58). The sign-up form keeps the visitor's answers in
 // their account's metadata; the first time they're signed in, this files them
 // as one access-request ticket (ticketing.file_access_request() does it once,
 // as the customer, under the ticket rate limit). Null when there was nothing

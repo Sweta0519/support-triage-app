@@ -1,16 +1,16 @@
-// The "Request access" questions (SUP-58), shared by the sign-up form and the
+// The "Get in touch" questions (SUP-58; "Request access" until SUP-72), shared by the sign-up form and the
 // action that checks them. ticketing.file_access_request() caps them the same
 // way (100 and 2000 characters, size 20).
 export const ACCESS_TEAM_MAX = 100;
 export const ACCESS_PURPOSE_MAX = 2000;
-// The subject ticketing.file_access_request() gives the ticket ("Access
-// request" or "Access request: <team>").
-export const ACCESS_REQUEST_SUBJECT = "Access request";
+// The subjects ticketing.file_access_request() gives the ticket: "Getting in
+// touch" (or "Getting in touch: <team>"), and before SUP-72 "Access request".
+export const ACCESS_REQUEST_SUBJECTS = ["Getting in touch", "Access request"] as const;
 export const TEAM_SIZES = ["1-5", "6-20", "21-100", "100+"] as const;
 
 export type AccessRequestAnswers = { team: string; size: string; purpose: string };
 
-// The answers from the sign-up form, when it came from "Request access" (its
+// The answers from the sign-up form, when it came from "Get in touch" (its
 // hidden access=1 field): all optional, trimmed and capped, with an unknown
 // size dropped. Null for a plain sign-up.
 export function parseAccessRequest(formData: FormData): AccessRequestAnswers | null {

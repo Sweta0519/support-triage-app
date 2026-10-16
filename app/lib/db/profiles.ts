@@ -34,7 +34,7 @@ export type ProfileSummary = Pick<
   Profile,
   "id" | "email" | "full_name" | "avatar_path" | "role" | "created_at" | "updated_at"
 > & {
-  // Whether they asked for access through "Request access" (SUP-68).
+  // Whether they asked for access through "Get in touch" (SUP-68).
   access_request_status: "pending" | "granted" | "declined" | null;
 };
 
