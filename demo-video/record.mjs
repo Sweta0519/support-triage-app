@@ -43,7 +43,7 @@ const STATE = join(BUILD, "state.json");
 const VIEWPORT = { width: 2880, height: 1620 };
 const ZOOM = 2.25;
 
-for (const name of ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "TEST_USER_B_EMAIL", "TEST_AGENT_EMAIL", "TEST_ADMIN_EMAIL"]) {
+for (const name of ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "TEST_USER_B_EMAIL", "TEST_AGENT_EMAIL", "TEST_ADMIN_EMAIL"]) {
   if (!process.env[name]) throw new Error(`${name} is not set: run with node --env-file=.env.local`);
 }
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -295,6 +295,123 @@ async function waitForTriage(page) {
     await pause(page, 2000);
   }
   throw new Error("AI triage did not complete in time");
+}
+
+// ---- the MCP scene's data and terminal ----------------------------------
+
+// Calls /api/mcp as the test admin: the unassigned queue, most urgent first,
+// then the first ticket on it. The token is revoked as soon as the two calls
+// are done (30 days is just the shortest lifetime the app allows).
+async function mcpCalls() {
+  const user = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+    db: { schema: "ticketing" },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { error: signInError } = await user.auth.signInWithPassword({
+    email: process.env.TEST_ADMIN_EMAIL,
+    password: process.env.TEST_ADMIN_PASSWORD,
+  });
+  if (signInError) throw new Error(`MCP scene sign-in: ${signInError.message}`);
+  const { data: token, error } = await user.rpc("create_access_token", { p_name: "Demo video (SUP-73)", p_expires_in_days: 30 });
+  if (error) throw new Error(`MCP scene token: ${error.message}`);
+  try {
+    const call = async (name, args) => {
+      const res = await fetch(`${BASE}/api/mcp`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json, text/event-stream" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
+      });
+      const body = await res.json();
+      if (!res.ok || body.error || body.result?.isError) throw new Error(`${name}: ${res.status} ${JSON.stringify(body).slice(0, 300)}`);
+      return JSON.parse(body.result.content[0].text);
+    };
+    const all = (await call("list_queue", { tab: "unassigned", sort: "sla" })).tickets;
+    // Real tickets the AI has read, not access requests ("Getting in touch").
+    const queue = all.filter((t) => t.ai && !/^(Access request|Getting in touch)/.test(t.subject.untrusted_text));
+    if (!queue.length) throw new Error("MCP scene: no triaged unassigned tickets in the queue");
+    const ticket = await call("get_ticket", { number: Number(queue[0].number.slice(1)) });
+    if (!ticket.triage?.draft_reply) throw new Error(`MCP scene: ${queue[0].number} has no draft reply`);
+    return { queue: queue.slice(0, 3), ticket };
+  } finally {
+    const { data: tokens } = await user.from("access_tokens").select("id").eq("name", "Demo video (SUP-73)").is("revoked_at", null);
+    for (const { id } of tokens ?? []) await user.rpc("revoke_access_token", { p_id: id });
+  }
+}
+
+// Laid out for a 1280x720 window, like the app's scenes (page zoom ZOOM).
+const TERMINAL_HTML = `<!doctype html><html style="zoom:${ZOOM}"><head><meta charset="utf-8"><style>
+  html, body { margin: 0; height: 720px; background: #f4f4f5; }
+  body { display: grid; place-items: center; font: 15px/1.55 ui-monospace, "SF Mono", Menlo, monospace; }
+  #term { width: 1040px; height: 600px; border-radius: 12px; background: #18181b; color: #e4e4e7; overflow: hidden;
+    box-shadow: 0 20px 50px rgba(0,0,0,.25); display: flex; flex-direction: column; }
+  .bar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: #27272a; color: #a1a1aa; font-size: 13px; }
+  .bar i { width: 12px; height: 12px; border-radius: 50%; background: #52525b; display: inline-block; }
+  .bar span { margin-left: 10px; }
+  .body { padding: 18px 24px; display: flex; flex-direction: column; gap: 12px; }
+  .prompt { display: flex; gap: 10px; color: #fafafa; }
+  .prompt b { color: #a78bfa; }
+  #ask { flex: 1; background: none; border: 0; outline: none; color: inherit; font: inherit; padding: 0; caret-color: #a78bfa; }
+  .step { opacity: 0; transform: translateY(6px); transition: opacity .35s, transform .35s; }
+  .step.shown { opacity: 1; transform: none; }
+  .call { color: #a1a1aa; }
+  .call b { color: #34d399; font-weight: 600; }
+  .call em { font-style: normal; color: #71717a; }
+  .said p { margin: 0 0 4px; }
+  .said ul { margin: 2px 0 0; padding-left: 18px; }
+  .said li { margin: 2px 0; }
+  .num { color: #a78bfa; }
+  .meta { color: #a1a1aa; }
+  #draft { margin-top: 8px; border: 1px solid #3f3f46; border-radius: 8px; padding: 10px 14px; color: #d4d4d8; }
+  #draft .label { color: #fbbf24; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 4px; }
+  #draft .text { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+</style></head><body>
+  <div id="term">
+    <div class="bar"><i></i><i></i><i></i><span>AI assistant · connected to Support Triage over MCP</span></div>
+    <div class="body">
+      <div class="prompt"><b>&gt;</b><input id="ask" aria-label="Message" autofocus></div>
+      <div id="call-queue" class="step call">● <b>support-triage</b> · list_queue <em>(unassigned, most urgent first)</em></div>
+      <div id="said-queue" class="step said"></div>
+      <div id="call-ticket" class="step call"></div>
+      <div id="said-ticket" class="step said"></div>
+    </div>
+  </div>
+</body></html>`;
+
+// Runs in the page: fills the steps from the tools' results, as text (a
+// ticket's words are never parsed as HTML).
+function fillTerminal({ queue, ticket }) {
+  const el = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const sla = { breached: "past its response target", at_risk: "due soon", met: "on time" };
+  const said = document.getElementById("said-queue");
+  said.append(el("p", null, `${queue.length === 1 ? "One ticket needs" : `${queue.length} tickets need`} someone first:`));
+  const list = el("ul");
+  for (const t of queue) {
+    const li = el("li");
+    li.append(el("span", "num", t.number), ` ${t.subject.untrusted_text} `);
+    const bits = [t.priority, t.sla && sla[t.sla.state], t.ai.escalation_risk && "escalation risk"].filter(Boolean);
+    li.append(el("span", "meta", `· ${bits.join(" · ")}`));
+    list.append(li);
+  }
+  said.append(list);
+
+  const call = document.getElementById("call-ticket");
+  call.append("● ", el("b", null, "support-triage"), ` · get_ticket `, el("em", null, `(${ticket.number})`));
+
+  const read = document.getElementById("said-ticket");
+  const tr = ticket.triage;
+  const p = el("p");
+  p.append(el("span", "num", ticket.number), ` ${tr.summary.untrusted_text}`);
+  read.append(p);
+  read.append(el("p", "meta", `The AI rates it ${tr.priority} priority, for the ${tr.team} team. Here's its draft reply:`));
+  const draft = el("div");
+  draft.id = "draft";
+  draft.append(el("div", "label", "Draft only · not sent until you post it"), el("div", "text", tr.draft_reply.text.untrusted_text));
+  read.append(draft);
 }
 
 // ---- scenes ------------------------------------------------------------
@@ -590,6 +707,35 @@ const SCENES = {
       await cam(page, null);
       await scrollToLocator(page, page.getByRole("heading", { name: "Team performance" }), 1300);
       await pause(page, 1300);
+    },
+  }],
+
+  // MCP (SUP-73): an AI assistant asked "What's waiting for me?" works the
+  // queue through /api/mcp. The tool calls are real, made as the test admin
+  // with a token that lives only for this setup (revoked straight after).
+  // The terminal is a plain styled page, not any one product's interface,
+  // and the assistant's words are put together from what the tools returned.
+  "10b-mcp": [null, {
+    setup: async (page) => {
+      const { queue, ticket } = await mcpCalls();
+      await page.setContent(TERMINAL_HTML);
+      await page.evaluate(fillTerminal, { queue, ticket });
+    },
+    run: async (page) => {
+      mouse.splice(0); // no cursor: nothing is clicked in a terminal
+      const term = page.locator("#term");
+      await cam(page, term, { zoom: 1.25, pad: 20 });
+      await pause(page, 500);
+      await page.locator("#ask").pressSequentially("What's waiting for me?", { delay: 55 });
+      await pause(page, 500);
+      for (const step of ["call-queue", "said-queue", "call-ticket", "said-ticket"]) {
+        await page.evaluate((id) => document.getElementById(id).classList.add("shown"), step);
+        await pause(page, step.startsWith("call") ? 900 : 1700);
+      }
+      await cam(page, page.locator("#draft"), { zoom: 1.7, pad: 30 });
+      await pause(page, 2600);
+      await cam(page, term, { zoom: 1.25, pad: 20 });
+      await pause(page, 800);
     },
   }],
 

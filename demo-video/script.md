@@ -1,6 +1,6 @@
 # Support Triage: product video (every feature)
 
-About 2:30. The narration, captions and timing live in `build.py` (`SCENES`); the
+About 2:20. The narration, captions and timing live in `build.py` (`SCENES`); the
 browser actions and camera moves in `record.mjs`. This page is the overview.
 
 **Look:** the app floats as a window (rounded corners, soft shadow) on a deep indigo
@@ -21,8 +21,11 @@ a calm generated music bed (pad, plucked arpeggio, soft kick) that ducks under t
 | 8 | Learning | #4190: "✦ Used 2 past corrections as examples" expanded (zoom), "Don't learn from this" | And it learns… |
 | 9 | Incidents | Banner (zoom) → INC-30 → the AI-drafted update and its two-step post (zoom), then Cancel | When many customers hit the same problem… |
 | 10 | Analytics | Stat cards (zoom), "Is the AI learning?" (zoom), team performance | Analytics show response times… |
+| 10b | MCP | An AI assistant's terminal (zoom): "What's waiting for me?", real `list_queue` and `get_ticket` calls to `/api/mcp` as the test admin, the three most urgent unassigned tickets, and the AI's draft reply marked "not sent" (zoom) | Prefer to work from your AI assistant? Connect Claude Code, Cursor or VS Code… a draft is only a draft until you send it. |
 | 11 | Montage | ~2 s each, captioned: file for a customer, 5-star rating, public status page, labels, re-run AI, admin overview, dark theme, sign-in, privacy policy | One line per shot ("Agents file tickets for customers…", "…with a clear privacy policy, and your data under your control.") |
 | 12 | Close | Logo, "The AI does the reading. Your team does the helping." | Support Triage. The AI does the reading… |
+
+The MCP scene's terminal is a plain styled page, not any one product's interface. Its tool calls are real, made with a token that the scene creates for the test admin and revokes straight after; the assistant's sentences are put together from what the tools returned.
 
 Not shown: the "AI triage is off/failing" banner and a stalled run (both need a real outage).
 
