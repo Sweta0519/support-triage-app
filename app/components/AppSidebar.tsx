@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { signOutAction } from "@/app/lib/auth/actions";
 import { Avatar } from "@/app/components/Avatar";
@@ -162,6 +162,29 @@ const linkIdle =
   "text-zinc-600 hover:bg-black/[.04] hover:text-black dark:text-zinc-400 dark:hover:bg-white/[.06] dark:hover:text-zinc-50";
 const linkActive = "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300";
 
+// "(3) Queue · Support Triage": the waiting access requests in front of the
+// tab title (SUP-71), so an admin notices them with the app in a background
+// tab. Next sets the title on each navigation (sometimes by replacing the
+// <title> element), so the prefix is re-applied whenever it changes.
+function useTitleCount(count: number) {
+  useEffect(() => {
+    const strip = (title: string) => title.replace(/^\(\d+\) /, "");
+    const observer = new MutationObserver(() => apply());
+    function apply() {
+      const want = count > 0 ? `(${count}) ${strip(document.title)}` : strip(document.title);
+      if (document.title !== want) document.title = want;
+      const el = document.querySelector("title");
+      if (el) observer.observe(el, { childList: true, characterData: true, subtree: true });
+    }
+    observer.observe(document.head, { childList: true });
+    apply();
+    return () => {
+      observer.disconnect();
+      document.title = strip(document.title);
+    };
+  }, [count]);
+}
+
 // Only what the sidebar shows, not the whole profile row.
 export function AppSidebar({
   profile,
@@ -185,6 +208,8 @@ export function AppSidebar({
   const close = () => setOpen(false);
 
   const items = navItems(profile.role, accessRequests);
+  useTitleCount(accessRequests);
+  const waiting = accessRequests === 1 ? "1 access request waiting" : `${accessRequests} access requests waiting`;
 
   return (
     <aside
@@ -210,10 +235,18 @@ export function AppSidebar({
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
           aria-controls="app-nav"
-          aria-label={open ? "Close menu" : "Open menu"}
-          className="rounded-lg p-1.5 text-zinc-600 hover:bg-black/[.05] lg:hidden dark:text-zinc-400 dark:hover:bg-white/[.06]"
+          aria-label={`${open ? "Close menu" : "Open menu"}${accessRequests > 0 ? `, ${waiting}` : ""}`}
+          className="relative rounded-lg p-1.5 text-zinc-600 hover:bg-black/[.05] lg:hidden dark:text-zinc-400 dark:hover:bg-white/[.06]"
         >
           {open ? icons.close : icons.menu}
+          {/* Access requests are in the closed menu on phones (SUP-71). */}
+          {accessRequests > 0 && !open ? (
+            <span
+              aria-hidden="true"
+              data-testid="menu-dot"
+              className="absolute right-1 top-1 h-2 w-2 rounded-full bg-indigo-600 ring-2 ring-[var(--background)] dark:bg-indigo-400"
+            />
+          ) : null}
         </button>
       </div>
 
