@@ -57,7 +57,7 @@ two reviews `docs/reviews/README.md` describes, with every finding answered inli
 | Creating tokens | 10 an hour per person | `access_token` in `consume_rate_limit()` |
 | MCP requests | 120 per fixed 10-minute window per person (all their tokens; a burst across a window boundary can reach about twice that) | `mcp_request`, answered with `429` and `Retry-After` |
 | Filing tickets, replies | The web app's own limits | The same insert triggers (`create_ticket`, `add_comment`) |
-| Unknown tokens | Not counted by the app (one indexed lookup each) | Vercel firewall rule in `docs/security/vercel-waf.md` (not yet confirmed in the dashboard) |
+| Unknown tokens | Not counted by the app (one indexed lookup each) | Vercel firewall rule: 30 POSTs per minute per IP (`docs/security/vercel-waf.md`, confirmed 2026-10-16) |
 
 Unknown tokens aren't throttled per IP in the app on purpose: hosted MCP clients share
 addresses, so one abuser could block everyone using that client.
@@ -118,8 +118,8 @@ another site's page can't call it with a token either (tested: the preflight has
 
 ## Open items
 
-- The Vercel firewall rules (sign-in and `/api/mcp`) are documented, but not yet confirmed in the
-  dashboard.
+- ~~The Vercel firewall rules are not yet confirmed in the dashboard.~~ Confirmed on 2026-10-16
+  (SUP-74). There is one rule for every POST, 30 per minute per IP, which also covers `/api/mcp`.
 - OAuth sign-in, needed for ChatGPT's and the Claude apps' connectors, isn't supported. It would
   also remove the sign-in-link side effect.
 - Whether a new MCP sign-in really replaces a pending sign-in link (above) is unverified.

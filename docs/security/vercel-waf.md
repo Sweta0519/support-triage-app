@@ -1,55 +1,77 @@
-# Vercel firewall rule for sign-in and sign-up
+# Vercel firewall rule
 
-The app throttles sign-in and sign-up itself (SUP-13,
-`ticketing.consume_auth_rate_limit()`). A Vercel WAF rule in front of it
-is the coarse, network-level backstop that CLAUDE.md asks for (not yet
-confirmed; see Status). It stops a
-flood before it costs a function call and a database round trip.
+The app throttles abuse itself:
+- sign-in and sign-up (SUP-13, `ticketing.consume_auth_rate_limit()`);
+- per-user limits on sensitive actions (`ticketing.consume_rate_limit()`);
+- MCP calls, 120 per person per 10 minutes (SUP-54).
 
-The rule lives only in the Vercel dashboard, so it can't be checked from
-the repo (security scan I-7). Set it up, or confirm it, as follows.
+A Vercel firewall rule in front of it is the coarse, network-level backstop that CLAUDE.md asks for.
+It stops a flood before it costs a function call and a database round trip.
 
-## Rule
+The rule lives only in Vercel, not in the repo (security scan I-7). Check it with the Vercel CLI,
+logged in to the project's team:
 
-Go to Vercel → project **support-triage-app** → **Firewall** → **Configure** →
-**New rule**:
+```sh
+vercel firewall rules list
+vercel firewall rules inspect "Rate limit POSTs by IP"
+```
+
+(`vercel firewall overview` fails on the Hobby plan, which has no IP bypass; `rules list` works.)
+
+## The live rule
 
 | Setting | Value |
 |---|---|
-| Name | Throttle sign-in and sign-up |
-| If | Request path *equals* `/login` **or** Request path *equals* `/signup` |
-| And | Method *equals* `POST` |
+| Name | Rate limit POSTs by IP |
+| If | Method *equals* `POST` (every path) |
 | Then | **Rate limit**: fixed window, 60 seconds, 30 requests, keyed by **IP** |
-| Action on limit | Deny (429) |
+| Action on limit | Rate limit (429) |
+| Description | Coarse backstop: 30 POST requests/min per IP. App-level per-user limits live in ticketing.consume_rate_limit(). |
 
-The Server Actions on these pages POST to the page's own path, so
-`POST /login` and `POST /signup` are exactly the sign-in and sign-up
-attempts. Page loads are `GET` and aren't affected.
+Everything that changes data, and every login attempt, is a POST, and every one counts:
+- sign-in and sign-up, because their Server Actions POST to `/login` and `/signup`;
+- every other Server Action: replies, status changes, card moves, Sage messages, and the admins'
+  once-a-minute count check;
+- every call to `/api/mcp`.
 
-The limit is deliberately looser than the app's own limits:
+Page loads are `GET` and never count.
 
-- sign-in: 20 wrong passwords per 10 minutes per IP; 10 per email and IP
-  and 50 per email in 15 minutes;
+The limit is looser than the app's own sign-in and sign-up limits:
+- sign-in: 20 wrong passwords per 10 minutes per IP, 10 per email and IP, and 50 per email in
+  15 minutes;
 - sign-up: 5 per hour per IP and 3 per hour per email.
 
-So the WAF only catches floods, and the app gives real users the friendly
-"Too many attempts" message.
+So a real user who mistypes still gets the app's friendly "Too many attempts", and the firewall
+only catches floods.
 
-## MCP endpoint (SUP-54)
+### Trade-off: one rule for every POST
 
-`POST /api/mcp` signs requests in with access tokens and limits each person to 120 requests
-per 10 minutes, but a request with an unknown token isn't counted by the app (`docs/mcp.md`).
-A second rule catches floods of those:
+The rule covers more than sign-in. That was accepted on 2026-10-16 (SUP-74), rather than a
+dashboard change. It also catches floods of `/api/mcp` requests with unknown tokens, which the
+app doesn't count (`docs/mcp.md`).
 
-| Setting | Value |
-|---|---|
-| Name | Throttle MCP endpoint |
-| If | Request path *equals* `/api/mcp` |
-| Then | **Rate limit**: fixed window, 60 seconds, 300 requests, keyed by **IP** |
-| Action on limit | Deny (429) |
+The cost is that a burst of more than 30 POSTs in a minute from one IP is refused with a 429:
+- a very busy person;
+- an AI assistant making many MCP calls at once;
+- several people behind one office address.
 
-It's looser than the per-person limit, because hosted MCP clients call from shared addresses.
+The MCP clients this app supports (Claude Code, Cursor, VS Code, Codex) call from the user's own
+machine, so the limit is per person in practice. A hosted client calling from shared addresses
+would hit it sooner. Its per-person MCP allowance (120 per 10 minutes) is larger in total, but
+not per minute.
+
+### If it needs refining
+
+These two path rules would limit only sign-in and sign-up and leave the rest of the app alone.
+The Hobby plan probably allows only one rate-limit rule, which would explain why there's one
+combined rule now.
+
+| Name | If | Then |
+|---|---|---|
+| Throttle sign-in and sign-up | Path *equals* `/login` or `/signup`, and method *equals* `POST` | Rate limit: 60 s, 30 requests, by IP, deny (429) |
+| Throttle MCP endpoint | Path *equals* `/api/mcp` | Rate limit: 60 s, 300 requests, by IP, deny (429) |
 
 ## Status
 
-- [ ] Rules created or confirmed in the dashboard (sign-in and sign-up, and MCP). Record who and when:
+- [x] Rule confirmed live on 2026-10-16. Checked with `vercel firewall rules list` and
+      `inspect`, as the project owner's account (sweta0519). It is the one rule above, enabled.

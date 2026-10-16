@@ -144,8 +144,8 @@ database, and nothing else. It isn't counted against any app limit:
 - a per-IP limit would throttle hosted MCP clients, which call from shared addresses for
   everyone using them.
 
-A 256-bit token can't be guessed, so this is about load, not access. The Vercel firewall rule
-for `/api/mcp` (`docs/security/vercel-waf.md`) is the backstop.
+A 256-bit token can't be guessed, so this is about load, not access. The Vercel firewall rule is the
+backstop: 30 POSTs per minute per IP, which includes `/api/mcp` (`docs/security/vercel-waf.md`).
 
 ## CSRF and browsers
 
