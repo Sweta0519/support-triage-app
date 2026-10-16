@@ -101,6 +101,7 @@ Built since the core above, each through a reviewed PR (see Development process)
 | **Learning from corrections:** staff corrections become examples the AI sees on similar tickets; the panel shows what it learned from, admins can exclude one, and Analytics tracks acceptance by week (`docs/learning.md`) | #53 |
 | Staff banner when AI triage is off or failing; untriaged tickets marked as needing manual triage | #48 |
 | **MCP connector:** use Support Triage from Claude Code, Cursor, VS Code or Codex with a personal access token. Each request runs as its owner under RLS. Customers file and follow their tickets; agents work the queue, with the AI's triage as a suggestion only. Setup is on the homepage and on the Account page with the new token filled in (`docs/mcp.md`) | #65, #67, #68, #69, #70, #71 |
+| **Demo video** (2:17, narrated and captioned) on the homepage, covering the main features, including an MCP section: an AI assistant working the queue through `/api/mcp` | #57, #66, #80 |
 
 ## How it compares
 
@@ -241,6 +242,49 @@ go overdue within the hour.
 - **Not covered:** `updated_at`. A trigger stamps it on every write, so it can't be set or
   restored.
 - **If a run fails part-way,** it prints the `--restore` command to undo it.
+
+## Demo video
+
+A narrated product video (2:17, with captions) plays from the homepage's "Watch the 2-minute
+demo": https://support-triage-app-one.vercel.app/marketing/demo.mp4
+
+- **What it shows:** a ticket arriving and being triaged; Sage; human review; the queue and the
+  board; learning from corrections; incidents; Analytics. It ends with a montage of the rest.
+- **The MCP section (SUP-73, about 1:27):** an AI assistant is asked "What's waiting for me?".
+  It calls `list_queue` and then `get_ticket`, and shows the AI's draft reply marked "not sent
+  until you post it".
+  - The calls are real: they go to `/api/mcp` as the test admin, with a token the recording
+    creates and then revokes.
+  - The terminal is a plain styled page, not any product's interface.
+
+It's recorded from the running app with Playwright, then rendered with ffmpeg and ElevenLabs
+narration. The shot list is in `demo-video/script.md`. The narration needs `ELEVENLABS_API_KEY` in
+`.env.local` (`ELEVENLABS_VOICE` optionally picks the voice). Without it, `build.py` uses macOS
+`say`, a different voice, so check for that before shipping a cut.
+
+```bash
+node --env-file=.env.local scripts/backdate-demo.mjs --apply   # fresh SLA states
+npm run build && npm run start                                  # in another terminal
+node --env-file=.env.local demo-video/record.mjs                # every scene; or e.g. `10b` for one
+/usr/bin/python3 demo-video/build.py                            # -> demo-video/build/support-triage-demo.mp4
+```
+
+Ship the video and its captions together, or the homepage plays the new cut with the old
+captions:
+
+```bash
+cp demo-video/build/support-triage-demo.mp4 public/marketing/demo.mp4
+cp demo-video/build/support-triage-demo.vtt public/marketing/demo.vtt
+```
+
+**It changes the live database,** like a real demo:
+- `backdate-demo.mjs --apply` re-dates the demo tickets. If a run goes wrong, undo it with
+  `--restore` (see [Demo data](#demo-data)).
+- `record.mjs` files, reviews, claims, moves, flags, labels, shares, resolves and rates one
+  demo ticket as the test accounts.
+- It also creates the MCP scene's token and revokes it straight after.
+
+It uses the test accounts, so don't run it at the same time as the test suite.
 
 ## Tests
 
