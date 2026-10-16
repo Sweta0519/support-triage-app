@@ -94,6 +94,10 @@ SCENES = [
     {"id": "10-analytics", "clips": ["10-analytics"],
      "caption": ("ANALYTICS", "Know it's working"),
      "say": "Analytics show response times, customer satisfaction, and whether the AI is getting better."},
+    {"id": "10b-mcp", "clips": ["10b-mcp"],
+     "caption": ("MCP", "Work from your AI assistant"),
+     "say": "Prefer to work from your AI assistant? Connect Claude Code, Cursor or VS Code, and ask what's waiting. "
+            "It works as you, with your permissions, and a draft is only a draft until you send it."},
     # Each montage shot has its own line, and lasts as long as it.
     {"id": "11-montage", "montage": [
         ("11-m01-on-behalf", "File tickets for customers",
