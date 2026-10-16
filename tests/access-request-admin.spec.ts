@@ -174,3 +174,49 @@ test("only admins can see or decide requests, a request is decided once, and nev
   const selfDb = await signedIn(selfRequester.email, selfRequester.password);
   expect((await selfDb.rpc("decide_access_request", { p_user: selfRequester.id, p_grant: true })).error?.message).toBe("own_request");
 });
+
+const pendingCount = async () =>
+  (await service().from("profiles").select("id", { count: "exact", head: true }).eq("access_request_status", "pending")).count ?? 0;
+
+test("admins are told about waiting requests in the tab title and on the phone menu button; agents aren't", async ({ page }) => {
+  test.setTimeout(90_000);
+  await account("Requester", { request: true });
+  const admin = await account("Admin", { role: "admin" });
+  const agent = await account("Agent", { role: "agent" });
+
+  // The tab title carries the count, and keeps it across pages (SUP-71).
+  // The page's clock is controlled, so the once-a-minute re-check can be run.
+  await page.clock.install();
+  await login(page, admin.email, admin.password);
+  await expect(page).toHaveTitle(`(${await pendingCount()}) Support Ticket Triage`);
+  await page.goto("/queue");
+  await expect(page).toHaveTitle(/^\(\d+\) Support Ticket Triage$/);
+
+  // A new request reaches an open tab without a reload.
+  const before = await pendingCount();
+  await account("Later", { request: true });
+  await page.clock.fastForward(61_000);
+  await expect(page).toHaveTitle(`(${before + 1}) Support Ticket Triage`);
+
+  // On a phone the sidebar is behind the menu button, which shows a dot
+  // and says how many are waiting.
+  await page.setViewportSize({ width: 390, height: 800 });
+  const menu = page.getByRole("button", { name: /^Open menu, \d+ access requests? waiting$/ });
+  await expect(menu).toBeVisible();
+  await expect(page.getByTestId("menu-dot")).toBeVisible();
+  // Opening the menu shows the badge itself; the button no longer repeats it.
+  await menu.click();
+  await expect(page.getByRole("button", { name: "Close menu", exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: /^Access requests/ })).toBeVisible();
+
+  // An agent gets neither.
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await login(page, agent.email, agent.password);
+  await page.goto("/queue");
+  await page.clock.fastForward(61_000);
+  await expect(page).toHaveTitle("Support Ticket Triage");
+  await page.setViewportSize({ width: 390, height: 800 });
+  await expect(page.getByRole("button", { name: "Open menu", exact: true })).toBeVisible();
+  await expect(page.getByTestId("menu-dot")).toHaveCount(0);
+});

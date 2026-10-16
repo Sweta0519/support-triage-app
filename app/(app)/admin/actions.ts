@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import { requireAdmin } from "@/app/lib/auth/session";
 import { isAppRole, setUserRole } from "@/app/lib/db/profiles";
-import { AccessDecisionError, decideAccessRequest } from "@/app/lib/db/access-requests";
+import { AccessDecisionError, countPendingAccessRequests, decideAccessRequest } from "@/app/lib/db/access-requests";
 import { isUuid } from "@/app/lib/db/tickets";
 
 // Maps the database's exceptions to the short codes the users page renders.
@@ -76,4 +76,12 @@ export async function decideAccessRequestAction(
   // No revalidatePath here: it would re-render the page at once, moving the
   // card out of the Waiting list before its confirmation could be read. The
   // client refreshes the page (count, lists, ticket) a moment later.
+}
+
+// The waiting access requests, for the admin sidebar to re-check while a tab
+// stays open (SUP-71): the layout's count is only read on page loads.
+// Read-only; requireAdmin() and RLS keep it to admins.
+export async function pendingAccessRequestCountAction(): Promise<number> {
+  await requireAdmin();
+  return countPendingAccessRequests();
 }
