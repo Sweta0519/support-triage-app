@@ -54,11 +54,12 @@ app doesn't count (`docs/mcp.md`).
 
 The cost is that a burst of more than 30 POSTs in a minute from one IP is refused with a 429.
 That 429 comes from Vercel before the app runs. Since SUP-75 the app handles it:
-- **Forms** (`useSafeActionState`, `app/components/`) show "That didn't go through: too many
-  requests, or the connection dropped. Nothing was saved…" in place, and keep what was typed (a
-  password excepted). This covers new tickets, replies, sign-in, sign-up, settings, notes and so on.
+- **Forms** (`useSafeActionState`, `app/components/`) show "We couldn't confirm that went
+  through: too many requests, or the connection dropped…" in place, and keep what was typed (a
+  password excepted). It doesn't promise nothing was saved: a dropped connection can lose just
+  the answer. This covers new tickets, replies, sign-in, sign-up, settings, notes and so on.
 - **Label edits**, made from click handlers, show the same message (`orFailed`).
-- **Other one-click actions** (claim, status, sign out…) show a calm "That didn't go through"
+- **Other one-click actions** (claim, status, sign out…) show a calm "Something went wrong"
   page with **Try again** (`app/error.tsx`, `app/(app)/error.tsx`), not Next's default "This
   page couldn't load".
 

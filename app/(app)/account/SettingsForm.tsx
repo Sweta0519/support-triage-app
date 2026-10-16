@@ -1,12 +1,11 @@
 "use client";
 
-
 import { updateSettingsAction } from "./actions";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 import { FULL_NAME_MAX_LENGTH, THEMES, type Theme } from "@/app/lib/preferences";
 import { QUEUE_FILTERS, type QueueFilterKey } from "@/app/lib/queue-filters";
 import { QUEUE_SORTS, type QueueSort } from "@/app/lib/queue";
 import { inputClass, primaryButtonClass } from "@/app/lib/styles";
-import { useSafeActionState } from "@/app/components/useSafeActionState";
 
 const labelClass = "text-xs font-medium text-zinc-600 dark:text-zinc-400";
 const legendClass = "text-base font-semibold text-black dark:text-zinc-50";

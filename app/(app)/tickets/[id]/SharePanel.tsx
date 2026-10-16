@@ -3,9 +3,9 @@
 import { useState } from "react";
 
 import { publishSummaryAction, revokeShareAction } from "../actions";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 import type { Share } from "@/app/lib/db/shares";
 import { secondaryButtonClass } from "@/app/lib/styles";
-import { useSafeActionState } from "@/app/components/useSafeActionState";
 
 export function SharePanel({
   ticketId,

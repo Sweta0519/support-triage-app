@@ -8,7 +8,7 @@ import { login, requireEnv } from "./helpers";
 // couldn't load". The 429 is simulated: every Server Action POST (the ones
 // with a Next-Action header) is answered by the "firewall" until lifted.
 
-const FAILED = "That didn't go through: too many requests, or the connection dropped.";
+const FAILED = "We couldn't confirm that went through: too many requests, or the connection dropped.";
 
 async function firewall(page: Page) {
   const refuse = (route: import("@playwright/test").Route) =>
@@ -70,12 +70,31 @@ test.describe("signed out", () => {
   });
 });
 
+test.describe("staff", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test("a refused label edit, made from a click handler, says why and keeps the name", async ({ page }) => {
+    await login(page, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
+    await page.goto("/labels");
+    const name = `Firewall probe ${Date.now()}`;
+    await page.getByLabel("New label name").fill(name);
+    const lift = await firewall(page);
+    await page.getByRole("button", { name: "Create label" }).click();
+    await expect(page.getByText(FAILED)).toBeVisible();
+    await expect(page.getByLabel("New label name")).toHaveValue(name);
+    await lift();
+    // Nothing was created: it never reached the server.
+    await page.reload();
+    await expect(page.getByText(name)).toHaveCount(0);
+  });
+});
+
 test("a refused one-click action shows a calm page with Try again, not Next's default", async ({ page }) => {
   await page.goto("/tickets");
   const lift = await firewall(page);
   // Sign out is a plain <form action> in the sidebar.
   await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page.getByRole("heading", { name: "That didn't go through" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Something went wrong" })).toBeVisible();
   await expect(page.getByText("This page couldn't load")).toHaveCount(0);
   await lift();
   await page.getByRole("button", { name: "Try again" }).click();

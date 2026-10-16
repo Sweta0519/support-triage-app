@@ -1,9 +1,8 @@
 "use client";
 
-
 import { staffCreateTicketAction } from "../actions";
-import { inputClass, primaryButtonClass } from "@/app/lib/styles";
 import { useSafeActionState } from "@/app/components/useSafeActionState";
+import { inputClass, primaryButtonClass } from "@/app/lib/styles";
 
 const labelClass = "text-xs font-medium text-zinc-600 dark:text-zinc-400";
 

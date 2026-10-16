@@ -3,8 +3,8 @@
 import { useRef } from "react";
 
 import { addCommentAction } from "../actions";
-import { inputClass, primaryButtonClass, secondaryButtonClass } from "@/app/lib/styles";
 import { useSafeActionState } from "@/app/components/useSafeActionState";
+import { inputClass, primaryButtonClass, secondaryButtonClass } from "@/app/lib/styles";
 
 export function CommentForm({
   ticketId,

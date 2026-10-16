@@ -1,10 +1,9 @@
 "use client";
 
-
 import { removeAvatarAction, uploadAvatarAction, type AvatarState } from "./actions";
 import { Avatar } from "@/app/components/Avatar";
-import { secondaryButtonClass } from "@/app/lib/styles";
 import { useSafeActionState } from "@/app/components/useSafeActionState";
+import { secondaryButtonClass } from "@/app/lib/styles";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 

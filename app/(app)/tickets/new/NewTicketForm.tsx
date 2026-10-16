@@ -3,8 +3,8 @@
 import Link from "next/link";
 
 import { createTicketAction } from "../actions";
-import { inputClass, linkClass, primaryButtonClass } from "@/app/lib/styles";
 import { useSafeActionState } from "@/app/components/useSafeActionState";
+import { inputClass, linkClass, primaryButtonClass } from "@/app/lib/styles";
 
 export function NewTicketForm() {
   const [state, action, pending, formRef] = useSafeActionState(createTicketAction, undefined);

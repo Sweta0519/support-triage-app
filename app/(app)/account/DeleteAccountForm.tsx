@@ -1,9 +1,8 @@
 "use client";
 
-
 import { deleteAccountAction } from "./actions";
-import { inputClass } from "@/app/lib/styles";
 import { useSafeActionState } from "@/app/components/useSafeActionState";
+import { inputClass } from "@/app/lib/styles";
 
 const dangerButtonClass =
   "rounded-full bg-red-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50";

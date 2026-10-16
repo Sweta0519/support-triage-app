@@ -6,11 +6,11 @@ import { useState, useTransition } from "react";
 import { createAccessTokenAction, revokeAccessTokenAction } from "./actions";
 import { McpConnect } from "@/app/components/mcp/McpConnect";
 import { useCopy } from "@/app/components/useCopy";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 import { MAX_ACTIVE_TOKENS, TOKEN_LIFETIMES, TOKEN_NAME_MAX_LENGTH } from "@/app/lib/access-token-options";
 import type { AccessToken } from "@/app/lib/db/access-tokens";
 import { formatRelativeTime } from "@/app/lib/format";
 import { inputClass, primaryButtonClass, secondaryButtonClass } from "@/app/lib/styles";
-import { useSafeActionState } from "@/app/components/useSafeActionState";
 
 const labelClass = "text-xs font-medium text-zinc-600 dark:text-zinc-400";
 const body = "text-sm text-zinc-600 dark:text-zinc-400";

@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 import { signInAction } from "@/app/lib/auth/actions";
 import { inputClass, linkClass, primaryButtonClass } from "@/app/lib/styles";
-import { useSafeActionState } from "@/app/components/useSafeActionState";
 
 export function LoginForm() {
   const [state, action, pending, formRef] = useSafeActionState(signInAction, undefined);

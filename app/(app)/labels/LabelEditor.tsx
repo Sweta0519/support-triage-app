@@ -4,9 +4,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { createLabelAction, deleteLabelAction, updateLabelAction } from "./actions";
+import { orFailed } from "@/app/components/useSafeActionState";
 import { LABEL_COLORS, LABEL_NAME_MAX_LENGTH, labelDot, type LabelColor, type TeamLabel } from "@/app/lib/labels";
 import { inputClass, primaryButtonClass, secondaryButtonClass } from "@/app/lib/styles";
-import { orFailed } from "@/app/components/useSafeActionState";
 
 const COLORS = Object.keys(LABEL_COLORS) as LabelColor[];
 

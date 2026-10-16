@@ -1,9 +1,8 @@
 "use client";
 
-
 import { createNoteAction, updateNoteAction, type NoteFormState } from "./actions";
-import { inputClass, primaryButtonClass } from "@/app/lib/styles";
 import { useSafeActionState } from "@/app/components/useSafeActionState";
+import { inputClass, primaryButtonClass } from "@/app/lib/styles";
 
 export function NoteForm({ note }: { note?: { id: string; title: string; body: string } }) {
   const [state, action, pending, formRef] = useSafeActionState<NoteFormState>(

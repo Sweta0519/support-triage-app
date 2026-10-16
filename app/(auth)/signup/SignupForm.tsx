@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 import { signUpAction } from "@/app/lib/auth/actions";
 import { ACCESS_PURPOSE_MAX, ACCESS_TEAM_MAX, TEAM_SIZES } from "@/app/lib/access-request-options";
 import { inputClass, linkClass, primaryButtonClass } from "@/app/lib/styles";
-import { useSafeActionState } from "@/app/components/useSafeActionState";
 
 const labelClass = "text-xs font-medium text-zinc-600 dark:text-zinc-400";
 

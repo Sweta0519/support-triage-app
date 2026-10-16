@@ -9,8 +9,8 @@ import {
   TRIAGE_PRIORITIES,
   TRIAGE_TEAMS,
 } from "@/app/lib/triage-fields";
-import { primaryButtonClass, secondaryButtonClass } from "@/app/lib/styles";
 import { useSafeActionState } from "@/app/components/useSafeActionState";
+import { primaryButtonClass, secondaryButtonClass } from "@/app/lib/styles";
 
 type Fields = { priority: string; category: string; team: string };
 

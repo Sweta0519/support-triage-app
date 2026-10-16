@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useCallback, useLayoutEffect, useRef } from "react";
+import { useActionState, useLayoutEffect, useRef } from "react";
 import { unstable_rethrow } from "next/navigation";
 
 // useActionState for forms whose Server Action can fail before it runs: the
@@ -12,8 +12,11 @@ import { unstable_rethrow } from "next/navigation";
 // Here a failure becomes the form's own error state (FAILED_MESSAGE), and
 // the fields are put back as they were sent: React clears a form after its
 // action, failed or not. Put `formRef` on the <form>.
+//
+// The message doesn't promise nothing was saved: after a firewall 429 the
+// action never ran, but a dropped connection may lose only the answer.
 export const FAILED_MESSAGE =
-  "That didn't go through: too many requests, or the connection dropped. Nothing was saved. Wait a moment and try again.";
+  "We couldn't confirm that went through: too many requests, or the connection dropped. Wait a moment, check, and try again.";
 
 export function useSafeActionState<S>(
   action: (state: Awaited<S>, formData: FormData) => S | Promise<S>,
@@ -24,21 +27,22 @@ export function useSafeActionState<S>(
   const sent = useRef<FormData | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  const safe = useCallback(
-    async (state: Awaited<S>, formData: FormData): Promise<Awaited<S>> => {
-      try {
-        const result = await action(state, formData);
-        sent.current = null;
-        return result;
-      } catch (error) {
-        // redirect() and notFound() are thrown on purpose: let Next.js handle them.
-        unstable_rethrow(error);
-        sent.current = formData;
-        return failed(FAILED_MESSAGE, formData);
-      }
-    },
-    [action, failed]
-  );
+  // useActionState always calls the latest of these, so no memo is needed.
+  async function safe(state: Awaited<S>, formData: FormData): Promise<Awaited<S>> {
+    try {
+      const result = await action(state, formData);
+      sent.current = null;
+      return result;
+    } catch (error) {
+      // redirect() and notFound() are thrown on purpose: let Next.js handle them.
+      unstable_rethrow(error);
+      // Logged, so a real bug in an action isn't mistaken for a flaky network.
+      console.error("Server Action failed:", error);
+      // Kept only for a form to refill (one without formRef keeps its own values).
+      sent.current = formRef.current ? formData : null;
+      return failed(FAILED_MESSAGE, formData);
+    }
+  }
   const [state, formAction, pending] = useActionState(safe, initial);
 
   // After a failure, once React has reset the form, refill what was typed.
@@ -53,6 +57,8 @@ export function useSafeActionState<S>(
       const values = data.getAll(element.name).map(String);
       if (element instanceof HTMLInputElement && (element.type === "checkbox" || element.type === "radio")) {
         element.checked = values.includes(element.value);
+      } else if (element instanceof HTMLSelectElement && element.multiple) {
+        for (const option of Array.from(element.options)) option.selected = values.includes(option.value);
       } else if (values.length) {
         element.value = values[0];
       }
@@ -69,6 +75,7 @@ export async function orFailed<T>(call: Promise<T>): Promise<T | { ok: false; er
     return await call;
   } catch (error) {
     unstable_rethrow(error);
+    console.error("Server Action failed:", error);
     return { ok: false, error: FAILED_MESSAGE };
   }
 }

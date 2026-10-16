@@ -4,9 +4,9 @@ import { useState } from "react";
 
 import { rateTicketAction } from "../actions";
 import { Stars } from "@/app/components/Stars";
+import { useSafeActionState } from "@/app/components/useSafeActionState";
 import { RATING_COMMENT_MAX_LENGTH } from "@/app/lib/ratings";
 import { inputClass, primaryButtonClass } from "@/app/lib/styles";
-import { useSafeActionState } from "@/app/components/useSafeActionState";
 
 const STARS = [1, 2, 3, 4, 5] as const;
 const WORDS = ["", "Very poor", "Poor", "Okay", "Good", "Excellent"];
