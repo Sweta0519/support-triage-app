@@ -7,7 +7,7 @@ import { parseAccessRequest } from "../app/lib/access-request-options";
 import { INCIDENT_MIN_TICKETS, INCIDENT_SIMILARITY, INCIDENT_WINDOW_MINUTES } from "../app/lib/incidents";
 import { login, requireEnv } from "./helpers";
 
-// SUP-58: "Request access" files one access-request ticket the first time the
+// SUP-58: "Get in touch" (formerly "Request access", SUP-72) files one access-request ticket the first time the
 // new customer is signed in. One test signs up through the real form, which
 // works because this project confirms emails automatically, so no email is
 // sent (SUP-69). The rest make accounts with the Admin API, carrying the
@@ -79,21 +79,21 @@ test("the form's answers are parsed as the sign-up stores them: optional, trimme
   expect(odd).toEqual({ team: "x".repeat(100), size: "", purpose: "y".repeat(2000) });
 });
 
-test("the Request access form asks the optional questions; a plain sign-up doesn't", async ({ page }) => {
+test("the Get in touch form asks the optional questions; a plain sign-up doesn't", async ({ page }) => {
   await page.goto("/signup?access=1");
-  await expect(page.getByRole("heading", { name: "Request access" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Get in touch" })).toBeVisible();
   await expect(page.getByLabel("Team or company name")).toBeVisible();
   await expect(page.getByLabel("Team size")).toBeVisible();
   await expect(page.getByLabel("What would you use it for?")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Request access" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
 
   await page.goto("/signup");
   await expect(page.getByRole("heading", { name: "Create an account" })).toBeVisible();
   await expect(page.getByLabel("Team or company name")).toHaveCount(0);
 
-  // Every homepage "Request access" button leads to the form with the questions.
+  // Every homepage "Get in touch" button leads to the form with the questions.
   await page.goto("/welcome");
-  for (const href of await page.getByRole("link", { name: "Request access", exact: true }).evaluateAll((links) => links.map((a) => a.getAttribute("href")))) {
+  for (const href of await page.getByRole("link", { name: "Get in touch", exact: true }).evaluateAll((links) => links.map((a) => a.getAttribute("href")))) {
     expect(href).toBe("/signup?access=1");
   }
 });
@@ -103,7 +103,7 @@ test("the first sign-in files exactly one access-request ticket, as the customer
   try {
     await login(page, user.email, user.password);
     await expect(page).toHaveURL(/\/tickets\?requested=1$/);
-    await expect(page.getByRole("status")).toContainText("Thanks, we've got your request.");
+    await expect(page.getByRole("status")).toContainText("Thanks for getting in touch.");
     await expect(page.getByRole("link", { name: /Access request: Acme Robotics/ })).toBeVisible();
 
     const tickets = await user.tickets();
@@ -128,7 +128,7 @@ test("the first sign-in files exactly one access-request ticket, as the customer
   }
 });
 
-test("signing up through Request access files the request straight away when the email is confirmed automatically", async ({ page }) => {
+test("signing up through Get in touch files the request straight away when the email is confirmed automatically", async ({ page }) => {
   // This project confirms emails automatically, so sign-up signs the person
   // in at once and no email is sent (SUP-69). Locally there's no per-IP
   // sign-up limit (the dev server sees no visitor IP), and each run uses a
@@ -142,14 +142,14 @@ test("signing up through Request access files the request straight away when the
     await page.getByLabel("Team or company name").fill("Globex Support");
     await page.getByLabel("Team size").selectOption("21-100");
     await page.getByLabel("What would you use it for?").fill("Triage a busy inbox.");
-    await page.getByRole("button", { name: "Request access" }).click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     // If the project starts requiring email confirmation, sign-up waits for
     // the email instead; the confirmation-link test below covers that path.
     await page.waitForURL(/\/(tickets\?requested=1|login\?confirmEmail=1)$/, { timeout: 15_000 });
     test.skip(page.url().includes("confirmEmail"), "The project requires email confirmation");
     await expect(page).toHaveURL(/\/tickets\?requested=1$/);
-    await expect(page.getByRole("status")).toContainText("Thanks, we've got your request.");
+    await expect(page.getByRole("status")).toContainText("Thanks for getting in touch.");
     const { data: profile } = await admin.from("profiles").select("id, role, access_request_status").eq("email", email).single();
     expect(profile).toMatchObject({ role: "customer", access_request_status: "pending" });
     const { data: tickets } = await admin.from("tickets").select("subject, body").eq("customer_id", profile!.id);

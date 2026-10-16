@@ -73,7 +73,7 @@ export default async function AdminUsersPage({
                           <span className="text-xs text-zinc-500 dark:text-zinc-500">
                             {p.access_request_status === "pending" ? (
                               <Link href="/admin/access-requests" className="underline underline-offset-2">
-                                Asked for access
+                                Got in touch
                               </Link>
                             ) : p.access_request_status === "granted" ? (
                               "Access request granted"

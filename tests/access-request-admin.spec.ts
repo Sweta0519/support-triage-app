@@ -84,7 +84,7 @@ test("an admin sees the count, reviews requests in one place, and grants one in 
   const card = page.getByRole("listitem", { name: `Request from ${requester.name}` });
   await expect(card).toContainText(`${requester.name} team`);
   await expect(card).toContainText("Team size: 6-20");
-  await card.getByRole("button", { name: "Grant agent access…" }).click();
+  await card.getByRole("button", { name: "Add to our team as an agent…" }).click();
   await card.getByRole("button", { name: `Make ${requester.name} an agent` }).click();
   await expect(card.getByRole("status")).toContainText(`${requester.name} is now an agent.`);
 
@@ -119,7 +119,7 @@ test("an admin declines from the request's ticket; the requester stays a custome
   const { data: profile } = await service().from("profiles").select("access_request_ticket_id").eq("id", requester.id).single();
   await login(page, admin.email, admin.password);
   await page.goto(`/tickets/${profile!.access_request_ticket_id}`);
-  await page.getByRole("button", { name: "Decline…" }).click();
+  await page.getByRole("button", { name: "Close request…" }).click();
   await page.getByRole("button", { name: `Decline ${requester.name}'s request` }).click();
   await expect(page.getByRole("status").filter({ hasText: "Declined" })).toBeVisible();
 

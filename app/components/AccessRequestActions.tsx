@@ -91,10 +91,10 @@ export function AccessRequestActions({ userId, name, alreadyStaff = false }: { u
       ) : (
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setConfirming("grant")} className={secondaryButtonClass}>
-            {alreadyStaff ? "Close as granted…" : "Grant agent access…"}
+            {alreadyStaff ? "Close as granted…" : "Add to our team as an agent…"}
           </button>
           <button type="button" onClick={() => setConfirming("decline")} className={secondaryButtonClass}>
-            Decline…
+            Close request…
           </button>
         </div>
       )}
@@ -103,8 +103,8 @@ export function AccessRequestActions({ userId, name, alreadyStaff = false }: { u
           {confirming === "grant"
             ? alreadyStaff
               ? "Their role stays as it is. They get a reply on their request, and the request is resolved."
-              : "They become an agent straight away, get a reply on their request, and the request is resolved."
-            : "They stay a customer, get a polite reply on their request, and the request is resolved."}
+              : "They join your support team as an agent straight away: they'll see and work your team's tickets, like any agent. Only do this for someone joining your team."
+            : "They stay a customer, get a polite reply on their ticket, and the request is closed."}
         </p>
       ) : null}
       {error ? (

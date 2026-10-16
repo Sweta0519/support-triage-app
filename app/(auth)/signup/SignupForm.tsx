@@ -71,7 +71,7 @@ export function SignupForm({ requestingAccess = false }: { requestingAccess?: bo
         <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>
       ) : null}
       <button type="submit" disabled={pending} className={`${primaryButtonClass} w-full`}>
-        {requestingAccess ? "Request access" : "Sign up"}
+        {requestingAccess ? "Send" : "Sign up"}
       </button>
       <p className="text-center text-xs text-zinc-500 dark:text-zinc-500">
         We use your email only to run your account. See how your data is handled in the{" "}

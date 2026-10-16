@@ -13,7 +13,7 @@ import { primaryButtonClass, readablePageClass } from "@/app/lib/styles";
 
 export default async function TicketsPage({ searchParams }: { searchParams: Promise<{ requested?: string | string[] }> }) {
   const profile = await requireRole("customer");
-  // Arriving from "Request access" (SUP-58): the request was just filed.
+  // Arriving from "Get in touch" (SUP-58, SUP-72): their message was just filed.
   const { requested } = await searchParams;
   const tickets = await listMyTickets(profile.id);
   const justRequested =
@@ -34,9 +34,9 @@ export default async function TicketsPage({ searchParams }: { searchParams: Prom
 
       {justRequested ? (
         <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
-          <p className="font-medium">Thanks, we&apos;ve got your request.</p>
+          <p className="font-medium">Thanks for getting in touch.</p>
           <p className="mt-1">
-            It&apos;s the access request below. Our team will reply on it, and you can add anything else there.
+            Your message is the ticket below. Our team will reply on it, and you can add anything else there.
           </p>
         </div>
       ) : null}

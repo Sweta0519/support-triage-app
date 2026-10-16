@@ -63,8 +63,10 @@ const MCP_STEPS = [
   },
 ];
 
-// Every "Request access" button: the sign-up form with the access-request
-// questions, which files a request ticket on the first sign-in (SUP-58).
+// Every "Get in touch" button: the sign-up form with the questions about the
+// visitor's team, which files their message as a ticket (SUP-58). It was
+// "Request access" until SUP-72: the app has one support team, so this is a
+// way to reach that team, not access to a team of your own.
 // (Custom's "Contact us" is a plain sign-up, to file a ticket.)
 const REQUEST_ACCESS = "/signup?access=1";
 
@@ -242,7 +244,7 @@ function footerGroups(signedIn: boolean) {
     ? [{ href: "/", label: "Open the app" }]
     : [
         { href: "/login", label: "Sign in" },
-        { href: REQUEST_ACCESS, label: "Request access" },
+        { href: REQUEST_ACCESS, label: "Get in touch" },
       ];
   return [FOOTER_PRODUCT, { id: "account", title: "Account", links: account }, FOOTER_LEGAL];
 }
@@ -297,7 +299,7 @@ export default async function WelcomePage() {
                   Sign in
                 </Link>
                 <Link href={REQUEST_ACCESS} className={primaryButton}>
-                  Request access
+                  Get in touch
                 </Link>
               </>
             )}
@@ -318,7 +320,7 @@ export default async function WelcomePage() {
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-6">
               <Link href={signedIn ? "/" : REQUEST_ACCESS} className={primaryButton}>
-                {signedIn ? "Open the app" : "Request access"}
+                {signedIn ? "Open the app" : "Get in touch"}
               </Link>
               <a href="#demo" className={quietLink}>
                 Watch the 2-minute demo
@@ -549,7 +551,7 @@ export default async function WelcomePage() {
                   ))}
                 </ul>
                 <Link href={signedIn ? "/" : REQUEST_ACCESS} className={`${primaryButton} mt-8`}>
-                  {signedIn ? "Open the app" : "Request access"}
+                  {signedIn ? "Open the app" : "Get in touch"}
                 </Link>
               </div>
               <div className="border-t border-[#E3E5EA] py-8 md:border-l md:border-t-0 md:pl-10">
@@ -591,7 +593,7 @@ export default async function WelcomePage() {
               </p>
             </div>
             <Link href={signedIn ? "/" : REQUEST_ACCESS} className={primaryButton}>
-              {signedIn ? "Open the app" : "Request access"}
+              {signedIn ? "Open the app" : "Get in touch"}
             </Link>
           </div>
         </section>
