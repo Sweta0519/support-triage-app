@@ -107,7 +107,15 @@ export async function setWorkloadAction(_prevState: WorkloadState, formData: For
   try {
     await setWorkload(userId, cap, timezone);
   } catch (err) {
-    if (err instanceof WorkloadInputError) return { status: "error", error: "That timezone or cap isn't accepted." };
+    if (err instanceof WorkloadInputError) {
+      return {
+        status: "error",
+        error:
+          err.field === "timezone"
+            ? "The database doesn't know that timezone yet. Choose a nearby city in the same timezone."
+            : `Enter a whole number from 0 to ${DAILY_CAP_MAX}, or leave it blank for no cap.`,
+      };
+    }
     if (err instanceof NotStaffError) return { status: "error", error: "They're no longer on the support team." };
     throw err;
   }

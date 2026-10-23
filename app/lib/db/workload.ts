@@ -29,9 +29,12 @@ export async function listWorkload(): Promise<WorkloadRow[]> {
   return (data as WorkloadRow[]).sort((a, b) => shown(a).localeCompare(shown(b)));
 }
 
+// Which value admin_set_workload() refused. A timezone the page offered can
+// still be refused: the list is Node's, and the database may know an older
+// set of zones.
 export class WorkloadInputError extends Error {
-  constructor() {
-    super("admin_set_workload refused the input");
+  constructor(readonly field: "cap" | "timezone") {
+    super(`admin_set_workload refused the ${field}`);
   }
 }
 
@@ -49,7 +52,7 @@ export async function setWorkload(targetId: string, cap: number | null, timezone
     p_timezone: timezone,
   });
   if (!error) return;
-  if (error.code === "22023") throw new WorkloadInputError();
+  if (error.code === "22023") throw new WorkloadInputError(error.message.includes("invalid_timezone") ? "timezone" : "cap");
   if (error.code === "P0002") throw new NotStaffError();
   throw new Error(error.message);
 }

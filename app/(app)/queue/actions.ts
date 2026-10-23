@@ -132,7 +132,7 @@ export async function queueCardAction(ticketId: string, input: CardActionInput):
           updated = await assignTicket(ticketId, input.assigneeId);
         } catch (err) {
           if (err instanceof DailyCapError) {
-            return { ok: false, error: name === "you" ? DAILY_CAP_SELF_MESSAGE : dailyCapAssigneeMessage(name) };
+            return { ok: false, error: input.assigneeId === profile.id ? DAILY_CAP_SELF_MESSAGE : dailyCapAssigneeMessage(name) };
           }
           throw err;
         }
