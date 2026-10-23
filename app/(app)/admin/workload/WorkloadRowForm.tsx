@@ -65,7 +65,11 @@ export function WorkloadRowForm({
         {atCap ? <span className="block text-[11px] text-zinc-500 dark:text-zinc-500">At today&apos;s cap</span> : null}
       </td>
       <td className="px-4 py-3">
+        {/* Keyed by the saved value: after a save React resets the form to
+            each field's first-rendered default, so a field remounts with the
+            new one instead of snapping back. */}
         <input
+          key={row.daily_case_cap ?? "none"}
           form={formId}
           name="cap"
           type="number"
@@ -81,6 +85,7 @@ export function WorkloadRowForm({
       </td>
       <td className="px-4 py-3">
         <select
+          key={row.timezone}
           form={formId}
           name="timezone"
           defaultValue={row.timezone}

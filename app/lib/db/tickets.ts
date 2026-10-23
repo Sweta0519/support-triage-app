@@ -215,6 +215,8 @@ export async function staffCreateTicket(
   if (error) {
     if (error.code === "42501") throw new StaffTicketError("not_allowed");
     if (error.message.includes("rate_limited")) throw new RateLimitError("staff_create_ticket");
+    // "Assign to me" when the caller is at their daily cap (SUP-77).
+    if (error.message.includes("daily_case_cap_reached")) throw new DailyCapError();
     throw new Error(error.message);
   }
   // null = no customer account with that email. Returned rather than

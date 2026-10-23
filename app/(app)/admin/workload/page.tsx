@@ -5,8 +5,16 @@ import { localTime, timezoneLabel, timezoneNames } from "@/app/lib/workload";
 import { WorkloadRowForm, type ZoneGroup } from "./WorkloadRowForm";
 
 // The timezone picker's options, grouped by region ("Europe", "America",
-// ...), with UTC and other single-word zones under "Other".
+// ...), with UTC and other single-word zones under "Other". Built once per
+// server process: the list only changes with the runtime.
+let zoneGroupsCache: ZoneGroup[] | null = null;
+
 function zoneGroups(): ZoneGroup[] {
+  zoneGroupsCache ??= buildZoneGroups();
+  return zoneGroupsCache;
+}
+
+function buildZoneGroups(): ZoneGroup[] {
   const groups = new Map<string, ZoneGroup["zones"]>();
   for (const zone of timezoneNames()) {
     const region = zone.includes("/") ? zone.split("/")[0] : "Other";

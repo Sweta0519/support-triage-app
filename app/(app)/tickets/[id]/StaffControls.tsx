@@ -3,6 +3,7 @@ import type { TicketStatus } from "@/app/lib/db/tickets";
 import type { StaffProfile } from "@/app/lib/db/profiles";
 import { primaryButtonClass, secondaryButtonClass } from "@/app/lib/styles";
 import { assignedToLabel } from "@/app/lib/people";
+import type { QueueFilterKey } from "@/app/lib/queue-filters";
 
 const STATUS_LABELS: Record<TicketStatus, string> = {
   new: "New",
@@ -21,6 +22,7 @@ export function StaffControls({
   allowedNext,
   isAdmin,
   staff,
+  from,
 }: {
   ticketId: string;
   status: TicketStatus;
@@ -30,6 +32,9 @@ export function StaffControls({
   isAdmin: boolean;
   // Only populated for admins; agents never see other staff listed here.
   staff: StaffProfile[];
+  // The queue tab the page was opened from, so a refused claim or
+  // assignment comes back to the same breadcrumb.
+  from: QueueFilterKey;
 }) {
 
   return (
@@ -49,6 +54,7 @@ export function StaffControls({
       {assigneeId === null && status !== "resolved" && status !== "closed" ? (
         <form action={claimTicketAction}>
           <input type="hidden" name="ticketId" value={ticketId} />
+          <input type="hidden" name="from" value={from} />
           <button type="submit" className={`${primaryButtonClass} !px-4 !py-1.5 !text-xs`}>
             Claim ticket
           </button>
@@ -77,6 +83,7 @@ export function StaffControls({
           className="flex flex-wrap items-center gap-2 border-t border-black/[.08] pt-3 dark:border-white/[.145]"
         >
           <input type="hidden" name="ticketId" value={ticketId} />
+          <input type="hidden" name="from" value={from} />
           <label className="text-xs text-zinc-500 dark:text-zinc-500" htmlFor={`assignee-${ticketId}`}>
             Reassign
           </label>

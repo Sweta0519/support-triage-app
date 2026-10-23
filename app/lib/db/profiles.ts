@@ -20,9 +20,6 @@ export type Profile = {
   avatar_path: string | null;
   // Staff only in practice (SUP-76); customers keep the default.
   presence: Presence;
-  // Admin > Workload (SUP-77): null = no cap; an IANA timezone name.
-  daily_case_cap: number | null;
-  timezone: string;
   created_at: string;
   updated_at: string;
 };

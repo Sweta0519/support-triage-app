@@ -98,13 +98,23 @@ test.describe("admin workload", () => {
       await target.getByRole("combobox").selectOption("Europe/Berlin");
       await target.getByRole("button", { name: "Save" }).click();
       await expect(target.getByRole("status")).toHaveText("Saved.");
+      // React resets the form after a save: the fields show the saved
+      // values, not the ones they first rendered with.
+      await expect(target.getByRole("combobox")).toHaveValue("Europe/Berlin");
+      await expect(target.getByRole("spinbutton")).toHaveValue("7");
+
+      // Saving only a new cap keeps the timezone just saved.
+      await target.getByRole("spinbutton").fill("8");
+      await target.getByRole("button", { name: "Save" }).click();
+      await expect(target.getByRole("spinbutton")).toHaveValue("8");
+      await expect(target.getByRole("combobox")).toHaveValue("Europe/Berlin");
 
       await page.reload();
       const after = page.getByRole("row").filter({ hasText: requireEnv("TEST_AGENT_EMAIL") });
       await expect(after.getByRole("combobox")).toHaveValue("Europe/Berlin");
-      await expect(after.getByRole("spinbutton")).toHaveValue("7");
+      await expect(after.getByRole("spinbutton")).toHaveValue("8");
       await expect(after.getByText(/there now$/)).toBeVisible();
-      await expect(after.getByText(/ of 7$/)).toBeVisible();
+      await expect(after.getByText(/ of 8$/)).toBeVisible();
 
       // A number out of range doesn't get past the browser (the action and
       // the database refuse it too: see the last test).
@@ -169,6 +179,15 @@ test.describe("admin workload", () => {
     const again = await agent.from("tickets").update({ assignee_id: row.id }).eq("id", first).is("assignee_id", null).select("id");
     expect(again.error).toBeNull();
     expect(again.data).toHaveLength(1);
+
+    // Filing a ticket with "Assign to me" is a new case too.
+    const filed = await agent.rpc("staff_create_ticket", {
+      p_customer_email: requireEnv("TEST_USER_EMAIL"),
+      p_subject: `Workload probe ${Date.now()}`,
+      p_body: "Filed by tests/workload.spec.ts.",
+      p_assign_to_me: true,
+    });
+    expect(filed.error?.message).toContain("daily_case_cap_reached");
 
     // No cap: the refused ticket can be claimed after all.
     await resetAgent(admin);

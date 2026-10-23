@@ -10,16 +10,25 @@ export const DAILY_CAP_MAX = 200;
 export const DAILY_CAP_SELF_MESSAGE =
   "You've reached your daily limit of new cases. It resets at midnight in your timezone, and an admin can change it on Admin > Workload.";
 
+// Shown when filing a ticket with "Assign to me" is refused.
+export const DAILY_CAP_FILE_MESSAGE =
+  "You've reached your daily limit of new cases, so this ticket can't be assigned to you. Untick \"Assign to me\" to file it to the queue.";
+
 // Shown to an admin whose Reassign or Assign is refused.
 export function dailyCapAssigneeMessage(name: string): string {
   return `${name} has reached their daily limit of new cases. Raise it on Admin > Workload, or choose someone else.`;
 }
 
 // Every IANA zone this runtime knows, plus UTC (the column's default),
-// which some runtimes leave out of the list.
+// which some runtimes leave out of the list. Built once.
+let zoneList: string[] | null = null;
+
 export function timezoneNames(): string[] {
-  const zones = Intl.supportedValuesOf("timeZone");
-  return zones.includes("UTC") ? zones : ["UTC", ...zones];
+  if (!zoneList) {
+    const zones = Intl.supportedValuesOf("timeZone");
+    zoneList = zones.includes("UTC") ? zones : ["UTC", ...zones];
+  }
+  return zoneList;
 }
 
 export function isTimezone(value: unknown): value is string {

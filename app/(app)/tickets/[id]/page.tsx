@@ -409,6 +409,7 @@ export default async function TicketDetailPage({
               allowedNext={ALLOWED_STATUS_TRANSITIONS[ticket.status]}
               isAdmin={isAdmin}
               staff={staff}
+              from={fromFilter}
             />
             {labels ? <LabelsPanel ticketId={ticket.id} allLabels={labels.all} appliedIds={labels.applied} /> : null}
             {rating ? (
