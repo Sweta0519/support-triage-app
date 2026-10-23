@@ -5,8 +5,8 @@ import { login, requireEnv } from "./helpers";
 
 // SUP-76: staff presence. The Online / Away / Offline dropdown sits under
 // a staff member's name in the sidebar. It only labels them, so changing
-// the shared agent's presence can't disturb tests running alongside; each
-// test still puts it back to Online.
+// the shared agent's presence can't disturb other spec files; each test
+// still puts it back to Online.
 
 // One session per account for the whole file: Supabase Auth rate-limits
 // sign-ins, and the main suite already signs in many times in parallel.
@@ -32,6 +32,9 @@ async function signIn(email: string, password: string) {
 }
 
 test.describe("staff presence", () => {
+  // Two of these change the shared agent's presence, so they take turns.
+  test.describe.configure({ mode: "serial" });
+
   test("an agent sets Away from the sidebar, and it sticks across a reload", async ({ browser }) => {
     const email = requireEnv("TEST_AGENT_EMAIL");
     const password = requireEnv("TEST_AGENT_PASSWORD");
