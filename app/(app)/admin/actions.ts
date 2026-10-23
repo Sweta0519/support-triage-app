@@ -7,6 +7,8 @@ import { requireAdmin } from "@/app/lib/auth/session";
 import { isAppRole, setUserRole } from "@/app/lib/db/profiles";
 import { AccessDecisionError, countPendingAccessRequests, decideAccessRequest } from "@/app/lib/db/access-requests";
 import { isUuid } from "@/app/lib/db/tickets";
+import { NotStaffError, setWorkload, WorkloadInputError } from "@/app/lib/db/workload";
+import { DAILY_CAP_MAX, isTimezone } from "@/app/lib/workload";
 
 // Maps the database's exceptions to the short codes the users page renders.
 // The DB is the enforcement; this is just the friendly message.
@@ -84,4 +86,31 @@ export async function decideAccessRequestAction(
 export async function pendingAccessRequestCountAction(): Promise<number> {
   await requireAdmin();
   return countPendingAccessRequests();
+}
+
+// One row of Admin > Workload (SUP-77): a person's daily cap of new cases
+// (blank = no cap) and their workplace timezone. admin_set_workload()
+// re-checks the caller, the values and that the person is still staff.
+export type WorkloadState = { status: "saved" } | { status: "error"; error: string } | undefined;
+
+export async function setWorkloadAction(_prevState: WorkloadState, formData: FormData): Promise<WorkloadState> {
+  await requireAdmin();
+  const userId = String(formData.get("userId") ?? "");
+  const rawCap = String(formData.get("cap") ?? "").trim();
+  const timezone = String(formData.get("timezone") ?? "");
+  if (!isUuid(userId)) return { status: "error", error: "That person can't be found." };
+  const cap = rawCap === "" ? null : Number(rawCap);
+  if (cap !== null && (!Number.isInteger(cap) || cap < 0 || cap > DAILY_CAP_MAX)) {
+    return { status: "error", error: `Enter a whole number from 0 to ${DAILY_CAP_MAX}, or leave it blank for no cap.` };
+  }
+  if (!isTimezone(timezone)) return { status: "error", error: "Choose a timezone from the list." };
+  try {
+    await setWorkload(userId, cap, timezone);
+  } catch (err) {
+    if (err instanceof WorkloadInputError) return { status: "error", error: "That timezone or cap isn't accepted." };
+    if (err instanceof NotStaffError) return { status: "error", error: "They're no longer on the support team." };
+    throw err;
+  }
+  revalidatePath("/admin/workload");
+  return { status: "saved" };
 }

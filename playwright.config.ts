@@ -39,7 +39,7 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"], storageState: "playwright/.auth/customerA.json" },
       dependencies: ["setup"],
-      testIgnore: [/\.(setup|teardown)\.ts$/, /(account-settings|people|ai-health|incidents)\.spec\.ts$/],
+      testIgnore: [/\.(setup|teardown)\.ts$/, /(account-settings|people|ai-health|incidents|workload)\.spec\.ts$/],
     },
     {
       // Changes the shared test accounts' theme, queue defaults and display
@@ -77,6 +77,15 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
       dependencies: ["ai-health"],
       testMatch: /incidents\.spec\.ts$/,
+    },
+    {
+      // Puts a daily case cap on the shared test agent, which would refuse
+      // other specs' claims, so it runs after everything else, alone.
+      // On its own: npx playwright test --project=workload --no-deps
+      name: "workload",
+      use: { ...devices["Desktop Chrome"] },
+      dependencies: ["incidents"],
+      testMatch: /workload\.spec\.ts$/,
     },
   ],
 

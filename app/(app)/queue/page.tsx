@@ -11,7 +11,8 @@ import { formatRelativeTime, formatTicketNumber } from "@/app/lib/format";
 import { ClaimButton } from "./ClaimButton";
 import { CardMenuArea } from "./CardMenu";
 import { QueueAnnouncer } from "./QueueAnnouncer";
-import { ClaimNotice } from "./ClaimNotice";
+import { ClaimNotice } from "@/app/components/ClaimNotice";
+import { DAILY_CAP_SELF_MESSAGE } from "@/app/lib/workload";
 import {
   QUEUE_FILTERS,
   parseQueueFilter,
@@ -282,6 +283,7 @@ export default async function QueuePage({
   const view = parseQueueView(params, defaults.sort);
   const returnTo = viewHref(filter, view, defaults);
   const claimTaken = params.notice === "claim-taken";
+  const dailyCap = params.notice === "daily-cap";
   const now = new Date();
   const aiConfigured = isAiConfigured();
 
@@ -352,6 +354,7 @@ export default async function QueuePage({
       </div>
 
       {claimTaken ? <ClaimNotice /> : null}
+      {dailyCap ? <ClaimNotice message={DAILY_CAP_SELF_MESSAGE} /> : null}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile

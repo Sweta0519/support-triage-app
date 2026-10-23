@@ -14,6 +14,7 @@ import {
   assignTicket,
   createTicket,
   claimTicket,
+  DailyCapError,
   getTicketForStaff,
   isUuid,
   staffCreateTicket,
@@ -261,7 +262,14 @@ export async function claimTicketAction(formData: FormData) {
   if (!isUuid(ticketId)) {
     return;
   }
-  const ticket = await claimTicket(profile.id, ticketId);
+  let ticket;
+  try {
+    ticket = await claimTicket(profile.id, ticketId);
+  } catch (err) {
+    // The daily cap on new cases (SUP-77): the ticket page says so.
+    if (!(err instanceof DailyCapError)) throw err;
+    redirect(`/tickets/${ticketId}?notice=daily-cap`);
+  }
   if (!ticket) {
     // Someone else claimed it first, or it's no longer visible/valid --
     // either way, show the caller the ticket's current real state rather
@@ -287,7 +295,14 @@ export async function claimFromQueueAction(formData: FormData) {
   if (!isUuid(ticketId)) {
     redirect(returnTo);
   }
-  const ticket = await claimTicket(profile.id, ticketId);
+  let ticket;
+  try {
+    ticket = await claimTicket(profile.id, ticketId);
+  } catch (err) {
+    // The daily cap on new cases (SUP-77).
+    if (!(err instanceof DailyCapError)) throw err;
+    redirect(`${returnTo}${returnTo.includes("?") ? "&" : "?"}notice=daily-cap`);
+  }
   revalidatePath("/queue");
   revalidatePath(`/tickets/${ticketId}`);
   if (!ticket) {
@@ -315,7 +330,13 @@ export async function assignTicketAction(formData: FormData) {
     }
   }
 
-  await assignTicket(ticketId, assigneeId);
+  try {
+    await assignTicket(ticketId, assigneeId);
+  } catch (err) {
+    // The assignee is at their daily cap (SUP-77): the ticket page names them.
+    if (!(err instanceof DailyCapError)) throw err;
+    redirect(`/tickets/${ticketId}?notice=assignee-cap&assignee=${assigneeId}`);
+  }
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/queue");
 }

@@ -11,6 +11,7 @@ import type { Profile } from "@/app/lib/db/profiles";
 import { RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/db/rate-limit";
 import {
   claimTicket,
+  DailyCapError,
   getTicketForStaffByNumber,
   getTicketNumbers,
   listQueueTickets,
@@ -24,6 +25,7 @@ import { matchesSearch, QUEUE_SORTS, QUEUE_STATUSES, sortQueue, type QueueSort }
 import { computeSla } from "@/app/lib/sla";
 import { moveTicketAs } from "@/app/lib/ticket-moves";
 import { isOneOf, TRIAGE_CATEGORIES, TRIAGE_PRIORITIES, TRIAGE_TEAMS } from "@/app/lib/triage-fields";
+import { DAILY_CAP_SELF_MESSAGE } from "@/app/lib/workload";
 import { guarded, ticketNumberInput, ticketUrl, toolError, toolResult, untrusted } from "./results";
 
 // The staff tools (SUP-56): the queue, a ticket with the AI's triage, and
@@ -224,7 +226,14 @@ export function registerStaffTools(server: McpServer, profile: Profile) {
       if (ticket.assignee_id !== null) return toolError(`${formatTicketNumber(number)} is already assigned to someone else.`);
       // The conditional claim (UPDATE ... WHERE assignee_id IS NULL): a
       // concurrent claim wins and this one is told, never overwritten.
-      const claimed = await claimTicket(profile.id, ticket.id);
+      let claimed;
+      try {
+        claimed = await claimTicket(profile.id, ticket.id);
+      } catch (err) {
+        // The daily cap on new cases (SUP-77).
+        if (err instanceof DailyCapError) return toolError(DAILY_CAP_SELF_MESSAGE);
+        throw err;
+      }
       if (!claimed) return toolError(`Someone else claimed ${formatTicketNumber(number)} first.`);
       return toolResult({ claimed: formatTicketNumber(number), status: claimed.status });
     })
