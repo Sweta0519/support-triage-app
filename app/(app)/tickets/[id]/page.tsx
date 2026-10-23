@@ -24,6 +24,8 @@ import { formatRelativeTime, formatTicketNumber } from "@/app/lib/format";
 import { computeSla } from "@/app/lib/sla";
 import { CommentForm } from "./CommentForm";
 import { StaffControls } from "./StaffControls";
+import { ClaimNotice } from "@/app/components/ClaimNotice";
+import { DAILY_CAP_SELF_MESSAGE, dailyCapAssigneeMessage } from "@/app/lib/workload";
 import { RatingPanel } from "./RatingPanel";
 import { getTicketRating } from "@/app/lib/db/ratings";
 import { TriagePanel } from "./TriagePanel";
@@ -93,10 +95,12 @@ export default async function TicketDetailPage({
   params: Promise<{ id: string }>;
   // `from` is the queue tab the agent arrived from (set by the queue's
   // ticket links), so the breadcrumb can lead back to that same view.
-  searchParams: Promise<{ from?: string | string[] }>;
+  // `notice`: a claim or assignment the daily cap refused (SUP-77), with the
+  // refused `assignee` for an admin's Reassign.
+  searchParams: Promise<{ from?: string | string[]; notice?: string | string[]; assignee?: string | string[] }>;
 }) {
   const { id } = await params;
-  const { from } = await searchParams;
+  const { from, notice, assignee } = await searchParams;
   const fromFilter = parseQueueFilter(from);
   if (!isUuid(id)) {
     notFound();
@@ -389,6 +393,14 @@ export default async function TicketDetailPage({
             {commentsSection}
           </div>
           <div className="flex flex-col gap-6 lg:sticky lg:top-8">
+            {notice === "daily-cap" ? <ClaimNotice message={DAILY_CAP_SELF_MESSAGE} /> : null}
+            {notice === "assignee-cap" ? (
+              <ClaimNotice
+                message={dailyCapAssigneeMessage(
+                  profileName(staff.find((s) => s.id === assignee) ?? { full_name: null, email: "That person" })
+                )}
+              />
+            ) : null}
             <StaffControls
               ticketId={ticket.id}
               status={ticket.status}
@@ -397,6 +409,7 @@ export default async function TicketDetailPage({
               allowedNext={ALLOWED_STATUS_TRANSITIONS[ticket.status]}
               isAdmin={isAdmin}
               staff={staff}
+              from={fromFilter}
             />
             {labels ? <LabelsPanel ticketId={ticket.id} allLabels={labels.all} appliedIds={labels.applied} /> : null}
             {rating ? (

@@ -34,6 +34,9 @@ export default async function AdminLayout({
           <Link href="/admin/access-requests" className={navLinkClasses}>
             Access requests
           </Link>
+          <Link href="/admin/workload" className={navLinkClasses}>
+            Workload
+          </Link>
         </nav>
       </div>
       {children}

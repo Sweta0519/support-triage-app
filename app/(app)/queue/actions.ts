@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requireStaff } from "@/app/lib/auth/session";
-import { assignTicket, claimTicket, getTicketForStaff, isUuid, type TicketStatus } from "@/app/lib/db/tickets";
+import { assignTicket, claimTicket, DailyCapError, getTicketForStaff, isUuid, type TicketStatus } from "@/app/lib/db/tickets";
 import { listStaffProfiles } from "@/app/lib/db/profiles";
 import { setFlag } from "@/app/lib/db/flags";
 import { checkRateLimit, RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/db/rate-limit";
@@ -17,6 +17,7 @@ import { profileName } from "@/app/lib/people";
 import { canRerunTriage, effectiveTriageStatus } from "@/app/lib/triage-status";
 import { isAiConfigured } from "@/app/lib/ai/openrouter";
 import { setTicketLabel } from "@/app/lib/db/labels";
+import { DAILY_CAP_SELF_MESSAGE, dailyCapAssigneeMessage } from "@/app/lib/workload";
 import {
   fieldLabel,
   isOneOf,
@@ -126,7 +127,15 @@ export async function queueCardAction(ticketId: string, input: CardActionInput):
           }
           name = staff.id === profile.id ? "you" : profileName(staff);
         }
-        const updated = await assignTicket(ticketId, input.assigneeId);
+        let updated;
+        try {
+          updated = await assignTicket(ticketId, input.assigneeId);
+        } catch (err) {
+          if (err instanceof DailyCapError) {
+            return { ok: false, error: input.assigneeId === profile.id ? DAILY_CAP_SELF_MESSAGE : dailyCapAssigneeMessage(name) };
+          }
+          throw err;
+        }
         if (!updated) {
           return { ok: false, error: GONE };
         }
@@ -195,6 +204,10 @@ export async function queueCardAction(ticketId: string, input: CardActionInput):
   } catch (err) {
     if (err instanceof RateLimitError) {
       return { ok: false, error: RATE_LIMITED_MESSAGE };
+    }
+    // A claim refused by the daily cap (SUP-77).
+    if (err instanceof DailyCapError) {
+      return { ok: false, error: DAILY_CAP_SELF_MESSAGE };
     }
     if (err instanceof TriageReviewError) {
       return {

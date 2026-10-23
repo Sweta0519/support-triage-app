@@ -102,6 +102,7 @@ Built since the core above, each through a reviewed PR (see Development process)
 | Staff banner when AI triage is off or failing; untriaged tickets marked as needing manual triage | #48 |
 | **MCP connector:** use Support Triage from Claude Code, Cursor, VS Code or Codex with a personal access token. Each request runs as its owner under RLS. Customers file and follow their tickets; agents work the queue, with the AI's triage as a suggestion only. Setup is on the homepage and on the Account page with the new token filled in (`docs/mcp.md`) | #65, #67, #68, #69, #70, #71 |
 | Staff presence: an Online / Away / Offline dropdown, with a coloured dot, under each agent's and admin's name in the sidebar; signing out sets Offline | #84 |
+| **Admin > Workload:** a daily cap on the new cases each person can be given, counted from midnight in their workplace timezone and enforced in the database on every way a ticket gets assigned | #85 |
 | **Demo video** (2:17, narrated and captioned) on the homepage, covering the main features, including an MCP section: an AI assistant working the queue through `/api/mcp` | #57, #66, #80 |
 
 ## How it compares
@@ -301,10 +302,10 @@ so add them by hand) -- create them with the Supabase
 Admin API (`auth.admin.createUser` with `email_confirm: true`) and set roles via the service role.
 About 120 tests in 32 spec files. Feature PRs add their own tests.
 
-- **The last four projects** (`settings`, `people`, `ai-health`, `incidents`) change shared test
-  accounts, so they run one after another. To rerun them without the main suite, keep them in order
-  with one worker:
-  `npx playwright test --project=settings --project=people --project=ai-health --project=incidents --no-deps --workers=1`.
+- **The last five projects** (`settings`, `people`, `ai-health`, `incidents`, `workload`) change shared
+  test accounts, so they run one after another. To rerun them without the main suite, keep them in
+  order with one worker:
+  `npx playwright test --project=settings --project=people --project=ai-health --project=incidents --project=workload --no-deps --workers=1`.
   With `--no-deps` and several workers they run at the same time, and `settings` can reset the agent's
   display name while `people` is checking it.
 - **Before a release,** run the suite once against the production build as well (`npm run build &&

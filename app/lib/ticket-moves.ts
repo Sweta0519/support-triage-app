@@ -1,7 +1,8 @@
 import "server-only";
 
 import { canMove, COLUMN_LABELS, moveClaimsTicket } from "@/app/lib/board";
-import { claimTicket, getTicketForStaff, moveTicketStatus, type Ticket } from "@/app/lib/db/tickets";
+import { claimTicket, DailyCapError, getTicketForStaff, moveTicketStatus, type Ticket } from "@/app/lib/db/tickets";
+import { DAILY_CAP_SELF_MESSAGE } from "@/app/lib/workload";
 import type { TicketStatus } from "@/app/lib/ticket-status";
 
 export type MoveResult = { ok: true } | { ok: false; error: string };
@@ -51,7 +52,10 @@ export async function moveTicketAs(
       }
     }
     return { ok: true };
-  } catch {
+  } catch (err) {
+    // Moving an unassigned ticket claims it, and the daily cap can refuse
+    // that (SUP-77).
+    if (err instanceof DailyCapError) return { ok: false, error: DAILY_CAP_SELF_MESSAGE };
     // e.g. the guard trigger refused the transition after a concurrent
     // change. The refreshed page shows the real state.
     return { ok: false, error: "That move couldn't be saved. The page now shows the ticket's current state." };

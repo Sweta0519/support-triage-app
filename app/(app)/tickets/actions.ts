@@ -14,6 +14,7 @@ import {
   assignTicket,
   createTicket,
   claimTicket,
+  DailyCapError,
   getTicketForStaff,
   isUuid,
   staffCreateTicket,
@@ -31,6 +32,7 @@ import { rerunTriage, runTriage } from "@/app/lib/ai/triage";
 import { getLatestTriageResult, reviewTriage, TriageReviewError, setLearningExcluded } from "@/app/lib/db/triage";
 import { publishTicketSummary, revokeShare } from "@/app/lib/db/shares";
 import { parseQueueFilter, safeQueueReturn, ticketHref } from "@/app/lib/queue-filters";
+import { DAILY_CAP_FILE_MESSAGE } from "@/app/lib/workload";
 import { moveTicketAs, type MoveResult } from "@/app/lib/ticket-moves";
 import { stripAllLinks } from "@/app/lib/ai/links";
 import { rateTicket, RatingError } from "@/app/lib/db/ratings";
@@ -114,6 +116,9 @@ export async function staffCreateTicketAction(
   } catch (err) {
     if (err instanceof RateLimitError) {
       return { error: RATE_LIMITED_MESSAGE };
+    }
+    if (err instanceof DailyCapError) {
+      return { error: DAILY_CAP_FILE_MESSAGE };
     }
     if (err instanceof StaffTicketError) {
       return {
@@ -255,13 +260,29 @@ export async function reviewTriageAction(
   };
 }
 
+// A ticket page URL with a one-off notice for the page to show.
+function withNotice(href: string, notice: string): string {
+  return `${href}${href.includes("?") ? "&" : "?"}${notice}`;
+}
+
 export async function claimTicketAction(formData: FormData) {
   const profile = await requireStaff();
   const ticketId = String(formData.get("ticketId") ?? "");
+  // The queue tab the ticket page was opened from, kept if a notice
+  // redirects back to it.
+  const from = parseQueueFilter(String(formData.get("from") ?? ""));
   if (!isUuid(ticketId)) {
     return;
   }
-  const ticket = await claimTicket(profile.id, ticketId);
+  let ticket;
+  try {
+    ticket = await claimTicket(profile.id, ticketId);
+  } catch (err) {
+    // The daily cap on new cases (SUP-77): the ticket page says so, on the
+    // same queue tab the agent came from.
+    if (!(err instanceof DailyCapError)) throw err;
+    redirect(withNotice(ticketHref(ticketId, from), "notice=daily-cap"));
+  }
   if (!ticket) {
     // Someone else claimed it first, or it's no longer visible/valid --
     // either way, show the caller the ticket's current real state rather
@@ -287,7 +308,14 @@ export async function claimFromQueueAction(formData: FormData) {
   if (!isUuid(ticketId)) {
     redirect(returnTo);
   }
-  const ticket = await claimTicket(profile.id, ticketId);
+  let ticket;
+  try {
+    ticket = await claimTicket(profile.id, ticketId);
+  } catch (err) {
+    // The daily cap on new cases (SUP-77).
+    if (!(err instanceof DailyCapError)) throw err;
+    redirect(`${returnTo}${returnTo.includes("?") ? "&" : "?"}notice=daily-cap`);
+  }
   revalidatePath("/queue");
   revalidatePath(`/tickets/${ticketId}`);
   if (!ticket) {
@@ -302,6 +330,7 @@ export async function claimFromQueueAction(formData: FormData) {
 export async function assignTicketAction(formData: FormData) {
   await requireAdmin();
   const ticketId = String(formData.get("ticketId") ?? "");
+  const from = parseQueueFilter(String(formData.get("from") ?? ""));
   const rawAssignee = String(formData.get("assigneeId") ?? "");
   const assigneeId = rawAssignee === "" ? null : rawAssignee;
   if (!isUuid(ticketId) || (assigneeId && !isUuid(assigneeId))) {
@@ -315,7 +344,13 @@ export async function assignTicketAction(formData: FormData) {
     }
   }
 
-  await assignTicket(ticketId, assigneeId);
+  try {
+    await assignTicket(ticketId, assigneeId);
+  } catch (err) {
+    // The assignee is at their daily cap (SUP-77): the ticket page names them.
+    if (!(err instanceof DailyCapError)) throw err;
+    redirect(withNotice(ticketHref(ticketId, from), `notice=assignee-cap&assignee=${assigneeId}`));
+  }
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath("/queue");
 }

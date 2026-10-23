@@ -215,6 +215,8 @@ export async function staffCreateTicket(
   if (error) {
     if (error.code === "42501") throw new StaffTicketError("not_allowed");
     if (error.message.includes("rate_limited")) throw new RateLimitError("staff_create_ticket");
+    // "Assign to me" when the caller is at their daily cap (SUP-77).
+    if (error.message.includes("daily_case_cap_reached")) throw new DailyCapError();
     throw new Error(error.message);
   }
   // null = no customer account with that email. Returned rather than
@@ -297,6 +299,18 @@ export async function getTicketNumbers(ids: string[]): Promise<Map<string, numbe
   return result;
 }
 
+// The assignee already has their cap of new cases today (SUP-77): raised by
+// the tickets_daily_case_cap trigger, on any path that sets assignee_id.
+export class DailyCapError extends Error {
+  constructor() {
+    super("daily case cap reached");
+  }
+}
+
+function assignmentError(error: { message: string }): Error {
+  return error.message.includes("daily_case_cap_reached") ? new DailyCapError() : new Error(error.message);
+}
+
 // Atomic claim: the WHERE clause (not just the RLS policy) requires
 // assignee_id to still be null at the moment this UPDATE actually runs. If
 // two agents click "Claim" on the same unassigned ticket at once, Postgres
@@ -322,7 +336,7 @@ export async function claimTicket(
     .select(TICKET_BASE_COLUMNS)
     .maybeSingle();
   if (fresh.error) {
-    throw new Error(fresh.error.message);
+    throw assignmentError(fresh.error);
   }
   if (fresh.data) {
     return fresh.data;
@@ -337,7 +351,7 @@ export async function claimTicket(
     .select(TICKET_BASE_COLUMNS)
     .maybeSingle();
   if (started.error) {
-    throw new Error(started.error.message);
+    throw assignmentError(started.error);
   }
   // null here means neither WHERE clause matched -- someone else already
   // claimed it (or it doesn't exist/isn't visible), not an error.
@@ -361,7 +375,7 @@ export async function assignTicket(
     .maybeSingle();
 
   if (error) {
-    throw new Error(error.message);
+    throw assignmentError(error);
   }
   return data;
 }
