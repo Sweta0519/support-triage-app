@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { setPresenceAction } from "@/app/(app)/account/actions";
@@ -12,7 +11,6 @@ import { PRESENCE_DOT, PRESENCES, type Presence } from "@/app/lib/presence";
 // as everywhere else; the coloured dot beside it carries the state. The
 // choice shows at once and is undone if the server refuses it.
 export function PresenceSelect({ presence }: { presence: Presence }) {
-  const router = useRouter();
   const [shown, setShown] = useState(presence);
   const [saved, setSaved] = useState(presence);
   const [error, setError] = useState<string | null>(null);
@@ -29,12 +27,12 @@ export function PresenceSelect({ presence }: { presence: Presence }) {
     setError(null);
     startTransition(async () => {
       const result = await orFailed(setPresenceAction(next));
+      // The action revalidates the layout, so its answer already carries
+      // the new sidebar; only a refusal needs handling here.
       if (!result.ok) {
         setShown(previous);
         setError(result.error);
-        return;
       }
-      router.refresh();
     });
   }
 
