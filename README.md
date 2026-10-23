@@ -166,7 +166,9 @@ embeddings) · Vercel.
 - Role changes only through a `SECURITY DEFINER` RPC that refuses self-changes and demoting the
   last admin. Signup **hard-codes** `customer` and ignores client metadata.
 - A `BEFORE UPDATE` trigger enforces what RLS can't: immutable ticket text, legal status
-  transitions, staff-only assignees, race-free claiming.
+  transitions, staff-only assignees, race-free claiming. Two more triggers, one on update and one
+  on insert, share `enforce_daily_case_cap()`: no path can give a capped person more new cases in
+  a day than their cap (#85). People without a cap are unlimited.
 - CSRF via Server Actions' built-in Origin/Host check; **no mutating Route Handlers exist** (the
   three Route Handlers, `/auth/confirm`, `/account/export` and `/avatar/...`, are GET-only).
 - GDPR data rights are self-service on `/account`: a JSON **export** of everything the caller can
@@ -300,7 +302,7 @@ It needs dedicated test accounts in `.env.local` (`TEST_USER_*` customer A, `TES
 customer B, `TEST_AGENT_*`, `TEST_ADMIN_*`, `TEST_ROLEFLIP_EMAIL`; they aren't in `.env.example`,
 so add them by hand) -- create them with the Supabase
 Admin API (`auth.admin.createUser` with `email_confirm: true`) and set roles via the service role.
-About 120 tests in 32 spec files. Feature PRs add their own tests.
+About 175 tests in 43 spec files. Feature PRs add their own tests.
 
 - **The last five projects** (`settings`, `people`, `ai-health`, `incidents`, `workload`) change shared
   test accounts, so they run one after another. To rerun them without the main suite, keep them in
@@ -406,7 +408,7 @@ task that went straight to `main` says so, with the commit.
   small follow-ups such as `3145714` and `807c716`.
 - **Since PR #12 (2026-10-09):** every change goes through a feature branch and a PR, and every
   feature PR is reviewed. The one exception is #14, which only merged the submission repo's
-  task file (so `main` can be pushed there) and had no review. The diff is reviewed with `/code-review --comment` and the `ai-code-reviewer` subagent, and each
+  task file (so `main` could be pushed there) and had no review. The diff is reviewed with `/code-review --comment` and the `ai-code-reviewer` subagent, and each
   finding is answered inline and resolved (`docs/reviews/README.md`). The full Playwright suite
   passes before the commit, and the Vercel preview builds before the merge.
 - **Linear:** work is tracked in the team **SUP**, and each issue links its PR there.
@@ -415,6 +417,12 @@ task that went straight to `main` says so, with the commit.
     through SUP-22 to SUP-24.
   - The follow-ups to the Turing College review (epic SUP-29) and later work came after: SUP-30,
     31, 37, 38, 39 and 40 in PRs #38 to #43, then SUP-32, 33 and 34 in PRs #44 to #46.
+  - Then SUP-35, 36, 41, 42, 43 and 45 in PRs #47, #48 and #50 to #54; the public homepage
+    (SUP-48 to SUP-52 and SUP-60 to SUP-64) in PRs #55 to #64; the MCP connector (epic SUP-47:
+    SUP-53 to SUP-57, SUP-44, SUP-65 to SUP-67) in PRs #65 to #73; access requests and "Get in
+    touch" (SUP-58, SUP-68 to SUP-72) in PRs #74 to #79; and SUP-73, 74 and 75 in PRs #80 to #83.
+    #49 (the demo re-dating script) and #51 (the comparison table) have no issue.
+  - Then SUP-76 (staff presence) in PR #84 and SUP-77 (Admin > Workload) in PR #85.
 - **Since 2026-10-13, `main` is protected (SUP-35)**, and the rules bind admins too. GitHub
   **enforces** four things:
   - every change needs a PR;
@@ -428,7 +436,8 @@ task that went straight to `main` says so, with the commit.
   built before it lands. The template
   (`.github/pull_request_template.md`, from PR #47 on) has a UI section for redesigns. The exact
   settings and how to restore them are in `docs/branch-protection.md`.
-- After each merge, `main` is mirrored to the Turing College submission repo.
+- Up to PR #83 (`6afb89e`), `main` was mirrored to the Turing College submission repo after each
+  merge. From PR #84 on, it isn't: the work continues only in this repo.
 
 ## Docs
 

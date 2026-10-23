@@ -49,6 +49,9 @@ One row per `auth.users.id`. Created automatically on signup, or lazily via
 | `email`      | `text`               | Copied from `auth.users` at profile-creation time.       |
 | `full_name`  | `text`               | Nullable, user-editable.                                 |
 | `role`       | `ticketing.app_role` | Defaults to `customer`.                                  |
+| `presence`   | `text`               | `online` / `away` / `offline`, default `online`. Staff set their own via `set_own_presence()` (SUP-76). A label only: it never changes assignment or status. |
+| `daily_case_cap` | `int`            | Nullable (null = no cap), 0-200. New cases a day; set by `admin_set_workload()` (SUP-77). |
+| `timezone`   | `text`               | IANA name, default `UTC`. Says when the person's day starts, for the cap. |
 | `created_at` | `timestamptz`        | Default `now()`.                                         |
 | `updated_at` | `timestamptz`        | Default `now()`.                                         |
 
@@ -304,6 +307,10 @@ Two things RLS deliberately does *not* try to do, because it can't:
 | `sync_profile_email()` (trigger, `after update of email` on `auth.users`) | DEFINER | Keeps `profiles.email` equal to the auth email. Users cannot update `profiles.email` themselves. |
 | `match_tickets(vector(1536), int, uuid)`              | INVOKER   | Nearest tickets by cosine distance (`<=>`), returning subject + latest summary only. EXECUTE revoked from PUBLIC; granted to `service_role` only. |
 | `save_note(uuid, text, text, jsonb, text)`           | INVOKER   | Insert (`p_id` null) or update the caller's own note **and** replace its chunks in one transaction. INVOKER so the caller's RLS and column grants on `notes`/`documents` apply inside; owner is `auth.uid()`, never an argument. Returns null when an update matched nothing visible. Granted to `authenticated`. |
+| `set_own_presence(text)`                              | DEFINER   | The one write path for `profiles.presence`: always the caller's own row (`auth.uid()`, no id parameter), staff only (42501), one of the three values (22023), rate-limited (`set_presence`). Signing out calls it with `offline`. Granted to `authenticated`. |
+| `workday_start(uuid)`, `cases_assigned_today(uuid)`   | DEFINER   | Local midnight in the person's `timezone`, and the distinct tickets that became theirs since then (from `assignee_changed` events). `cases_assigned_today` is not `STABLE` on purpose: after the cap trigger's lock, it must see assignments committed while it waited. Not granted to clients. |
+| `enforce_daily_case_cap()` (triggers `tickets_00_daily_case_cap`, `before update of assignee_id`, and `tickets_00_daily_case_cap_insert`, `before insert` with an assignee) | DEFINER | Refuses a new assignee who already has their cap of new cases today (`daily_case_cap_reached`). Uncapped people skip it, and a ticket given back the same day isn't a new case. A per-person advisory lock makes two claims at once queue up, and the cap is re-read after it. The `00` names make it fire before `tickets_guard_update`, which records the `assignee_changed` event the next claim counts. |
+| `admin_workload()`, `admin_set_workload(uuid, int, text)` | DEFINER | The Admin > Workload page: every agent and admin with their cap, timezone and today's count; and the only write path for `daily_case_cap`/`timezone`. Admins only (42501); an invalid cap or a timezone missing from `pg_timezone_names` raises 22023, and a target who isn't staff P0002. Granted to `authenticated`. |
 | `match_documents(vector(1536), float, int)`          | INVOKER   | Nearest note chunks by cosine distance above a similarity threshold, **for the calling user only**: filters `user_id = auth.uid()` itself and, being INVOKER, also runs under the `documents` RLS policy. Deliberately takes **no user-id parameter** -- a parameter the client supplies is one it can lie about. Granted to `authenticated`. |
 
 EXECUTE on every callable function above is revoked from `PUBLIC` and granted explicitly:
@@ -336,6 +343,7 @@ Enforced for agents by `guard_ticket_update()`; mirrored in `ALLOWED_STATUS_TRAN
 | `rerun_triage`  | 5     | 10 minutes | `rerunTriageAction()` via `checkRateLimit()` (no row is inserted) |
 | `assistant_message` | 20 | 10 minutes | `sendMessageAction()` via `checkRateLimit()` -- a paid completion (up to 3 with tool rounds) |
 | `save_note`     | 30    | 10 minutes | `createNoteAction()` / `updateNoteAction()` via `checkRateLimit()` -- a paid embedding call, before any row is written (not consumed for a no-op edit or a missing note) |
+| `set_presence`  | 60    | 10 minutes | Inside `set_own_presence()` (database) |
 
 The insert limits are enforced in the database so that a user calling the Data API directly with
 their session token is limited exactly like the app. The app maps the trigger's
@@ -389,7 +397,8 @@ bounds cost/availability abuse of the endpoint; the 128-bit token already makes 
 
 ## Admin surface
 
-`/admin` (overview analytics) and `/admin/users` (role management) are gated by `requireAdmin()`
+`/admin` (overview analytics), `/admin/users` (role management) and `/admin/workload` (daily
+case caps and timezones, SUP-77) are gated by `requireAdmin()`
 in the route-segment layout and again in each page. Analytics are aggregated in app code over a
 bounded select that runs as the signed-in admin -- RLS is what makes it "all tickets". Role
 changes call `admin_set_role()`; reassignment is a plain `tickets` update permitted for admins by
