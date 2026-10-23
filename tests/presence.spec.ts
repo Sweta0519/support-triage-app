@@ -67,6 +67,31 @@ test.describe("staff presence", () => {
     }
   });
 
+  test("signing out sets an agent Offline, and they stay Offline until they choose otherwise", async ({ browser }) => {
+    const email = requireEnv("TEST_AGENT_EMAIL");
+    const password = requireEnv("TEST_AGENT_PASSWORD");
+    const db = await signedIn(email, password);
+    const presence = async () => (await db.from("profiles").select("presence").eq("email", email).single()).data?.presence;
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    try {
+      await login(page, email, password);
+      await page.goto("/queue");
+      await expect(page.getByRole("complementary").getByLabel("Your status")).toHaveValue("online");
+      await page.getByRole("button", { name: "Sign out" }).click();
+      await expect(page).toHaveURL(/\/login$/);
+      expect(await presence()).toBe("offline");
+
+      // Signing back in doesn't change it: presence is the person's choice.
+      await login(page, email, password);
+      await page.goto("/queue");
+      await expect(page.getByRole("complementary").getByLabel("Your status")).toHaveValue("offline");
+    } finally {
+      await db.rpc("set_own_presence", { p_presence: "online" });
+      await context.close();
+    }
+  });
+
   test("an admin has the dropdown too", async ({ browser }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
@@ -92,11 +117,13 @@ test.describe("staff presence", () => {
   });
 
   test("the database refuses a value outside the three, and never touches anyone else", async () => {
-    const adminEmail = requireEnv("TEST_ADMIN_EMAIL");
-    const admin = await signedIn(adminEmail, requireEnv("TEST_ADMIN_PASSWORD"));
-    const adminPresence = async () =>
-      (await admin.from("profiles").select("presence").eq("email", adminEmail).single()).data?.presence;
-    const before = await adminPresence();
+    // Customer A's row: nothing in the suite changes a customer's presence
+    // (staff sign-outs, run in parallel elsewhere, do change the admin's).
+    const customerEmail = requireEnv("TEST_USER_EMAIL");
+    const admin = await signedIn(requireEnv("TEST_ADMIN_EMAIL"), requireEnv("TEST_ADMIN_PASSWORD"));
+    const customerPresence = async () =>
+      (await admin.from("profiles").select("presence").eq("email", customerEmail).single()).data?.presence;
+    const before = await customerPresence();
     expect(before).toBeTruthy();
 
     const db = await signedIn(requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
@@ -105,11 +132,11 @@ test.describe("staff presence", () => {
 
     // No UPDATE grant on profiles: a direct write is refused outright.
     const target = before === "offline" ? "away" : "offline";
-    const { error: direct } = await db.from("profiles").update({ presence: target }).eq("email", adminEmail);
+    const { error: direct } = await db.from("profiles").update({ presence: target }).eq("email", customerEmail);
     expect(direct).not.toBeNull();
-    // And the agent setting their own status leaves the admin's alone.
+    // And the agent setting their own status leaves everyone else's alone.
     expect((await db.rpc("set_own_presence", { p_presence: target })).error).toBeNull();
-    expect(await adminPresence()).toBe(before);
+    expect(await customerPresence()).toBe(before);
     expect((await db.rpc("set_own_presence", { p_presence: "online" })).error).toBeNull();
   });
 });
