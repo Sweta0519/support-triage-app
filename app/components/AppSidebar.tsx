@@ -8,8 +8,10 @@ import { signOutAction } from "@/app/lib/auth/actions";
 import { pendingAccessRequestCountAction } from "@/app/(app)/admin/actions";
 import { Avatar } from "@/app/components/Avatar";
 import { Logo } from "@/app/components/Logo";
+import { PresenceSelect } from "@/app/components/PresenceSelect";
 import { roleBadgeClasses } from "@/app/lib/badges";
 import type { AppRole } from "@/app/lib/db/profiles";
+import { PRESENCE_DOT, type Presence } from "@/app/lib/presence";
 
 // The app's navigation, the same shape for every role: a left sidebar on
 // wide screens, a top bar with a menu button on phones. Which links show
@@ -220,7 +222,15 @@ export function AppSidebar({
   profile,
   accessRequests = 0,
 }: {
-  profile: { id: string; email: string; fullName: string | null; avatarPath: string | null; role: AppRole };
+  profile: {
+    id: string;
+    email: string;
+    fullName: string | null;
+    avatarPath: string | null;
+    role: AppRole;
+    // Staff only (SUP-76): customers have no presence to show or set.
+    presence: Presence | null;
+  };
   // Pending access requests, for admins (SUP-68).
   accessRequests?: number;
 }) {
@@ -313,17 +323,29 @@ export function AppSidebar({
 
         <div className="mt-auto flex flex-col gap-2 border-t border-black/[.08] px-3 py-3 dark:border-white/[.145]">
           <div className="flex items-center gap-2.5 px-3 py-1">
-            <Avatar id={profile.id} name={profile.fullName ?? profile.email} avatarPath={profile.avatarPath} size={32} />
+            <span className="relative shrink-0">
+              <Avatar id={profile.id} name={profile.fullName ?? profile.email} avatarPath={profile.avatarPath} size={32} />
+              {profile.presence ? (
+                <span
+                  aria-hidden="true"
+                  data-testid="presence-dot"
+                  className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-[var(--background)] ${PRESENCE_DOT[profile.presence]}`}
+                />
+              ) : null}
+            </span>
             <div className="flex min-w-0 flex-col leading-tight">
               {/* The display name from account settings, else the email. */}
               <span className="truncate text-xs font-medium text-black dark:text-zinc-50" title={profile.email}>
                 {profile.fullName ?? profile.email}
               </span>
-              <span
-                className={`mt-0.5 w-fit rounded-full px-1.5 py-0 text-[10px] font-medium capitalize ${roleBadgeClasses(profile.role)}`}
-              >
-                {profile.role}
-              </span>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span
+                  className={`w-fit rounded-full px-1.5 py-0 text-[10px] font-medium capitalize ${roleBadgeClasses(profile.role)}`}
+                >
+                  {profile.role}
+                </span>
+                {profile.presence ? <PresenceSelect presence={profile.presence} /> : null}
+              </div>
             </div>
           </div>
           <div className="flex gap-1.5 px-1">
