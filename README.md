@@ -166,7 +166,8 @@ embeddings) · Vercel.
 - Role changes only through a `SECURITY DEFINER` RPC that refuses self-changes and demoting the
   last admin. Signup **hard-codes** `customer` and ignores client metadata.
 - A `BEFORE UPDATE` trigger enforces what RLS can't: immutable ticket text, legal status
-  transitions, staff-only assignees, race-free claiming.
+  transitions, staff-only assignees, race-free claiming. Another trigger, on both update and
+  insert, enforces each person's daily case cap, so no path can assign past it (#85).
 - CSRF via Server Actions' built-in Origin/Host check; **no mutating Route Handlers exist** (the
   three Route Handlers, `/auth/confirm`, `/account/export` and `/avatar/...`, are GET-only).
 - GDPR data rights are self-service on `/account`: a JSON **export** of everything the caller can
@@ -300,7 +301,7 @@ It needs dedicated test accounts in `.env.local` (`TEST_USER_*` customer A, `TES
 customer B, `TEST_AGENT_*`, `TEST_ADMIN_*`, `TEST_ROLEFLIP_EMAIL`; they aren't in `.env.example`,
 so add them by hand) -- create them with the Supabase
 Admin API (`auth.admin.createUser` with `email_confirm: true`) and set roles via the service role.
-About 120 tests in 32 spec files. Feature PRs add their own tests.
+About 175 tests in 43 spec files. Feature PRs add their own tests.
 
 - **The last five projects** (`settings`, `people`, `ai-health`, `incidents`, `workload`) change shared
   test accounts, so they run one after another. To rerun them without the main suite, keep them in
@@ -415,6 +416,7 @@ task that went straight to `main` says so, with the commit.
     through SUP-22 to SUP-24.
   - The follow-ups to the Turing College review (epic SUP-29) and later work came after: SUP-30,
     31, 37, 38, 39 and 40 in PRs #38 to #43, then SUP-32, 33 and 34 in PRs #44 to #46.
+  - The latest are SUP-76 (staff presence) in PR #84 and SUP-77 (Admin > Workload) in PR #85.
 - **Since 2026-10-13, `main` is protected (SUP-35)**, and the rules bind admins too. GitHub
   **enforces** four things:
   - every change needs a PR;
@@ -428,7 +430,8 @@ task that went straight to `main` says so, with the commit.
   built before it lands. The template
   (`.github/pull_request_template.md`, from PR #47 on) has a UI section for redesigns. The exact
   settings and how to restore them are in `docs/branch-protection.md`.
-- After each merge, `main` is mirrored to the Turing College submission repo.
+- Up to PR #83 (`6afb89e`), `main` was mirrored to the Turing College submission repo after each
+  merge. From PR #84 on, it isn't: the work continues only in this repo.
 
 ## Docs
 
