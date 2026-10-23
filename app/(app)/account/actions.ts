@@ -4,14 +4,15 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
-import { getUser, requireProfile } from "@/app/lib/auth/session";
+import { getUser, requireProfile, requireStaff } from "@/app/lib/auth/session";
 import { deleteOwnAccount, LastAdminError, verifyOwnPassword } from "@/app/lib/db/account";
 import { AUTH_RATE_LIMITED_MESSAGE, consumeAuthRateLimit, refundAuthAttempt } from "@/app/lib/db/auth-rate-limit";
-import { ProfileSettingsError, updateOwnProfile } from "@/app/lib/db/profiles";
+import { PresenceRefusedError, ProfileSettingsError, setOwnPresence, updateOwnProfile } from "@/app/lib/db/profiles";
 import { checkRateLimit, RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/db/rate-limit";
 import { removeOwnAvatar, replaceOwnAvatar } from "@/app/lib/db/avatars";
 import { AVATAR_MAX_UPLOAD_BYTES, AvatarImageError, toAvatarWebp } from "@/app/lib/avatar-image";
 import { fullNameError, isQueueFilter, isQueueSort, isTheme } from "@/app/lib/preferences";
+import { isPresence, type Presence } from "@/app/lib/presence";
 import { createAccessToken, revokeAccessToken, TooManyTokensError } from "@/app/lib/db/access-tokens";
 import { isUuid } from "@/app/lib/db/tickets";
 import { TOKEN_LIFETIMES, TOKEN_NAME_MAX_LENGTH } from "@/app/lib/access-token-options";
@@ -237,4 +238,27 @@ export async function revokeAccessTokenAction(id: string): Promise<{ ok: true } 
   const revoked = await revokeAccessToken(tokenId);
   revalidatePath("/account");
   return revoked ? { ok: true } : { ok: false, error: "That token was already revoked, or isn't yours." };
+}
+
+// The sidebar's Online / Away / Offline dropdown (SUP-76). Staff only; the
+// row is always the caller's own (set_own_presence() takes no id).
+export async function setPresenceAction(presence: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireStaff();
+  if (!isPresence(presence)) return { ok: false, error: "Choose Online, Away or Offline." };
+  try {
+    await setOwnPresence(presence);
+  } catch (err) {
+    if (err instanceof RateLimitError) return { ok: false, error: RATE_LIMITED_MESSAGE };
+    if (err instanceof PresenceRefusedError) return { ok: false, error: "Your status couldn't be changed. Reload the page and try again." };
+    throw err;
+  }
+  // No revalidation: the dropdown already shows the choice, and re-rendering
+  // the layout would re-run every banner query on each click.
+  return { ok: true };
+}
+
+// The saved status, read fresh: after a call whose answer was lost, the
+// dropdown shows what the server actually holds (SUP-76).
+export async function currentPresenceAction(): Promise<Presence> {
+  return (await requireStaff()).presence;
 }

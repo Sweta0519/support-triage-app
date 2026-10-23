@@ -8,8 +8,10 @@ import { signOutAction } from "@/app/lib/auth/actions";
 import { pendingAccessRequestCountAction } from "@/app/(app)/admin/actions";
 import { Avatar } from "@/app/components/Avatar";
 import { Logo } from "@/app/components/Logo";
+import { PresenceSelect } from "@/app/components/PresenceSelect";
 import { roleBadgeClasses } from "@/app/lib/badges";
 import type { AppRole } from "@/app/lib/db/profiles";
+import type { Presence } from "@/app/lib/presence";
 
 // The app's navigation, the same shape for every role: a left sidebar on
 // wide screens, a top bar with a menu button on phones. Which links show
@@ -220,7 +222,15 @@ export function AppSidebar({
   profile,
   accessRequests = 0,
 }: {
-  profile: { id: string; email: string; fullName: string | null; avatarPath: string | null; role: AppRole };
+  profile: {
+    id: string;
+    email: string;
+    fullName: string | null;
+    avatarPath: string | null;
+    role: AppRole;
+    // Staff only (SUP-76): customers have no presence to show or set.
+    presence: Presence | null;
+  };
   // Pending access requests, for admins (SUP-68).
   accessRequests?: number;
 }) {
@@ -319,11 +329,14 @@ export function AppSidebar({
               <span className="truncate text-xs font-medium text-black dark:text-zinc-50" title={profile.email}>
                 {profile.fullName ?? profile.email}
               </span>
-              <span
-                className={`mt-0.5 w-fit rounded-full px-1.5 py-0 text-[10px] font-medium capitalize ${roleBadgeClasses(profile.role)}`}
-              >
-                {profile.role}
-              </span>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span
+                  className={`w-fit rounded-full px-1.5 py-0 text-[10px] font-medium capitalize ${roleBadgeClasses(profile.role)}`}
+                >
+                  {profile.role}
+                </span>
+                {profile.presence ? <PresenceSelect presence={profile.presence} /> : null}
+              </div>
             </div>
           </div>
           <div className="flex gap-1.5 px-1">

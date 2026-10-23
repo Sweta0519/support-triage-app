@@ -3,6 +3,7 @@ import "server-only";
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import { RateLimitError } from "@/app/lib/db/rate-limit";
 import type { Theme } from "@/app/lib/preferences";
+import type { Presence } from "@/app/lib/presence";
 import type { QueueFilterKey } from "@/app/lib/queue-filters";
 import type { QueueSort } from "@/app/lib/queue";
 
@@ -17,6 +18,8 @@ export type Profile = {
   queue_default_filter: QueueFilterKey;
   queue_default_sort: QueueSort;
   avatar_path: string | null;
+  // Staff only in practice (SUP-76); customers keep the default.
+  presence: Presence;
   created_at: string;
   updated_at: string;
 };
@@ -145,5 +148,20 @@ export async function updateOwnProfile(settings: ProfileSettings): Promise<void>
   // 22023 from the function's own checks, 23514 from a column constraint,
   // 42501 / P0002 if the session or profile vanished since the page loaded.
   if (["22023", "23514", "42501", "P0002"].includes(error.code)) throw new ProfileSettingsError();
+  throw new Error(error.message);
+}
+
+// set_own_presence() refused the caller (42501: not staff, or no session)
+// or the value (22023). Nothing was saved.
+export class PresenceRefusedError extends Error {}
+
+// The caller's own presence (SUP-76). set_own_presence() always targets
+// auth.uid(), refuses customers, and names only the presence column.
+export async function setOwnPresence(presence: Presence): Promise<void> {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("set_own_presence", { p_presence: presence });
+  if (!error) return;
+  if (error.message.includes("rate_limited")) throw new RateLimitError("set_presence");
+  if (["42501", "22023"].includes(error.code)) throw new PresenceRefusedError(error.message);
   throw new Error(error.message);
 }
