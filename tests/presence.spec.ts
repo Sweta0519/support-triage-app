@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
 import { login, requireEnv } from "./helpers";
@@ -31,6 +31,17 @@ async function signIn(email: string, password: string) {
   return db;
 }
 
+// Picks a status in the sidebar and waits for the save's answer. The
+// select stays usable while it saves, so there's nothing on the page to
+// wait for instead.
+async function pick(page: Page, value: string) {
+  const status = page.getByRole("complementary").getByLabel("Your status");
+  if ((await status.inputValue()) === value) return; // no change, no save
+  const saved = page.waitForResponse((r) => r.request().method() === "POST" && !!r.request().headers()["next-action"]);
+  await status.selectOption(value);
+  expect((await saved).ok()).toBe(true);
+}
+
 test.describe("staff presence", () => {
   // Two of these change the shared agent's presence, so they take turns.
   test.describe.configure({ mode: "serial" });
@@ -44,25 +55,59 @@ test.describe("staff presence", () => {
       await login(page, email, password);
       await page.goto("/queue");
       const sidebar = page.getByRole("complementary");
-      const status = sidebar.getByLabel("Your status");
-      await status.selectOption("online");
-      await expect(status).toBeEnabled();
+      await pick(page, "online");
 
-      await status.selectOption("away");
-      await expect(status).toBeEnabled();
+      await pick(page, "away");
       await expect(sidebar.getByTestId("presence-dot")).toHaveClass(/bg-amber-400/);
 
       await page.reload();
       await expect(sidebar.getByLabel("Your status")).toHaveValue("away");
       await expect(sidebar.getByTestId("presence-dot")).toHaveClass(/bg-amber-400/);
 
-      await sidebar.getByLabel("Your status").selectOption("offline");
-      await expect(sidebar.getByLabel("Your status")).toBeEnabled();
+      await pick(page, "offline");
       await page.reload();
       await expect(sidebar.getByLabel("Your status")).toHaveValue("offline");
     } finally {
       const db = await signedIn(email, password);
-      await db.rpc("set_own_presence", { p_presence: "online" });
+      expect((await db.rpc("set_own_presence", { p_presence: "online" })).error).toBeNull();
+      await context.close();
+    }
+  });
+
+  test("when the save's answer is lost, the dropdown shows what the server saved", async ({ browser }) => {
+    const email = requireEnv("TEST_AGENT_EMAIL");
+    const password = requireEnv("TEST_AGENT_PASSWORD");
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    try {
+      await login(page, email, password);
+      await page.goto("/queue");
+      await pick(page, "online");
+      const sidebar = page.getByRole("complementary");
+      // The next action reaches the server and saves, but its answer never
+      // comes back. Only once: the read that follows gets through.
+      await page.route(
+        "**/queue",
+        async (route) => {
+          const request = route.request();
+          if (request.method() !== "POST" || request.postData() !== '["away"]') return route.fallback();
+          await route.fetch();
+          await route.abort();
+        },
+        { times: 1 },
+      );
+      // The read that follows the lost answer: wait for it, then check.
+      const read = page.waitForResponse((r) => r.request().method() === "POST" && r.request().postData() === "[]");
+      await sidebar.getByLabel("Your status").selectOption("away");
+      await read;
+      await expect(sidebar.getByLabel("Your status")).toHaveValue("away");
+      await expect(sidebar.getByTestId("presence-dot")).toHaveClass(/bg-amber-400/);
+      await expect(sidebar.getByRole("alert")).toHaveCount(0);
+      await page.reload();
+      await expect(sidebar.getByLabel("Your status")).toHaveValue("away");
+    } finally {
+      const db = await signedIn(email, password);
+      expect((await db.rpc("set_own_presence", { p_presence: "online" })).error).toBeNull();
       await context.close();
     }
   });
@@ -87,7 +132,7 @@ test.describe("staff presence", () => {
       await page.goto("/queue");
       await expect(page.getByRole("complementary").getByLabel("Your status")).toHaveValue("offline");
     } finally {
-      await db.rpc("set_own_presence", { p_presence: "online" });
+      expect((await db.rpc("set_own_presence", { p_presence: "online" })).error).toBeNull();
       await context.close();
     }
   });
@@ -118,7 +163,7 @@ test.describe("staff presence", () => {
 
   test("the database refuses a value outside the three, and never touches anyone else", async () => {
     // Customer A's row: nothing in the suite changes a customer's presence
-    // (staff sign-outs, run in parallel elsewhere, do change the admin's).
+    // (a staff row changes whenever that person signs out or picks a status).
     const customerEmail = requireEnv("TEST_USER_EMAIL");
     const admin = await signedIn(requireEnv("TEST_ADMIN_EMAIL"), requireEnv("TEST_ADMIN_PASSWORD"));
     const customerPresence = async () =>

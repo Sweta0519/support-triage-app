@@ -151,6 +151,10 @@ export async function updateOwnProfile(settings: ProfileSettings): Promise<void>
   throw new Error(error.message);
 }
 
+// set_own_presence() refused the caller (42501: not staff, or no session)
+// or the value (22023). Nothing was saved.
+export class PresenceRefusedError extends Error {}
+
 // The caller's own presence (SUP-76). set_own_presence() always targets
 // auth.uid(), refuses customers, and names only the presence column.
 export async function setOwnPresence(presence: Presence): Promise<void> {
@@ -158,5 +162,6 @@ export async function setOwnPresence(presence: Presence): Promise<void> {
   const { error } = await supabase.rpc("set_own_presence", { p_presence: presence });
   if (!error) return;
   if (error.message.includes("rate_limited")) throw new RateLimitError("set_presence");
+  if (["42501", "22023"].includes(error.code)) throw new PresenceRefusedError(error.message);
   throw new Error(error.message);
 }
