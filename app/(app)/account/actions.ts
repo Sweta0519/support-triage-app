@@ -251,6 +251,7 @@ export async function setPresenceAction(presence: string): Promise<{ ok: true } 
     if (err instanceof RateLimitError) return { ok: false, error: RATE_LIMITED_MESSAGE };
     throw err;
   }
-  revalidatePath("/", "layout");
+  // No revalidation: the dropdown already shows the choice, and re-rendering
+  // the layout would re-run every banner query on each click.
   return { ok: true };
 }

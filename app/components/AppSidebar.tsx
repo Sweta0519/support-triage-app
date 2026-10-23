@@ -11,7 +11,7 @@ import { Logo } from "@/app/components/Logo";
 import { PresenceSelect } from "@/app/components/PresenceSelect";
 import { roleBadgeClasses } from "@/app/lib/badges";
 import type { AppRole } from "@/app/lib/db/profiles";
-import { PRESENCE_DOT, type Presence } from "@/app/lib/presence";
+import type { Presence } from "@/app/lib/presence";
 
 // The app's navigation, the same shape for every role: a left sidebar on
 // wide screens, a top bar with a menu button on phones. Which links show
@@ -323,16 +323,7 @@ export function AppSidebar({
 
         <div className="mt-auto flex flex-col gap-2 border-t border-black/[.08] px-3 py-3 dark:border-white/[.145]">
           <div className="flex items-center gap-2.5 px-3 py-1">
-            <span className="relative shrink-0">
-              <Avatar id={profile.id} name={profile.fullName ?? profile.email} avatarPath={profile.avatarPath} size={32} />
-              {profile.presence ? (
-                <span
-                  aria-hidden="true"
-                  data-testid="presence-dot"
-                  className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-[var(--background)] ${PRESENCE_DOT[profile.presence]}`}
-                />
-              ) : null}
-            </span>
+            <Avatar id={profile.id} name={profile.fullName ?? profile.email} avatarPath={profile.avatarPath} size={32} />
             <div className="flex min-w-0 flex-col leading-tight">
               {/* The display name from account settings, else the email. */}
               <span className="truncate text-xs font-medium text-black dark:text-zinc-50" title={profile.email}>

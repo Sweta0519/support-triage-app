@@ -8,7 +8,20 @@ import { login, requireEnv } from "./helpers";
 // the shared agent's presence can't disturb tests running alongside; each
 // test still puts it back to Online.
 
-async function signedIn(email: string, password: string) {
+// One session per account for the whole file: Supabase Auth rate-limits
+// sign-ins, and the main suite already signs in many times in parallel.
+const sessions = new Map<string, ReturnType<typeof signIn>>();
+
+function signedIn(email: string, password: string) {
+  let session = sessions.get(email);
+  if (!session) {
+    session = signIn(email, password);
+    sessions.set(email, session);
+  }
+  return session;
+}
+
+async function signIn(email: string, password: string) {
   const db = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
     db: { schema: "ticketing" },
     auth: { persistSession: false, autoRefreshToken: false },
@@ -76,15 +89,24 @@ test.describe("staff presence", () => {
   });
 
   test("the database refuses a value outside the three, and never touches anyone else", async () => {
+    const adminEmail = requireEnv("TEST_ADMIN_EMAIL");
+    const admin = await signedIn(adminEmail, requireEnv("TEST_ADMIN_PASSWORD"));
+    const adminPresence = async () =>
+      (await admin.from("profiles").select("presence").eq("email", adminEmail).single()).data?.presence;
+    const before = await adminPresence();
+    expect(before).toBeTruthy();
+
     const db = await signedIn(requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
     const { error } = await db.rpc("set_own_presence", { p_presence: "busy" });
     expect(error?.code).toBe("22023");
 
     // No UPDATE grant on profiles: a direct write is refused outright.
-    const { error: direct } = await db
-      .from("profiles")
-      .update({ presence: "offline" })
-      .eq("email", requireEnv("TEST_ADMIN_EMAIL"));
+    const target = before === "offline" ? "away" : "offline";
+    const { error: direct } = await db.from("profiles").update({ presence: target }).eq("email", adminEmail);
     expect(direct).not.toBeNull();
+    // And the agent setting their own status leaves the admin's alone.
+    expect((await db.rpc("set_own_presence", { p_presence: target })).error).toBeNull();
+    expect(await adminPresence()).toBe(before);
+    expect((await db.rpc("set_own_presence", { p_presence: "online" })).error).toBeNull();
   });
 });
