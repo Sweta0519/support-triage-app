@@ -5,7 +5,7 @@ import type { AnalyticsTicketRow } from "@/app/lib/analytics";
 import { MAX_ROWS } from "@/app/lib/db/admin";
 
 const COLUMNS = `status, created_at, first_response_at, assignee_id,
-  latest_triage:triage_results!ticket_id(frustration, is_escalation_risk),
+  latest_triage:triage_results!triage_results_ticket_workspace_fkey(frustration, is_escalation_risk),
   triage_state:ticket_triage_state(
     priority, category, team, reviewed_at, learning_excluded_at,
     reviewed_result:triage_results!reviewed_result_id(priority, category, team)
@@ -25,8 +25,9 @@ export async function listAnalyticsTickets(): Promise<{
   sampled: boolean;
 }> {
   const supabase = await createServerSupabaseClient();
-  // Only each ticket's newest triage run. The !ticket_id hint is needed
-  // because triage_results also references tickets through duplicate_of.
+  // Only each ticket's newest triage run. The foreign-key hint is needed
+  // because triage_results also references tickets through duplicate_of;
+  // it names the constraint, since both keys include workspace_id.
   const newestRun = { referencedTable: "triage_results", ascending: false } as const;
   const [recentRes, openRes] = await Promise.all([
     supabase

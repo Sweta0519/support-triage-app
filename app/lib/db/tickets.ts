@@ -238,12 +238,13 @@ export async function listQueueTickets(
     .from("tickets")
     .select(
       `id, number, subject, status, created_at, assignee_id, first_response_at, ${TRIAGE_STATE_EMBED},
-       latest_triage:triage_results!ticket_id(id, summary, is_escalation_risk, frustration, needs_human_review)`
+       latest_triage:triage_results!triage_results_ticket_workspace_fkey(id, summary, is_escalation_risk, frustration, needs_human_review)`
     )
     .neq("status", "closed")
     .order("created_at", { ascending: true })
-    // Only the newest run per ticket. The !ticket_id hint is needed because
-    // triage_results also references tickets through duplicate_of.
+    // Only the newest run per ticket. The foreign-key hint is needed because
+    // triage_results also references tickets through duplicate_of; it names
+    // the constraint, since both keys include workspace_id.
     .order("created_at", { referencedTable: "triage_results", ascending: false })
     .limit(1, { referencedTable: "triage_results" });
 
