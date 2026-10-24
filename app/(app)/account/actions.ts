@@ -13,6 +13,7 @@ import { removeOwnAvatar, replaceOwnAvatar } from "@/app/lib/db/avatars";
 import { AVATAR_MAX_UPLOAD_BYTES, AvatarImageError, toAvatarWebp } from "@/app/lib/avatar-image";
 import { fullNameError, isQueueFilter, isQueueSort, isTheme } from "@/app/lib/preferences";
 import { isPresence, type Presence } from "@/app/lib/presence";
+import { shownPresence } from "@/app/lib/work-hours";
 import { createAccessToken, revokeAccessToken, TooManyTokensError } from "@/app/lib/db/access-tokens";
 import { isUuid } from "@/app/lib/db/tickets";
 import { TOKEN_LIFETIMES, TOKEN_NAME_MAX_LENGTH } from "@/app/lib/access-token-options";
@@ -258,7 +259,8 @@ export async function setPresenceAction(presence: string): Promise<{ ok: true } 
 }
 
 // The saved status, read fresh: after a call whose answer was lost, the
-// dropdown shows what the server actually holds (SUP-76).
+// dropdown shows what the server actually holds (SUP-76), as the working
+// hours have it now (SUP-85).
 export async function currentPresenceAction(): Promise<Presence> {
-  return (await requireStaff()).presence;
+  return shownPresence(await requireStaff()).presence;
 }

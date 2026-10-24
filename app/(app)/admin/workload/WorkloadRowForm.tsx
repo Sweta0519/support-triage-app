@@ -3,9 +3,10 @@
 import { setWorkloadAction } from "../actions";
 import { Avatar } from "@/app/components/Avatar";
 import { useSafeActionState } from "@/app/components/useSafeActionState";
-import { PRESENCE_DOT, PRESENCES } from "@/app/lib/presence";
+import { PRESENCE_DOT, PRESENCES, type Presence } from "@/app/lib/presence";
 import type { WorkloadRow } from "@/app/lib/db/workload";
 import { DAILY_CAP_MAX } from "@/app/lib/workload";
+import { WEEKDAYS } from "@/app/lib/work-hours";
 
 const fieldClass =
   "rounded-lg border border-black/[.08] bg-white px-2 py-1 text-xs text-black dark:border-white/[.145] dark:bg-black dark:text-zinc-50";
@@ -18,12 +19,16 @@ export function WorkloadRowForm({
   row,
   name,
   isSelf,
+  shown,
   localTime,
   zoneGroups,
 }: {
   row: WorkloadRow;
   name: string;
   isSelf: boolean;
+  // Their status as the page rendered it: their working hours, or their
+  // own pick when it's newer than the last shift start or end (SUP-85).
+  shown: { presence: Presence; source: "schedule" | "manual" };
   // The time now in their timezone, as the page rendered it.
   localTime: string;
   zoneGroups: ZoneGroup[];
@@ -34,6 +39,8 @@ export function WorkloadRowForm({
   }));
   const formId = `workload-${row.id}`;
   const atCap = row.daily_case_cap !== null && row.assigned_today >= row.daily_case_cap;
+  const hasHours = row.work_days !== null;
+  const hoursKey = `${row.work_days?.join(",") ?? "none"}|${row.work_start}|${row.work_end}`;
 
   return (
     <tr className="border-b border-black/[.06] align-top last:border-0 dark:border-white/[.08]">
@@ -54,9 +61,14 @@ export function WorkloadRowForm({
       </td>
       <td className="px-4 py-3">
         <span className="flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-400">
-          <span aria-hidden="true" className={`h-2 w-2 rounded-full ${PRESENCE_DOT[row.presence]}`} />
-          {PRESENCES[row.presence]}
+          <span aria-hidden="true" className={`h-2 w-2 rounded-full ${PRESENCE_DOT[shown.presence]}`} />
+          {PRESENCES[shown.presence]}
         </span>
+        {hasHours ? (
+          <span className="mt-1 block text-[11px] text-zinc-500 dark:text-zinc-500">
+            {shown.source === "schedule" ? "By working hours" : "Set by hand"}
+          </span>
+        ) : null}
       </td>
       <td className="px-4 py-3 text-xs text-zinc-600 dark:text-zinc-400">
         <span className={atCap ? "font-medium text-black dark:text-zinc-50" : undefined}>
@@ -103,6 +115,52 @@ export function WorkloadRowForm({
           ))}
         </select>
         <span className="mt-1 block text-[11px] text-zinc-500 dark:text-zinc-500">{localTime} there now</span>
+      </td>
+      <td className="px-4 py-3">
+        {/* Keyed like the cap above. No days and no times = no schedule. */}
+        <div key={hoursKey} className="flex flex-col gap-1.5">
+          <fieldset className="flex gap-0.5">
+            <legend className="sr-only">Working days for {name}</legend>
+            {WEEKDAYS.map((d) => (
+              <label key={d.day} title={d.short} className="relative cursor-pointer">
+                <input
+                  form={formId}
+                  type="checkbox"
+                  name="day"
+                  value={d.day}
+                  defaultChecked={row.work_days?.includes(d.day) ?? false}
+                  className="peer sr-only"
+                />
+                <span
+                  aria-hidden="true"
+                  className="flex h-6 w-6 items-center justify-center rounded-full border border-black/[.08] text-[11px] font-medium text-zinc-500 peer-checked:border-transparent peer-checked:bg-zinc-900 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500 dark:border-white/[.145] dark:text-zinc-400 dark:peer-checked:bg-zinc-100 dark:peer-checked:text-black"
+                >
+                  {d.letter}
+                </span>
+                <span className="sr-only">{d.short}</span>
+              </label>
+            ))}
+          </fieldset>
+          <div className="flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-500">
+            <input
+              form={formId}
+              type="time"
+              name="start"
+              defaultValue={row.work_start?.slice(0, 5) ?? ""}
+              aria-label={`Shift start for ${name}`}
+              className={fieldClass}
+            />
+            <span aria-hidden="true">–</span>
+            <input
+              form={formId}
+              type="time"
+              name="end"
+              defaultValue={row.work_end?.slice(0, 5) ?? ""}
+              aria-label={`Shift end for ${name}`}
+              className={fieldClass}
+            />
+          </div>
+        </div>
       </td>
       <td className="px-4 py-3">
         <form id={formId} ref={formRef} action={action} className="flex flex-col items-start gap-1">

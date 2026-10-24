@@ -5,6 +5,7 @@ import { RateLimitError } from "@/app/lib/db/rate-limit";
 import type { Theme } from "@/app/lib/preferences";
 import type { Presence } from "@/app/lib/presence";
 import type { QueueFilterKey } from "@/app/lib/queue-filters";
+import type { WorkHours } from "@/app/lib/work-hours";
 import type { QueueSort } from "@/app/lib/queue";
 
 export type AppRole = "customer" | "agent" | "admin";
@@ -21,11 +22,15 @@ export type Profile = {
   queue_default_filter: QueueFilterKey;
   queue_default_sort: QueueSort;
   avatar_path: string | null;
-  // Staff only in practice (SUP-76); customers keep the default.
+  // Staff only in practice (SUP-76); customers keep the default. The last
+  // pick from the dropdown: show shownPresence() instead, which also follows
+  // their working hours (SUP-85).
   presence: Presence;
+  presence_set_at: string | null;
+  timezone: string;
   created_at: string;
   updated_at: string;
-};
+} & WorkHours;
 
 export const APP_ROLES: readonly AppRole[] = ["customer", "agent", "admin"];
 

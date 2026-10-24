@@ -2,6 +2,7 @@ import { requireAdmin } from "@/app/lib/auth/session";
 import { listWorkload } from "@/app/lib/db/workload";
 import { profileName } from "@/app/lib/people";
 import { localTime, timezoneLabel, timezoneNames } from "@/app/lib/workload";
+import { shownPresence } from "@/app/lib/work-hours";
 import { WorkloadRowForm, type ZoneGroup } from "./WorkloadRowForm";
 
 // The timezone picker's options, grouped by region ("Europe", "America",
@@ -28,8 +29,9 @@ function buildZoneGroups(): ZoneGroup[] {
 }
 
 // Admin > Workload (SUP-77): every agent and admin, how many new cases
-// they've been given today, their daily cap and their workplace timezone.
-// The cap is enforced in the database on every way a ticket gets assigned.
+// they've been given today, their daily cap, their workplace timezone and
+// their working hours (SUP-85). The cap is enforced in the database on
+// every way a ticket gets assigned; the hours only set the status shown.
 export default async function AdminWorkloadPage() {
   const admin = await requireAdmin();
   const rows = await listWorkload();
@@ -44,6 +46,11 @@ export default async function AdminWorkloadPage() {
           A daily cap limits how many new cases someone can be given in a day, whether they claim them or an admin
           assigns them. Their day starts at midnight in their workplace timezone. Leave the cap blank for no limit.
         </p>
+        <p className="max-w-3xl text-sm text-zinc-600 dark:text-zinc-400">
+          Working hours set their status by themselves: Online during the shift, Offline outside it, in their workplace
+          timezone. A status they pick themselves holds until their shift next starts or ends. An end time earlier than
+          the start means the shift ends the next day. Working hours never assign tickets.
+        </p>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-black/[.08] dark:border-white/[.145]">
@@ -55,6 +62,7 @@ export default async function AdminWorkloadPage() {
               <th className="px-4 py-3 font-medium">New cases today</th>
               <th className="px-4 py-3 font-medium">Daily cap</th>
               <th className="px-4 py-3 font-medium">Workplace timezone</th>
+              <th className="px-4 py-3 font-medium">Working hours</th>
               <th className="px-4 py-3 font-medium">
                 <span className="sr-only">Save</span>
               </th>
@@ -67,6 +75,7 @@ export default async function AdminWorkloadPage() {
                 row={row}
                 name={profileName(row)}
                 isSelf={row.id === admin.id}
+                shown={shownPresence(row, now)}
                 localTime={localTime(row.timezone, now)}
                 zoneGroups={groups}
               />
