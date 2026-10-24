@@ -2,22 +2,37 @@
 
 Source: [The Data API - exposing custom schemas — Supabase Docs](https://supabase.com/docs/guides/api/using-custom-schemas)
 
-Project: **notes-collections** (ref `jcnsjjyayjkzgyybzcgr`) -- this app **shares its Supabase
-project with `notes-collections`** rather than owning a dedicated project (the account was
-already at the free-tier 2-project limit). `notes-collections` owns the `public` schema
-(`notes`/`collections`/`tags`/`note_tags`); everything for this app lives in a separate
-**`ticketing`** schema in the same database, created via migrations in `supabase/migrations/`
-(unlike `notes-collections`, whose tables are managed by hand in the dashboard).
+Project: **support-triage** (ref `jcnsjjyayjkzgyybzcgr`). Everything for this app lives in the
+**`ticketing`** schema, created via migrations in `supabase/migrations/`.
 
-## Consequences of sharing a project
+## History: a project that used to be shared (SUP-79)
 
-- **`auth.users` is shared.** There is one sign-up/sign-in pool for both apps -- a person who
-  created an account via notes-collections can sign in to this app with the same credentials,
-  and vice versa. This is a deliberate tradeoff, not an accident.
-- A user who already existed in `auth.users` before ever visiting this app has no
-  `ticketing.profiles` row and never fires the on-signup trigger. App code must get-or-create
-  a profile on first touch (`ticketing.ensure_profile()`), not assume every signed-in user
-  already has one.
+This app started inside the Supabase project of a separate app, `notes-collections`, because
+the account was already at the free tier's 2-project limit. notes-collections owned the
+`public` schema (`notes`/`collections`/`tags`/`note_tags`), and both apps used one `auth.users`
+pool, so a notes-collections account could sign in here too.
+
+On 2026-10-24 notes-collections was retired and the project renamed `support-triage`:
+
+- Its four `public` tables were backed up (a JSON export, kept outside the repo) and dropped
+  by `20261024000000_drop_notes_collections_tables.sql`. `public` is now empty.
+- Its 4 sign-in accounts (users with no `ticketing.profiles` row) were deleted, so every user
+  in `auth.users` is a Support Triage user.
+
+Older migrations, comments and review docs still say the project is shared. They describe
+how things were when they were written.
+
+## What still applies
+
+- **RoboMart shares the database, not the sign-ins.** The RoboMart shop (Payload + Stripe)
+  keeps its own `robomart` schema here. It doesn't use Supabase Auth: Payload has its own
+  `robomart.users`, and nothing in `robomart` references `auth.users`. `ticketing` and
+  `robomart` never reference each other. The database, its quotas and the service-role key
+  are still shared, so a leaked RoboMart service-role key would expose `ticketing` too. Move
+  RoboMart to its own project once a free slot opens or the org moves to Pro.
+- **Keep calling `ticketing.ensure_profile()`.** Every current user has a profile, and the
+  on-signup trigger creates one for each new user. But get-or-create on first touch stays the
+  rule, so code never assumes the row exists.
 - The `ticketing` schema must be added to **Data API -> Exposed schemas** in the Supabase
   dashboard (Settings -> API) before `supabase-js` can query it -- only `public` is exposed by
   default. Every client in `app/lib/auth/clients.ts` is created with `db.schema = 'ticketing'`
@@ -292,8 +307,8 @@ Two things RLS deliberately does *not* try to do, because it can't:
 |-------------------------------------------------------|-----------|---------------------------------------------------------------------------------------------------------------|
 | `app_role()`, `is_staff()`, `is_admin()`              | DEFINER   | Role lookups used inside policies. DEFINER so a `profiles` policy can check the caller's role without recursing into itself. |
 | `can_view_ticket(uuid)`                               | **INVOKER** | "Can the caller see this ticket?" for child tables. INVOKER on purpose: it inherits the caller's own `tickets` RLS. Making it DEFINER would bypass ticket RLS for every child table. |
-| `handle_new_user()` (trigger)                         | DEFINER   | On `auth.users` insert: creates a `profiles` row with `role` **hard-coded to `customer`**, ignoring signup metadata (blocks self-escalation). Skipped for a user with no email, so this trigger can never break the other app's signups on the shared `auth.users`. |
-| `ensure_profile()`                                    | DEFINER   | Get-or-create the caller's profile (needed because `auth.users` is shared with notes-collections). Always creates as `customer`. |
+| `handle_new_user()` (trigger)                         | DEFINER   | On `auth.users` insert: creates a `profiles` row with `role` **hard-coded to `customer`**, ignoring signup metadata (blocks self-escalation). Skipped for a user with no email, so this trigger can never break a signup it doesn't understand (written when `auth.users` was shared with notes-collections). |
+| `ensure_profile()`                                    | DEFINER   | Get-or-create the caller's profile (first needed when `auth.users` was shared with notes-collections; kept so code never assumes the row exists). Always creates as `customer`. |
 | `admin_set_role(uuid, app_role)`                      | DEFINER   | The only path to change a role. Re-checks `is_admin()`; takes a transaction-scoped advisory lock so two concurrent demotions can't both pass the last-admin check; refuses changing your own role and demoting the last admin; demoting staff to `customer` unassigns their tickets so they return to the shared queue. |
 | `review_triage(uuid, uuid, ticket_priority, ticket_category, ticket_team)` | DEFINER | Staff confirm or correct a ticket's AI triage. Checks `is_staff()` and visibility itself (admins: any ticket; agents: unassigned or their own -- mirrors `tickets_select`, since `can_view_ticket()` would see everything inside a DEFINER function); refuses a `p_result_id` that is not the ticket's latest run (`stale_triage`); writes the fields plus `reviewed_*`, a `*_changed` event per changed field and a `triage_reviewed` event (`confirmed` / `corrected` / `manual`). Granted to `authenticated`. |
 | `set_updated_at()` (trigger)                          | INVOKER   | Maintains `tickets.updated_at`.                                                                               |

@@ -103,10 +103,11 @@ export async function setUserRole(targetUserId: string, role: AppRole): Promise<
   }
 }
 
-// A signed-in user may not have a ticketing.profiles row yet -- this project
-// shares its Supabase project (and auth.users) with notes-collections, so a
-// user who signed up there has never fired the on-signup trigger for this
-// app. ensure_profile() get-or-creates instead of assuming the row exists.
+// A signed-in user may not have a ticketing.profiles row yet -- auth.users
+// used to be shared with another app (notes-collections, retired in SUP-79),
+// whose users never fired the on-signup trigger for this app. Every current
+// user has a row, but ensure_profile() still get-or-creates instead of
+// assuming it exists.
 export async function getOrCreateProfile(): Promise<Profile | null> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.rpc("ensure_profile");
