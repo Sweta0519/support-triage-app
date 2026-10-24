@@ -14,7 +14,10 @@ import type { TicketStatus } from "@/app/lib/db/tickets";
 // see incidents, and an agent sees only the grouped tickets they can see.
 // The service-role functions are for the background detection (no signed-in
 // user) and for team-wide counts that must not depend on one agent's view;
-// they return no ticket content.
+// they return no ticket content. RLS doesn't scope them to a workspace, so
+// a function that takes incident ids trusts they came from a
+// workspace-scoped read (detection, or the caller's RLS); one that lists
+// incidents takes the workspace id.
 
 export type Incident = {
   id: string;
