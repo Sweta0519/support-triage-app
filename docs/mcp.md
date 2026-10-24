@@ -131,8 +131,8 @@ sign-out everywhere) take effect when the cached session is next renewed, within
   per server instance per owner, and again only when a refresh fails.
 - Supabase Auth appears to keep one pending sign-in-link token per user (not checked against
   its source). If so, generating one for the MCP sign-in replaces it, so a password-reset or
-  magic-link email the owner hasn't clicked yet stops working, if a sign-in happens in between. This app doesn't send those emails today, but
-  `auth.users` is shared with Notes Collections (`docs/supabase-schema.md`). The fix would be
+  magic-link email the owner hasn't clicked yet stops working, if a sign-in happens in between. This app doesn't send those emails today, so
+  this only matters once it does. The fix would be
   a JWT this server signs itself, with a signing key it holds that Supabase also accepts.
 
 ### Unknown tokens aren't throttled by the app

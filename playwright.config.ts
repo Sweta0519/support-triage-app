@@ -28,7 +28,7 @@ export default defineConfig({
       name: "setup",
       testMatch: /\.setup\.ts$/,
       // After every run, delete the probe tickets the suite filed in the
-      // shared project (tests/cleanup.teardown.ts).
+      // live project (tests/cleanup.teardown.ts).
       teardown: "cleanup",
     },
     {

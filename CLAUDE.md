@@ -105,7 +105,8 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
   proxy is not an authorization layer).
 - The one other proxy rule: a signed-out visitor at `/` is rewritten to the public homepage
   (`app/welcome/`, SUP-48), so the address stays `/`. Signed-in users get the app at `/`.
-- A user can exist in `auth.users` without a `ticketing.profiles` row yet (see Database above).
+- A user can exist in `auth.users` without a `ticketing.profiles` row yet (the on-signup
+  trigger skips a user with no email or a clashing one, and `auth.users` was once shared).
   Any code path that reads `profiles` for the current user must call
   `ticketing.ensure_profile()` first, not assume the row exists.
 - After sign-in, redirect to `/`. After sign-out, redirect to `/login`.

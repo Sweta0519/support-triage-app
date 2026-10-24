@@ -96,8 +96,8 @@ const TICKET_BASE_COLUMNS =
 const TICKET_COLUMNS = `${TICKET_BASE_COLUMNS}, ${TRIAGE_STATE_EMBED}`;
 
 // Every query here also filters by customer_id explicitly, even though RLS
-// already enforces it -- scoping doesn't depend on RLS alone (same defense-
-// in-depth pattern as notes-collections' app/lib/db.ts).
+// already enforces it -- scoping doesn't depend on RLS alone (defense in
+// depth).
 
 export async function listMyTickets(userId: string): Promise<TicketSummary[]> {
   const supabase = await createServerSupabaseClient();

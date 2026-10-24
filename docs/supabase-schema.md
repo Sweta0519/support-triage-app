@@ -16,8 +16,12 @@ On 2026-10-24 notes-collections was retired and the project renamed `support-tri
 
 - Its four `public` tables were backed up (a JSON export, kept outside the repo) and dropped
   by `20261024000000_drop_notes_collections_tables.sql`. `public` is now empty.
-- Its 4 sign-in accounts (users with no `ticketing.profiles` row) were deleted, so every user
-  in `auth.users` is a Support Triage user.
+  Before the drop, a catalog check found nothing else in `public`: no views, functions or
+  types, only the four tables and their id sequences.
+- Its 4 sign-in accounts were deleted, so every user in `auth.users` is a Support Triage user.
+  They were the users with no `ticketing.profiles` row. Their emails were listed and the owner
+  confirmed each one as an old notes-collections test account before the delete, which named
+  the 4 emails explicitly.
 
 Older migrations, comments and review docs still say the project is shared. They describe
 how things were when they were written.

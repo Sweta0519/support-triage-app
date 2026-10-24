@@ -215,8 +215,8 @@ npx supabase db push          # applies supabase/migrations/ in order
 ```
 
 Then in the Supabase dashboard: **Settings -> API -> Data API -> Exposed schemas** -> add
-`ticketing`. This app keeps every table in its own `ticketing` schema (it shares a Supabase
-project with another app -- see `docs/supabase-schema.md` for why and what that implies).
+`ticketing`. This app keeps every table in its own `ticketing` schema, not `public` (see
+`docs/supabase-schema.md` for why).
 
 Make yourself admin once you've signed up (SQL editor):
 

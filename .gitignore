@@ -56,3 +56,6 @@ next-env.d.ts
 
 # Backups written by scripts/backdate-demo.mjs (live demo data)
 /.demo-backups/
+
+# graphify output: rebuilt locally, and it indexes untracked private docs
+graphify-out/

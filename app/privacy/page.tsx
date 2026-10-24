@@ -241,8 +241,7 @@ export default function PrivacyPolicyPage() {
             &quot;Delete my account&quot; permanently removes your sign-in, your profile, your
             tickets and their comments, and your notes and chats. Replies you wrote on other
             people&apos;s tickets are kept without your name so the other party&apos;s record stays
-            intact. Your sign-in identity is shared with another app run by the same team, so
-            deleting it here deletes it there too. Anything else, including correction or
+            intact. Anything else, including correction or
             objection, goes to the contact above and is answered within one month.
           </p>
         </section>
