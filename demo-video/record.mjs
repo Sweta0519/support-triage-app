@@ -18,8 +18,8 @@
 // customer B (replacing the previous take's), and reviews, claims, answers,
 // moves, flags, labels, shares, resolves and rates it as the test admin.
 // It keeps one "Refund policy" note on the admin for Sage. The agent's theme
-// switch in the montage is put back afterwards. That data is the shared
-// Supabase project's (the same database as notes-collections), so the newest
+// switch in the montage is put back afterwards. That data is the live
+// Supabase project's (the same database production uses), so the newest
 // ticket in the queue after a take is the demo's.
 //
 // This is a dev-only Node script, never part of the app: it uses the

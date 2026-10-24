@@ -75,10 +75,6 @@ export default async function AccountPage() {
           wrote on other people&apos;s tickets stay on those tickets without your name. There is no
           undo.
         </p>
-        <p className={body}>
-          Your sign-in is shared with the Notes Collections app run by the same team. Deleting it
-          here deletes your account and data there as well.
-        </p>
         <DeleteAccountForm email={profile.email} />
       </section>
     </div>

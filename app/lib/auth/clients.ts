@@ -9,8 +9,8 @@ import { cookies } from "next/headers";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-// This app's tables all live in the `ticketing` schema (shared Supabase
-// project with notes-collections, which owns `public`) -- defaulting every
+// This app's tables all live in the `ticketing` schema (not `public`, which
+// a retired app owned when the project was shared) -- defaulting every
 // client to it here means app/lib/db/ never has to call `.schema('ticketing')`
 // itself. Auth methods (supabase.auth.*) are unaffected by this option.
 const DB_OPTIONS = { db: { schema: "ticketing" } } as const;

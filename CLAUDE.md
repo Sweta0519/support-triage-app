@@ -27,14 +27,14 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
 
 ## Database
 
-- **This project shares its Supabase project with a separate app, `notes-collections`.** That
-  app owns the `public` schema. Everything for this app lives in a dedicated **`ticketing`**
-  schema in the same database -- see `docs/supabase-schema.md` for the full rationale and the
-  consequences of sharing one `auth.users` pool between two apps.
+- **The Supabase project (`support-triage`) is this app's own** (SUP-79). Until 2026-10-24 it
+  was shared with `notes-collections`, which is now retired: its `public` tables and its
+  sign-ins were removed. Everything for this app lives in the **`ticketing`** schema, and
+  `auth.users` holds only this app's users. RoboMart, a separate Payload shop, still keeps its
+  own `robomart` schema in the same database: it doesn't use Supabase Auth, and the two
+  schemas never reference each other. See `docs/supabase-schema.md`.
 - **Schema changes are migrations, not dashboard edits.** Every schema change is a file in
-  `supabase/migrations/`, applied via the Supabase CLI. This is the opposite of
-  `notes-collections`' convention (dashboard-managed tables) -- don't mix the two approaches
-  within this repo.
+  `supabase/migrations/`, applied via the Supabase CLI.
 - **All Supabase reads and writes go through `app/lib/db/`.** No component or route handler
   calls the Supabase client directly.
 - Supabase project URL and anon key are read from environment variables
@@ -105,7 +105,8 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
   proxy is not an authorization layer).
 - The one other proxy rule: a signed-out visitor at `/` is rewritten to the public homepage
   (`app/welcome/`, SUP-48), so the address stays `/`. Signed-in users get the app at `/`.
-- A user can exist in `auth.users` without a `ticketing.profiles` row yet (see Database above).
+- A user can exist in `auth.users` without a `ticketing.profiles` row yet (the on-signup
+  trigger skips a user with no email or a clashing one, and `auth.users` was once shared).
   Any code path that reads `profiles` for the current user must call
   `ticketing.ensure_profile()` first, not assume the row exists.
 - After sign-in, redirect to `/`. After sign-out, redirect to `/login`.
