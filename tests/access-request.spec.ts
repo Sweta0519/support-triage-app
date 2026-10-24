@@ -117,8 +117,12 @@ test("the first sign-in files exactly one access-request ticket, as the customer
     await login(page, user.email, user.password);
     expect(new URL(page.url()).pathname).toBe("/");
     expect(await user.tickets()).toHaveLength(1);
-    const { data: profile } = await service().from("profiles").select("role, access_requested_at").eq("id", user.id).single();
-    expect(profile!.role).toBe("customer");
+    const { data: profile } = await service()
+      .from("profiles")
+      .select("access_requested_at, membership:workspace_members(role)")
+      .eq("id", user.id)
+      .single();
+    expect(profile!.membership).toEqual({ role: "customer" });
     expect(profile!.access_requested_at).not.toBeNull();
     // Filed, so the copy kept with the sign-in is gone.
     const { data: account } = await service().auth.admin.getUserById(user.id);
@@ -150,8 +154,12 @@ test("signing up through Get in touch files the request straight away when the e
     test.skip(page.url().includes("confirmEmail"), "The project requires email confirmation");
     await expect(page).toHaveURL(/\/tickets\?requested=1$/);
     await expect(page.getByRole("status")).toContainText("Thanks for getting in touch.");
-    const { data: profile } = await admin.from("profiles").select("id, role, access_request_status").eq("email", email).single();
-    expect(profile).toMatchObject({ role: "customer", access_request_status: "pending" });
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("id, access_request_status, membership:workspace_members(role)")
+      .eq("email", email)
+      .single();
+    expect(profile).toMatchObject({ membership: { role: "customer" }, access_request_status: "pending" });
     const { data: tickets } = await admin.from("tickets").select("subject, body").eq("customer_id", profile!.id);
     expect(tickets).toEqual([
       expect.objectContaining({ subject: "Getting in touch: Globex Support", body: expect.stringContaining("Team size: 21-100") }),

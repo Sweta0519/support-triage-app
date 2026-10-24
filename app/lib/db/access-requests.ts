@@ -55,7 +55,7 @@ export async function listAccessRequests(): Promise<AccessRequest[]> {
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, email, full_name, role, access_requested_at, access_request_status, access_decided_by, access_decided_at, ticket:tickets!profiles_access_request_ticket_id_fkey(id, number, body)"
+      "id, email, full_name, access_requested_at, access_request_status, access_decided_by, access_decided_at, membership:workspace_members!inner(role), ticket:tickets!profiles_access_request_ticket_id_fkey(id, number, body)"
     )
     .not("access_request_status", "is", null)
     .order("access_requested_at", { ascending: false })
@@ -68,7 +68,7 @@ export async function listAccessRequests(): Promise<AccessRequest[]> {
     id: string;
     email: string;
     full_name: string | null;
-    role: string;
+    membership: { role: string };
     access_requested_at: string;
     access_request_status: AccessRequestStatus;
     access_decided_by: string | null;
@@ -79,7 +79,7 @@ export async function listAccessRequests(): Promise<AccessRequest[]> {
     userId: r.id,
     email: r.email,
     name: r.full_name,
-    role: r.role,
+    role: r.membership.role,
     requestedAt: r.access_requested_at,
     status: r.access_request_status,
     ticket: r.ticket,

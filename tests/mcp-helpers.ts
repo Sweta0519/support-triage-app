@@ -47,9 +47,9 @@ export async function throwawayWithToken(tag = "mcp") {
 }
 
 // Sets a throwaway account's role directly (service role), as admin_set_role
-// would.
+// would. The role is the workspace membership's (SUP-81).
 export async function setRole(userId: string, role: "customer" | "agent" | "admin") {
-  expect((await service().from("profiles").update({ role }).eq("id", userId)).error).toBeNull();
+  expect((await service().from("workspace_members").update({ role }).eq("user_id", userId)).error).toBeNull();
 }
 
 // Calls one MCP tool with a token. Returns the parsed JSON result, or the

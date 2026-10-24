@@ -103,13 +103,16 @@ export async function setIncidentAiText(
 }
 
 // Open incidents with their team-wide ticket counts, for the staff banner.
+// Service role, so the caller's workspace is named here explicitly.
 export async function listOpenIncidentsWithCounts(
+  workspaceId: string,
   limit: number
 ): Promise<(Pick<Incident, "id" | "number" | "title" | "first_seen_at"> & { ticketCount: number })[]> {
   const supabase = createServiceSupabaseClient();
   const { data, error } = await supabase
     .from("incidents")
     .select("id, number, title, first_seen_at, tickets:incident_tickets(count)")
+    .eq("workspace_id", workspaceId)
     .eq("status", "open")
     .order("opened_at", { ascending: false })
     .limit(limit);

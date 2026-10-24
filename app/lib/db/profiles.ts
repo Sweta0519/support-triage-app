@@ -9,11 +9,14 @@ import type { QueueSort } from "@/app/lib/queue";
 
 export type AppRole = "customer" | "agent" | "admin";
 
+// role and workspace_id come from the caller's ticketing.workspace_members
+// row (SUP-81); ensure_profile() merges them into the profile.
 export type Profile = {
   id: string;
   email: string;
   full_name: string | null;
   role: AppRole;
+  workspace_id: string;
   theme: Theme;
   queue_default_filter: QueueFilterKey;
   queue_default_sort: QueueSort;
@@ -30,9 +33,9 @@ export function isAppRole(value: unknown): value is AppRole {
   return typeof value === "string" && (APP_ROLES as readonly string[]).includes(value);
 }
 
-// RLS decides what comes back: admins get every profile, agents only staff
-// rows, a customer only their own. Only the admin-gated /admin/users page
-// calls this.
+// RLS decides what comes back: admins get every profile in their workspace,
+// agents only staff rows, a customer only their own. Only the admin-gated
+// /admin/users page calls this.
 export type ProfileSummary = Pick<
   Profile,
   "id" | "email" | "full_name" | "avatar_path" | "role" | "created_at" | "updated_at"
@@ -41,17 +44,27 @@ export type ProfileSummary = Pick<
   access_request_status: "pending" | "granted" | "declined" | null;
 };
 
+// The role is the membership's (SUP-81). !inner keeps only profiles whose
+// membership the caller can see, which RLS limits to their own workspace.
+const WITH_ROLE = "membership:workspace_members!inner(role)";
+
+type WithMembership<T> = T & { membership: { role: AppRole } };
+
+function flattenRole<T>({ membership, ...rest }: WithMembership<T>): T & { role: AppRole } {
+  return { ...(rest as T), role: membership.role };
+}
+
 export async function listProfiles(): Promise<ProfileSummary[]> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, full_name, avatar_path, role, created_at, updated_at, access_request_status")
+    .select(`id, email, full_name, avatar_path, created_at, updated_at, access_request_status, ${WITH_ROLE}`)
     .order("created_at", { ascending: true });
 
   if (error) {
     throw new Error(error.message);
   }
-  return data;
+  return (data as unknown as WithMembership<Omit<ProfileSummary, "role">>[]).map(flattenRole);
 }
 
 export type StaffProfile = Pick<Profile, "id" | "email" | "role" | "full_name" | "avatar_path">;
@@ -60,27 +73,30 @@ export async function listStaffProfiles(): Promise<StaffProfile[]> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, role, full_name, avatar_path")
-    .in("role", ["agent", "admin"]);
+    .select(`id, email, full_name, avatar_path, ${WITH_ROLE}`)
+    .in("membership.role", ["agent", "admin"]);
 
   if (error) {
     throw new Error(error.message);
   }
   // By the name people see (display name, else email), not by email.
   const shown = (p: { full_name: string | null; email: string }) => (p.full_name ?? p.email).toLowerCase();
-  return data.sort((a, b) => shown(a).localeCompare(shown(b)));
+  return (data as unknown as WithMembership<Omit<StaffProfile, "role">>[])
+    .map(flattenRole)
+    .sort((a, b) => shown(a).localeCompare(shown(b)));
 }
 
 // A staff member's email, e.g. for "Filed by …" on a ticket. RLS lets
-// staff read other staff profiles (and admins everyone); for anyone else,
+// staff read other staff profiles in their workspace (and admins everyone
+// there); for anyone else,
 // or a non-staff id, this is null.
 export async function getStaffEmail(id: string): Promise<string | null> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("profiles")
-    .select("email")
+    .select(`email, ${WITH_ROLE}`)
     .eq("id", id)
-    .in("role", ["agent", "admin"])
+    .in("membership.role", ["agent", "admin"])
     .maybeSingle();
   if (error) {
     throw new Error(error.message);

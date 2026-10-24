@@ -15,6 +15,14 @@ function service() {
   });
 }
 
+// The service role has no workspace of its own, so labels it seeds name the
+// default one (where the test users are).
+async function defaultWorkspaceId() {
+  const { data, error } = await service().from("workspaces").select("id").eq("is_default", true).single();
+  if (error) throw new Error(error.message);
+  return data.id as string;
+}
+
 const createdTickets: string[] = [];
 const labelPrefix = `E2E ${Date.now()}`;
 
@@ -81,7 +89,7 @@ test("create, add and remove labels on a ticket; they show on the card", async (
 test("the card menu toggles labels; the Labels page renames and deletes them", async ({ page }) => {
   const ticket = await seedTicket(`Labels menu probe ${Date.now()}`);
   const name = `${labelPrefix} Refund`;
-  const { error } = await service().from("labels").insert({ name, color: "green" });
+  const { error } = await service().from("labels").insert({ name, color: "green", workspace_id: await defaultWorkspaceId() });
   expect(error).toBeNull();
   await login(page, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
 
@@ -120,7 +128,7 @@ test("the card menu toggles labels; the Labels page renames and deletes them", a
 
 test("a labelled ticket can still be deleted (account deletion cascades to it)", async () => {
   const name = `${labelPrefix} Cascade`;
-  const { data: label } = await service().from("labels").insert({ name, color: "teal" }).select("id").single();
+  const { data: label } = await service().from("labels").insert({ name, color: "teal", workspace_id: await defaultWorkspaceId() }).select("id").single();
   const ticket = await seedTicket(`Labels cascade probe ${Date.now()}`);
   expect((await service().from("ticket_labels").insert({ ticket_id: ticket.id, label_id: label!.id })).error).toBeNull();
   const { error } = await service().from("tickets").delete().eq("id", ticket.id);
@@ -130,7 +138,7 @@ test("a labelled ticket can still be deleted (account deletion cascades to it)",
 
 test("staff can rename a label but not rewrite who created it", async () => {
   const name = `${labelPrefix} Attribution`;
-  const { data: label } = await service().from("labels").insert({ name, color: "sky" }).select("id, created_by").single();
+  const { data: label } = await service().from("labels").insert({ name, color: "sky", workspace_id: await defaultWorkspaceId() }).select("id, created_by").single();
   const agent = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
     db: { schema: "ticketing" },
     auth: { persistSession: false, autoRefreshToken: false },
@@ -147,7 +155,7 @@ test("staff can rename a label but not rewrite who created it", async () => {
 
 test("customers can't see or change labels", async () => {
   const name = `${labelPrefix} Internal`;
-  const { data: label } = await service().from("labels").insert({ name, color: "red" }).select("id").single();
+  const { data: label } = await service().from("labels").insert({ name, color: "red", workspace_id: await defaultWorkspaceId() }).select("id").single();
   const ticket = await seedTicket(`Labels rls probe ${Date.now()}`);
   await service().from("ticket_labels").insert({ ticket_id: ticket.id, label_id: label!.id });
 
@@ -170,7 +178,7 @@ test("labels are edited right on the card: click them, or hover and press L (que
   const ticket = await seedTicket(`Labels card probe ${Date.now()}`);
   const vip = `${labelPrefix} Card VIP`;
   const refund = `${labelPrefix} Card Refund`;
-  expect((await service().from("labels").insert({ name: vip, color: "violet" })).error).toBeNull();
+  expect((await service().from("labels").insert({ name: vip, color: "violet", workspace_id: await defaultWorkspaceId() })).error).toBeNull();
   await login(page, requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD"));
   const n = `#${ticket.number}`;
 

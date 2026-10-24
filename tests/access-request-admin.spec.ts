@@ -4,6 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
 import { login, requireEnv } from "./helpers";
+import { setRole } from "./mcp-helpers";
 
 // SUP-68: admins see access requests waiting (a sidebar count), review them
 // in one place, and grant or decline in one step. Throwaway accounts only;
@@ -47,7 +48,8 @@ async function account(tag: string, opts: { role?: "agent" | "admin"; request?: 
   expect(error).toBeNull();
   const a = { id: data.user!.id, email, password, name };
   made.push(a);
-  expect((await admin.from("profiles").update({ full_name: name, ...(opts.role ? { role: opts.role } : {}) }).eq("id", a.id)).error).toBeNull();
+  expect((await admin.from("profiles").update({ full_name: name }).eq("id", a.id)).error).toBeNull();
+  if (opts.role) await setRole(a.id, opts.role);
   if (opts.request) {
     // Filed as the first sign-in would (SUP-58).
     const db = await signedIn(email, password);
@@ -92,10 +94,10 @@ test("an admin sees the count, reviews requests in one place, and grants one in 
   const db = service();
   const { data: profile } = await db
     .from("profiles")
-    .select("role, access_request_status, access_decided_by, access_request_ticket_id")
+    .select("access_request_status, access_decided_by, access_request_ticket_id, membership:workspace_members(role)")
     .eq("id", requester.id)
     .single();
-  expect(profile).toMatchObject({ role: "agent", access_request_status: "granted", access_decided_by: admin.id });
+  expect(profile).toMatchObject({ membership: { role: "agent" }, access_request_status: "granted", access_decided_by: admin.id });
   const { data: ticket } = await db.from("tickets").select("status").eq("id", profile!.access_request_ticket_id).single();
   expect(ticket!.status).toBe("resolved");
   const { data: comments } = await db.from("ticket_comments").select("author_id, body, is_internal").eq("ticket_id", profile!.access_request_ticket_id);
@@ -123,20 +125,20 @@ test("an admin closes a request from its ticket; the requester stays a customer"
   await page.getByRole("button", { name: `Close ${requester.name}'s request with a reply` }).click();
   await expect(page.getByRole("status").filter({ hasText: "Closed." })).toBeVisible();
 
-  const { data: after } = await service().from("profiles").select("role, access_request_status").eq("id", requester.id).single();
-  expect(after).toEqual({ role: "customer", access_request_status: "declined" });
+  const { data: after } = await service().from("profiles").select("access_request_status, membership:workspace_members(role)").eq("id", requester.id).single();
+  expect(after).toEqual({ membership: { role: "customer" }, access_request_status: "declined" });
   const { data: ticket } = await service().from("tickets").select("status").eq("id", profile!.access_request_ticket_id).single();
   expect(ticket!.status).toBe("resolved");
 });
 
 test("granting a request from someone already on the staff never demotes them", async () => {
   const otherAdmin = await account("Staffer", { request: true });
-  await service().from("profiles").update({ role: "admin" }).eq("id", otherAdmin.id);
+  await setRole(otherAdmin.id, "admin");
   const admin = await account("Admin", { role: "admin" });
   const adminDb = await signedIn(admin.email, admin.password);
   expect((await adminDb.rpc("decide_access_request", { p_user: otherAdmin.id, p_grant: true })).data).toBe("granted");
-  const { data: after } = await service().from("profiles").select("role, access_request_status").eq("id", otherAdmin.id).single();
-  expect(after).toEqual({ role: "admin", access_request_status: "granted" });
+  const { data: after } = await service().from("profiles").select("access_request_status, membership:workspace_members(role)").eq("id", otherAdmin.id).single();
+  expect(after).toEqual({ membership: { role: "admin" }, access_request_status: "granted" });
 });
 
 test("promoting a requester on the Users page settles their request too", async () => {
@@ -145,8 +147,12 @@ test("promoting a requester on the Users page settles their request too", async 
   const adminDb = await signedIn(admin.email, admin.password);
   // What the Users page's role change calls.
   expect((await adminDb.rpc("admin_set_role", { target_user_id: requester.id, new_role: "agent" })).error).toBeNull();
-  const { data } = await service().from("profiles").select("role, access_request_status, access_decided_by").eq("id", requester.id).single();
-  expect(data).toEqual({ role: "agent", access_request_status: "granted", access_decided_by: admin.id });
+  const { data } = await service()
+    .from("profiles")
+    .select("access_request_status, access_decided_by, membership:workspace_members(role)")
+    .eq("id", requester.id)
+    .single();
+  expect(data).toEqual({ membership: { role: "agent" }, access_request_status: "granted", access_decided_by: admin.id });
 });
 
 test("only admins can see or decide requests, a request is decided once, and never your own", async ({ page }) => {
@@ -161,7 +167,7 @@ test("only admins can see or decide requests, a request is decided once, and nev
   await expect(page).toHaveURL(/\/403$/);
   const agentDb = await signedIn(agent.email, agent.password);
   expect((await agentDb.rpc("decide_access_request", { p_user: requester.id, p_grant: true })).error?.code).toBe("42501");
-  expect((await service().from("profiles").select("role").eq("id", requester.id).single()).data!.role).toBe("customer");
+  expect((await service().from("workspace_members").select("role").eq("user_id", requester.id).single()).data!.role).toBe("customer");
 
   // An admin decides it once; a second decision is refused.
   const adminDb = await signedIn(admin.email, admin.password);
@@ -170,7 +176,7 @@ test("only admins can see or decide requests, a request is decided once, and nev
 
   // An admin with a request of their own can't decide it.
   const selfRequester = await account("Self", { request: true });
-  await service().from("profiles").update({ role: "admin" }).eq("id", selfRequester.id);
+  await setRole(selfRequester.id, "admin");
   const selfDb = await signedIn(selfRequester.email, selfRequester.password);
   expect((await selfDb.rpc("decide_access_request", { p_user: selfRequester.id, p_grant: true })).error?.message).toBe("own_request");
 });
