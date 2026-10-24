@@ -46,7 +46,7 @@ export type ProfileSummary = Pick<
 
 // The role is the membership's (SUP-81). !inner keeps only profiles whose
 // membership the caller can see, which RLS limits to their own workspace.
-const WITH_ROLE = "membership:workspace_members!inner(role)";
+export const WITH_ROLE = "membership:workspace_members!inner(role)";
 
 type WithMembership<T> = T & { membership: { role: AppRole } };
 

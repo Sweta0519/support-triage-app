@@ -17,10 +17,14 @@ function service() {
 
 // The service role has no workspace of its own, so labels it seeds name the
 // default one (where the test users are).
-async function defaultWorkspaceId() {
-  const { data, error } = await service().from("workspaces").select("id").eq("is_default", true).single();
-  if (error) throw new Error(error.message);
-  return data.id as string;
+let defaultWorkspace: Promise<string> | undefined;
+function defaultWorkspaceId() {
+  defaultWorkspace ??= (async () => {
+    const { data, error } = await service().from("workspaces").select("id").eq("is_default", true).single();
+    if (error) throw new Error(error.message);
+    return data.id as string;
+  })();
+  return defaultWorkspace;
 }
 
 const createdTickets: string[] = [];

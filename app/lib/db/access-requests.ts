@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
+import { WITH_ROLE } from "@/app/lib/db/profiles";
 
 // "Get in touch" (SUP-58). The sign-up form keeps the visitor's answers in
 // their account's metadata; the first time they're signed in, this files them
@@ -55,7 +56,7 @@ export async function listAccessRequests(): Promise<AccessRequest[]> {
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, email, full_name, access_requested_at, access_request_status, access_decided_by, access_decided_at, membership:workspace_members!inner(role), ticket:tickets!profiles_access_request_ticket_id_fkey(id, number, body)"
+      `id, email, full_name, access_requested_at, access_request_status, access_decided_by, access_decided_at, ${WITH_ROLE}, ticket:tickets!profiles_access_request_ticket_id_fkey(id, number, body)`
     )
     .not("access_request_status", "is", null)
     .order("access_requested_at", { ascending: false })
