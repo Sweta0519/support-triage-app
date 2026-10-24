@@ -38,9 +38,9 @@ teardown("delete tickets created by this test run", async () => {
   // account, its tickets are left alone.
   const { data: customers, error } = await db
     .from("profiles")
-    .select("id")
+    .select("id, membership:workspace_members!inner(role)")
     .in("email", emails)
-    .eq("role", "customer");
+    .eq("membership.role", "customer");
   if (error) throw new Error(error.message);
   if (!customers?.length) {
     console.warn("No test customer account found for TEST_USER_EMAIL / TEST_USER_B_EMAIL -- skipping cleanup");

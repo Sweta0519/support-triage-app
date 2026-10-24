@@ -184,16 +184,18 @@ export async function ownsTriageClaim(ticketId: string, claimId: string): Promis
 }
 
 // The latest triage runs (finished, or still "processing" -- the health
-// rule decides which of those stalled) across all tickets, newest first, for
+// rule decides which of those stalled) across the workspace's tickets, newest first, for
 // the staff "AI triage is off / failing" banner (SUP-36). Service role
 // because the health of triage is team-wide, while an agent's RLS sees only
 // their own and unassigned tickets. Only status, time and the coarse reason
-// leave this function -- no ticket ids or content.
-export async function listRecentFinishedTriageRuns(limit: number): Promise<FinishedTriageRun[]> {
+// leave this function -- no ticket ids or content. Service role, so the
+// caller's workspace is named here explicitly.
+export async function listRecentFinishedTriageRuns(workspaceId: string, limit: number): Promise<FinishedTriageRun[]> {
   const supabase = createServiceSupabaseClient();
   const { data, error } = await supabase
     .from("ticket_triage_state")
     .select("triage_status, claimed_at, failure_reason")
+    .eq("workspace_id", workspaceId)
     .in("triage_status", ["completed", "failed", "processing"])
     .not("claimed_at", "is", null)
     .order("claimed_at", { ascending: false })

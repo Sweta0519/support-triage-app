@@ -120,14 +120,18 @@ test.describe("account settings", () => {
 
   test("the settings path can't change a role, an email or anyone else's profile", async () => {
     const db = await signedIn(requireEnv("TEST_USER_EMAIL"), requireEnv("TEST_USER_PASSWORD"));
-    const { data: me } = await db.from("profiles").select("id, email, role").single();
-    expect(me?.role).toBe("customer");
+    const { data: me } = await db.from("profiles").select("id, email").single();
+    const role = async () => (await db.from("workspace_members").select("role").eq("user_id", me!.id).single()).data?.role;
+    expect(await role()).toBe("customer");
 
-    // No UPDATE grant on profiles at all: role, email and name are all refused.
-    for (const change of [{ role: "admin" }, { email: "someone@example.com" }, { full_name: "Direct" }]) {
+    // No UPDATE grant on profiles at all: email and name are both refused.
+    for (const change of [{ email: "someone@example.com" }, { full_name: "Direct" }]) {
       const { error } = await db.from("profiles").update(change).eq("id", me!.id);
       expect(error?.code).toBe("42501");
     }
+    // Nor on the membership, where the role lives (SUP-81).
+    const { error: roleChange } = await db.from("workspace_members").update({ role: "admin" }).eq("user_id", me!.id);
+    expect(roleChange?.code).toBe("42501");
 
     // update_own_profile() takes no user id, so there is nothing to point at
     // another account; an extra argument doesn't match the function at all.
@@ -138,7 +142,8 @@ test.describe("account settings", () => {
     const { error: badTheme } = await db.rpc("update_own_profile", { ...DEFAULTS, p_theme: "neon" });
     expect(badTheme?.code).toBe("23514");
 
-    const { data: after } = await db.from("profiles").select("email, role").single();
-    expect(after).toEqual({ email: me!.email, role: "customer" });
+    const { data: after } = await db.from("profiles").select("email").single();
+    expect(after).toEqual({ email: me!.email });
+    expect(await role()).toBe("customer");
   });
 });

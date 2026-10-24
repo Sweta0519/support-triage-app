@@ -16,11 +16,11 @@ import { aiTriageHealth, HEALTH_SAMPLE, type AiTriageHealth } from "@/app/lib/tr
 // The AI triage banner's input. Best effort: the banner is a hint, so a
 // failed health query logs and shows nothing rather than breaking every
 // staff page. With no key there's nothing to query.
-async function triageHealth(): Promise<AiTriageHealth> {
+async function triageHealth(workspaceId: string): Promise<AiTriageHealth> {
   const configured = isAiConfigured();
   if (!configured) return aiTriageHealth(false, []);
   try {
-    return aiTriageHealth(true, await listRecentFinishedTriageRuns(HEALTH_SAMPLE));
+    return aiTriageHealth(true, await listRecentFinishedTriageRuns(workspaceId, HEALTH_SAMPLE));
   } catch (err) {
     console.error("[layout] AI triage health check failed:", err instanceof Error ? err.message : err);
     return { kind: "ok" };
@@ -39,9 +39,9 @@ async function pendingAccessRequests(): Promise<number> {
 
 // Open incidents for the staff banner (SUP-42). Best effort, like the
 // health check: a failed read shows no banner rather than breaking the page.
-async function openIncidents(): Promise<BannerIncident[]> {
+async function openIncidents(workspaceId: string): Promise<BannerIncident[]> {
   try {
-    return await listOpenIncidentsWithCounts(2);
+    return await listOpenIncidentsWithCounts(workspaceId, 2);
   } catch (err) {
     console.error("[layout] open incidents read failed:", err instanceof Error ? err.message : err);
     return [];
@@ -63,8 +63,8 @@ export default async function AppLayout({
   }
   // Staff only: customers never see triage, working or not.
   const [health, incidents, accessRequests] = await Promise.all([
-    staff ? triageHealth() : null,
-    staff ? openIncidents() : ([] as BannerIncident[]),
+    staff ? triageHealth(profile.workspace_id) : null,
+    staff ? openIncidents(profile.workspace_id) : ([] as BannerIncident[]),
     profile.role === "admin" ? pendingAccessRequests() : 0,
   ]);
 

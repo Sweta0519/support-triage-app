@@ -56,9 +56,9 @@ test.describe("names and pictures (profile_cards)", () => {
 
       expect((await customer.db.rpc("update_own_profile", { ...NO_PREFS, p_full_name: "Probe Customer" })).error).toBeNull();
 
-      // Exactly four columns: no email, no role.
+      // Exactly five columns: no email, no role.
       const { data: own } = await customer.db.from("profile_cards").select("*").eq("id", customerId).single();
-      expect(Object.keys(own!).sort()).toEqual(["avatar_path", "display_name", "id", "is_staff"]);
+      expect(Object.keys(own!).sort()).toEqual(["avatar_path", "display_name", "id", "is_staff", "workspace_id"]);
       expect(own).toMatchObject({ display_name: "Probe Customer", is_staff: false });
 
       // A ticket assigned to the admin: the agent can't see it, so can't see
@@ -85,8 +85,9 @@ test.describe("names and pictures (profile_cards)", () => {
       // Unassigned, the ticket is in the agent's queue: now the name shows...
       expect((await admin.from("tickets").update({ assignee_id: null, status: "triaged" }).eq("id", ticket!.id)).error).toBeNull();
       expect(await agentSees()).toEqual([{ id: customerId, display_name: "Probe Customer" }]);
-      // ...but the profile row (email, role) stays out of reach.
-      expect((await agent.db.from("profiles").select("email, role").eq("id", customerId)).data).toHaveLength(0);
+      // ...but the profile row (email) and the membership (role) stay out of reach.
+      expect((await agent.db.from("profiles").select("email").eq("id", customerId)).data).toHaveLength(0);
+      expect((await agent.db.from("workspace_members").select("role").eq("user_id", customerId)).data).toHaveLength(0);
 
       // A ticket the agent filed for the customer: the customer still can't
       // read the filer's card (the page says "our support team").

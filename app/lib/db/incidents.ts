@@ -14,7 +14,10 @@ import type { TicketStatus } from "@/app/lib/db/tickets";
 // see incidents, and an agent sees only the grouped tickets they can see.
 // The service-role functions are for the background detection (no signed-in
 // user) and for team-wide counts that must not depend on one agent's view;
-// they return no ticket content.
+// they return no ticket content. RLS doesn't scope them to a workspace, so
+// a function that takes incident ids trusts they came from a
+// workspace-scoped read (detection, or the caller's RLS); one that lists
+// incidents takes the workspace id.
 
 export type Incident = {
   id: string;
@@ -103,13 +106,16 @@ export async function setIncidentAiText(
 }
 
 // Open incidents with their team-wide ticket counts, for the staff banner.
+// Service role, so the caller's workspace is named here explicitly.
 export async function listOpenIncidentsWithCounts(
+  workspaceId: string,
   limit: number
 ): Promise<(Pick<Incident, "id" | "number" | "title" | "first_seen_at"> & { ticketCount: number })[]> {
   const supabase = createServiceSupabaseClient();
   const { data, error } = await supabase
     .from("incidents")
     .select("id, number, title, first_seen_at, tickets:incident_tickets(count)")
+    .eq("workspace_id", workspaceId)
     .eq("status", "open")
     .order("opened_at", { ascending: false })
     .limit(limit);
