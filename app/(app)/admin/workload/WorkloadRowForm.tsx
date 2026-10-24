@@ -3,7 +3,7 @@
 import { setWorkloadAction } from "../actions";
 import { Avatar } from "@/app/components/Avatar";
 import { useSafeActionState } from "@/app/components/useSafeActionState";
-import { PRESENCE_DOT, PRESENCES, type Presence } from "@/app/lib/presence";
+import { PRESENCE_DOT, PRESENCES } from "@/app/lib/presence";
 import type { WorkloadRow } from "@/app/lib/db/workload";
 import { DAILY_CAP_MAX } from "@/app/lib/workload";
 import { WEEKDAYS } from "@/app/lib/work-hours";
@@ -19,16 +19,12 @@ export function WorkloadRowForm({
   row,
   name,
   isSelf,
-  shown,
   localTime,
   zoneGroups,
 }: {
   row: WorkloadRow;
   name: string;
   isSelf: boolean;
-  // Their status as the page rendered it: their working hours, or their
-  // own pick when it's newer than the last shift start or end (SUP-85).
-  shown: { presence: Presence; source: "schedule" | "manual" };
   // The time now in their timezone, as the page rendered it.
   localTime: string;
   zoneGroups: ZoneGroup[];
@@ -61,12 +57,16 @@ export function WorkloadRowForm({
       </td>
       <td className="px-4 py-3">
         <span className="flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-400">
-          <span aria-hidden="true" className={`h-2 w-2 rounded-full ${PRESENCE_DOT[shown.presence]}`} />
-          {PRESENCES[shown.presence]}
+          <span aria-hidden="true" className={`h-2 w-2 rounded-full ${PRESENCE_DOT[row.presence]}`} />
+          {PRESENCES[row.presence]}
         </span>
         {hasHours ? (
           <span className="mt-1 block text-[11px] text-zinc-500 dark:text-zinc-500">
-            {shown.source === "schedule" ? "By working hours" : "Set by hand"}
+            {row.presence_source === "schedule"
+              ? "By working hours"
+              : row.presence_source === "signed_out"
+                ? "Signed out"
+                : "Set by hand"}
           </span>
         ) : null}
       </td>

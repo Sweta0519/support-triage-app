@@ -3,7 +3,6 @@ import Link from "next/link";
 import { getUser, requireProfile } from "@/app/lib/auth/session";
 import { afterSignIn } from "@/app/lib/auth/after-sign-in";
 import { linkClass } from "@/app/lib/styles";
-import { shownPresence } from "@/app/lib/work-hours";
 import { AppSidebar } from "@/app/components/AppSidebar";
 import { AssistantWidget } from "@/app/components/assistant/AssistantWidget";
 import { AiTriageBanner } from "@/app/components/AiTriageBanner";
@@ -85,7 +84,7 @@ export default async function AppLayout({
           fullName: profile.full_name,
           avatarPath: profile.avatar_path,
           role: profile.role,
-          presence: staff ? shownPresence(profile).presence : null,
+          presence: staff ? { shown: profile.presence, byHours: profile.presence_source === "schedule" } : null,
         }}
         accessRequests={accessRequests}
       />

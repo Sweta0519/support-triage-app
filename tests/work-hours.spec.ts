@@ -81,3 +81,30 @@ test("an end time before the start runs the shift into the next day", () => {
   // Tuesday night isn't a shift.
   expect(shownPresence(nights, at("2026-10-27T23:00:00Z")).presence).toBe("offline");
 });
+
+test("the same start and end time is a 24-hour shift", () => {
+  // Mondays from 09:00 to Tuesday 09:00, in UTC.
+  const fullDay: PresenceSource = { ...officeHours, timezone: "UTC", work_days: [1], work_start: "09:00", work_end: "09:00" };
+  expect(shownPresence(fullDay, at("2026-10-26T08:59:00Z")).presence).toBe("offline");
+  expect(shownPresence(fullDay, at("2026-10-26T09:00:00Z")).presence).toBe("online");
+  expect(shownPresence(fullDay, at("2026-10-27T08:59:00Z")).presence).toBe("online");
+  expect(shownPresence(fullDay, at("2026-10-27T09:00:00Z")).presence).toBe("offline");
+});
+
+test("in the hour repeated when the clocks go back, a pick is compared by when it happened", () => {
+  // Berlin, 2026-10-25: 02:00-03:00 happens twice, at 00:00Z and at 01:00Z.
+  // The shift starts at 02:30, first at 00:30Z.
+  const early: PresenceSource = { ...officeHours, work_days: [1, 2, 3, 4, 5, 6, 7], work_start: "02:30", work_end: "12:00" };
+  // Away at 02:10 the second time round (01:10Z): after the shift began.
+  const away = { ...early, presence: "away" as const, presence_set_at: "2026-10-25T01:10:00Z" };
+  expect(shownPresence(away, at("2026-10-25T01:40:00Z"))).toEqual({ presence: "away", source: "manual" });
+  // Away at 02:20 the first time round (00:20Z): before it began.
+  const before = { ...early, presence: "away" as const, presence_set_at: "2026-10-25T00:20:00Z" };
+  expect(shownPresence(before, at("2026-10-25T01:40:00Z"))).toEqual({ presence: "online", source: "schedule" });
+});
+
+test("signing out holds Offline until the next sign-in, whatever the hours", () => {
+  const signedOut = { ...officeHours, presence: "offline" as const, presence_set_at: "infinity" };
+  // Wednesday 10:00 in Berlin, mid-shift, days later.
+  expect(shownPresence(signedOut, at("2026-10-28T09:00:00Z"))).toEqual({ presence: "offline", source: "signed_out" });
+});

@@ -229,7 +229,8 @@ export function AppSidebar({
     avatarPath: string | null;
     role: AppRole;
     // Staff only (SUP-76): customers have no presence to show or set.
-    presence: Presence | null;
+    // byHours: their working hours set it, not their own pick (SUP-85).
+    presence: { shown: Presence; byHours: boolean } | null;
   };
   // Pending access requests, for admins (SUP-68).
   accessRequests?: number;
@@ -335,7 +336,9 @@ export function AppSidebar({
                 >
                   {profile.role}
                 </span>
-                {profile.presence ? <PresenceSelect presence={profile.presence} /> : null}
+                {profile.presence ? (
+                  <PresenceSelect presence={profile.presence.shown} byHours={profile.presence.byHours} />
+                ) : null}
               </div>
             </div>
           </div>

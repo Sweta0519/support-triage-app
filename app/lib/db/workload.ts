@@ -3,7 +3,7 @@ import "server-only";
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import type { AppRole } from "@/app/lib/db/profiles";
 import type { Presence } from "@/app/lib/presence";
-import type { WorkHours } from "@/app/lib/work-hours";
+import { withShownPresence, type PresenceShown, type WorkHours, type WorkSchedule } from "@/app/lib/work-hours";
 
 // Admin > Workload (SUP-77). Both calls are admin-only in the database:
 // admin_workload() and admin_set_workload() check is_admin() themselves.
@@ -14,8 +14,9 @@ export type WorkloadRow = {
   full_name: string | null;
   avatar_path: string | null;
   role: AppRole;
-  // Their last pick: shownPresence() gives the status to show (SUP-85).
+  // The status to show now, as for Profile (SUP-85).
   presence: Presence;
+  presence_source: PresenceShown["source"];
   presence_set_at: string | null;
   daily_case_cap: number | null;
   timezone: string;
@@ -29,7 +30,10 @@ export async function listWorkload(): Promise<WorkloadRow[]> {
   if (error) throw new Error(error.message);
   // By the name people see (display name, else email), as elsewhere.
   const shown = (p: WorkloadRow) => (p.full_name ?? p.email).toLowerCase();
-  return (data as WorkloadRow[]).sort((a, b) => shown(a).localeCompare(shown(b)));
+  const now = new Date();
+  return (data as Omit<WorkloadRow, "presence_source">[])
+    .map((row) => withShownPresence(row, now))
+    .sort((a, b) => shown(a).localeCompare(shown(b)));
 }
 
 // Which value admin_set_workload() refused. A timezone the page offered can
@@ -52,7 +56,7 @@ export async function setWorkload(
   targetId: string,
   cap: number | null,
   timezone: string,
-  hours: { days: number[]; start: string; end: string } | null,
+  hours: WorkSchedule | null,
 ): Promise<void> {
   const supabase = await createServerSupabaseClient();
   const { error } = await supabase.rpc("admin_set_workload", {

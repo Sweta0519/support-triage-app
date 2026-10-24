@@ -5,7 +5,7 @@ import { RateLimitError } from "@/app/lib/db/rate-limit";
 import type { Theme } from "@/app/lib/preferences";
 import type { Presence } from "@/app/lib/presence";
 import type { QueueFilterKey } from "@/app/lib/queue-filters";
-import type { WorkHours } from "@/app/lib/work-hours";
+import { withShownPresence, type PresenceShown, type WorkHours } from "@/app/lib/work-hours";
 import type { QueueSort } from "@/app/lib/queue";
 
 export type AppRole = "customer" | "agent" | "admin";
@@ -22,10 +22,11 @@ export type Profile = {
   queue_default_filter: QueueFilterKey;
   queue_default_sort: QueueSort;
   avatar_path: string | null;
-  // Staff only in practice (SUP-76); customers keep the default. The last
-  // pick from the dropdown: show shownPresence() instead, which also follows
-  // their working hours (SUP-85).
+  // Staff only in practice (SUP-76); customers keep the default. The status
+  // to show now: their working hours, or their last pick from the dropdown
+  // when it's newer than the last shift start or end (SUP-85).
   presence: Presence;
+  presence_source: PresenceShown["source"];
   presence_set_at: string | null;
   timezone: string;
   created_at: string;
@@ -137,7 +138,8 @@ export async function getOrCreateProfile(): Promise<Profile | null> {
     return null;
   }
 
-  return data as Profile;
+  // ensure_profile() returns the column: the last pick.
+  return withShownPresence(data as Omit<Profile, "presence_source">);
 }
 
 export type ProfileSettings = {
@@ -176,6 +178,25 @@ export async function updateOwnProfile(settings: ProfileSettings): Promise<void>
 // set_own_presence() refused the caller (42501: not staff, or no session)
 // or the value (22023). Nothing was saved.
 export class PresenceRefusedError extends Error {}
+
+// Signing out (SUP-76): Offline, held until they sign in again even when
+// their working hours would show Online (SUP-85). Same refusals as below.
+export async function signOutPresence(): Promise<void> {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("sign_out_presence");
+  if (!error) return;
+  if (error.message.includes("rate_limited")) throw new RateLimitError("set_presence");
+  if (error.code === "42501") throw new PresenceRefusedError(error.message);
+  throw new Error(error.message);
+}
+
+// After a sign-in: lets go of the hold above, so working hours decide the
+// status again. Changes nothing for anyone without the hold.
+export async function resumePresenceAfterSignIn(): Promise<void> {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("resume_presence_after_sign_in");
+  if (error) throw new Error(error.message);
+}
 
 // The caller's own presence (SUP-76). set_own_presence() always targets
 // auth.uid(), refuses customers, and names only the presence column.

@@ -2,7 +2,6 @@ import { requireAdmin } from "@/app/lib/auth/session";
 import { listWorkload } from "@/app/lib/db/workload";
 import { profileName } from "@/app/lib/people";
 import { localTime, timezoneLabel, timezoneNames } from "@/app/lib/workload";
-import { shownPresence } from "@/app/lib/work-hours";
 import { WorkloadRowForm, type ZoneGroup } from "./WorkloadRowForm";
 
 // The timezone picker's options, grouped by region ("Europe", "America",
@@ -48,8 +47,9 @@ export default async function AdminWorkloadPage() {
         </p>
         <p className="max-w-3xl text-sm text-zinc-600 dark:text-zinc-400">
           Working hours set their status by themselves: Online during the shift, Offline outside it, in their workplace
-          timezone. A status they pick themselves holds until their shift next starts or ends. An end time earlier than
-          the start means the shift ends the next day. Working hours never assign tickets.
+          timezone. A status they pick themselves holds until their shift next starts or ends, and signing out keeps them
+          Offline until they sign in again. An end time earlier than the start means the shift ends the next day; the
+          same start and end time means a 24-hour shift. Working hours never assign tickets.
         </p>
       </div>
 
@@ -75,7 +75,6 @@ export default async function AdminWorkloadPage() {
                 row={row}
                 name={profileName(row)}
                 isSelf={row.id === admin.id}
-                shown={shownPresence(row, now)}
                 localTime={localTime(row.timezone, now)}
                 zoneGroups={groups}
               />

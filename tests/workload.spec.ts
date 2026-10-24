@@ -46,6 +46,7 @@ type Row = {
   work_days: number[] | null;
   work_start: string | null;
   work_end: string | null;
+  presence_set_at: string | null;
 };
 
 // No working hours (SUP-85).
@@ -252,6 +253,8 @@ test.describe("admin workload", () => {
   test("an admin sets working hours, and a status picked since the shift began holds", async ({ browser }) => {
     const admin = await asAdmin();
     const agent = await asAgent();
+    // No hours left over from an earlier run that stopped half way.
+    await resetAgent(admin);
     expect((await agent.rpc("set_own_presence", { p_presence: "away" })).error).toBeNull();
 
     const { context, page } = await staffPage(browser, requireEnv("TEST_ADMIN_EMAIL"), requireEnv("TEST_ADMIN_PASSWORD"));
@@ -260,15 +263,20 @@ test.describe("admin workload", () => {
       const target = page.getByRole("row").filter({ hasText: requireEnv("TEST_AGENT_EMAIL") });
       await expect(target.getByText("Set by hand")).toHaveCount(0);
 
-      // Every day, all day, in UTC: the shift began at midnight, before the
-      // agent picked Away just now.
+      // Every day, in UTC, a 23-hour shift whose edges are at least an hour
+      // from now: it started yesterday, before the agent picked Away just
+      // now, and no edge falls inside the test, whatever time it runs.
+      const hour = new Date().getUTCHours();
+      const at = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
+      const start = at(hour + 2);
+      const end = at(hour + 1);
       for (const day of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]) {
         // The day's letter, as a person clicks it: it covers the checkbox.
         await target.getByTitle(day).click();
         await expect(target.getByRole("checkbox", { name: day })).toBeChecked();
       }
-      await target.getByLabel(/^Shift start for/).fill("00:00");
-      await target.getByLabel(/^Shift end for/).fill("23:59");
+      await target.getByLabel(/^Shift start for/).fill(start);
+      await target.getByLabel(/^Shift end for/).fill(end);
       await target.getByRole("button", { name: "Save" }).click();
       await expect(target.getByRole("status")).toHaveText("Saved.");
       await expect(target.getByText("Set by hand")).toBeVisible();
@@ -277,18 +285,18 @@ test.describe("admin workload", () => {
       await page.reload();
       const after = page.getByRole("row").filter({ hasText: requireEnv("TEST_AGENT_EMAIL") });
       await expect(after.getByRole("checkbox", { name: "Sun" })).toBeChecked();
-      await expect(after.getByLabel(/^Shift end for/)).toHaveValue("23:59");
+      await expect(after.getByLabel(/^Shift end for/)).toHaveValue(end);
 
       const row = await agentRow(admin);
       expect(row.work_days).toEqual([1, 2, 3, 4, 5, 6, 7]);
-      expect(row.work_start).toBe("00:00:00");
-      expect(row.work_end).toBe("23:59:00");
+      expect(row.work_start).toBe(`${start}:00`);
+      expect(row.work_end).toBe(`${end}:00`);
 
       // A start without an end, or with no days, isn't a schedule.
       await after.getByLabel(/^Shift end for/).fill("");
       await after.getByRole("button", { name: "Save" }).click();
       await expect(after.getByRole("alert")).toContainText("pick at least one day");
-      expect((await agentRow(admin)).work_end).toBe("23:59:00");
+      expect((await agentRow(admin)).work_end).toBe(`${end}:00`);
     } finally {
       await context.close();
       expect((await agent.rpc("set_own_presence", { p_presence: "online" })).error).toBeNull();
@@ -304,7 +312,9 @@ test.describe("admin workload", () => {
     expect((await set({ p_work_days: [1], p_work_start: "09:00" })).error?.code).toBe("22023");
     expect((await set({ p_work_days: [], p_work_start: "09:00", p_work_end: "17:00" })).error?.code).toBe("22023");
     expect((await set({ p_work_days: [8], p_work_start: "09:00", p_work_end: "17:00" })).error?.code).toBe("22023");
-    expect((await set({ p_work_days: [1], p_work_start: "09:00", p_work_end: "09:00" })).error?.code).toBe("22023");
+
+    // Equal times are a 24-hour shift.
+    expect((await set({ p_work_days: [1], p_work_start: "09:00", p_work_end: "09:00" })).error).toBeNull();
 
     // Repeats and order don't matter; a night shift is fine.
     expect((await set({ p_work_days: [5, 1, 5], p_work_start: "22:00", p_work_end: "06:00" })).error).toBeNull();
@@ -315,5 +325,23 @@ test.describe("admin workload", () => {
     expect((await agentRow(admin)).work_days).toBeNull();
 
     expect((await admin.from("profiles").update({ work_days: [1] }).eq("id", row.id)).error).not.toBeNull();
+  });
+
+  test("signing out holds Offline until the next sign-in, and only staff can", async () => {
+    const admin = await asAdmin();
+    const agent = await asAgent();
+    try {
+      expect((await agent.rpc("sign_out_presence")).error).toBeNull();
+      const held = await agentRow(admin);
+      expect(held.presence_set_at).toBe("infinity");
+      expect((await admin.rpc("admin_workload")).data.find((r: Row) => r.id === held.id).presence).toBe("offline");
+
+      expect((await agent.rpc("resume_presence_after_sign_in")).error).toBeNull();
+      expect((await agentRow(admin)).presence_set_at).toBeNull();
+
+      expect((await (await asCustomer()).rpc("sign_out_presence")).error?.code).toBe("42501");
+    } finally {
+      expect((await agent.rpc("set_own_presence", { p_presence: "online" })).error).toBeNull();
+    }
   });
 });

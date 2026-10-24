@@ -9,7 +9,7 @@ import { AccessDecisionError, countPendingAccessRequests, decideAccessRequest } 
 import { isUuid } from "@/app/lib/db/tickets";
 import { NotStaffError, setWorkload, WorkloadInputError } from "@/app/lib/db/workload";
 import { DAILY_CAP_MAX, isTimezone } from "@/app/lib/workload";
-import { isWeekday, timeToMinutes } from "@/app/lib/work-hours";
+import { isWeekday, timeToMinutes, type WorkSchedule } from "@/app/lib/work-hours";
 
 // Maps the database's exceptions to the short codes the users page renders.
 // The DB is the enforcement; this is just the friendly message.
@@ -94,7 +94,7 @@ export async function pendingAccessRequestCountAction(): Promise<number> {
 // (SUP-85: no days and no times = none). admin_set_workload() re-checks the
 // caller, the values and that the person is still staff.
 const HOURS_MESSAGE =
-  "For working hours, pick at least one day and a different start and end time, or clear them all for no schedule.";
+  "For working hours, pick at least one day and a start and end time, or clear them all for no schedule.";
 
 export type WorkloadState = { status: "saved" } | { status: "error"; error: string } | undefined;
 
@@ -112,12 +112,10 @@ export async function setWorkloadAction(_prevState: WorkloadState, formData: For
   const days = formData.getAll("day").map(Number);
   const start = String(formData.get("start") ?? "");
   const end = String(formData.get("end") ?? "");
-  let hours: { days: number[]; start: string; end: string } | null = null;
+  let hours: WorkSchedule | null = null;
   if (days.length > 0 || start !== "" || end !== "") {
     if (days.length === 0 || !days.every(isWeekday)) return { status: "error", error: HOURS_MESSAGE };
-    const from = timeToMinutes(start);
-    const to = timeToMinutes(end);
-    if (from === null || to === null || from === to) return { status: "error", error: HOURS_MESSAGE };
+    if (timeToMinutes(start) === null || timeToMinutes(end) === null) return { status: "error", error: HOURS_MESSAGE };
     hours = { days, start, end };
   }
   try {
