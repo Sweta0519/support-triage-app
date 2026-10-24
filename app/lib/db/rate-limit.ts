@@ -14,7 +14,9 @@ export type RateLimitedAction =
   | "update_avatar"
   | "access_token"
   | "mcp_request"
-  | "set_presence";
+  | "set_presence"
+  | "workspace_invite"
+  | "workspace_join_rotate";
 
 // The one user-facing wording for a tripped limit, shared by every action.
 export const RATE_LIMITED_MESSAGE =

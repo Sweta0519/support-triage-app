@@ -9,6 +9,9 @@ import { AccessDecisionError, countPendingAccessRequests, decideAccessRequest } 
 import { isUuid } from "@/app/lib/db/tickets";
 import { NotStaffError, setWorkload, WorkloadInputError } from "@/app/lib/db/workload";
 import { DAILY_CAP_MAX, isTimezone } from "@/app/lib/workload";
+import { RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/db/rate-limit";
+import { createInvite, InviteRefusedError, revokeInvite, rotateJoinToken } from "@/app/lib/db/workspaces";
+import { SITE_URL } from "@/app/lib/site-url";
 
 // Maps the database's exceptions to the short codes the users page renders.
 // The DB is the enforcement; this is just the friendly message.
@@ -121,4 +124,57 @@ export async function setWorkloadAction(_prevState: WorkloadState, formData: For
   }
   revalidatePath("/admin/workload");
   return { status: "saved" };
+}
+
+// Admin > Workspace (SUP-82): the customer sign-up link and agent invites.
+// The RPCs re-check that the caller is an admin of their own workspace.
+
+export async function rotateJoinLinkAction(): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  await requireAdmin();
+  try {
+    const token = await rotateJoinToken();
+    revalidatePath("/admin/workspace");
+    return { ok: true, url: `${SITE_URL}/join/${token}` };
+  } catch (err) {
+    if (err instanceof RateLimitError) return { ok: false, error: RATE_LIMITED_MESSAGE };
+    throw err;
+  }
+}
+
+export type InviteState =
+  | { status: "created"; url: string; email: string }
+  | { status: "error"; error: string; email: string }
+  | undefined;
+
+export async function createInviteAction(_prevState: InviteState, formData: FormData): Promise<InviteState> {
+  await requireAdmin();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  if (!email) return { status: "error", error: "Enter the agent's email address.", email };
+  try {
+    const token = await createInvite(email);
+    revalidatePath("/admin/workspace");
+    return { status: "created", url: `${SITE_URL}/invite/${token}`, email };
+  } catch (err) {
+    if (err instanceof InviteRefusedError) {
+      return {
+        status: "error",
+        error:
+          err.reason === "invalid_email"
+            ? "That doesn't look like an email address."
+            : "That email already has an account. Each account belongs to one workspace, so it can't join this one.",
+        email,
+      };
+    }
+    if (err instanceof RateLimitError) return { status: "error", error: RATE_LIMITED_MESSAGE, email };
+    throw err;
+  }
+}
+
+export async function revokeInviteAction(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireAdmin();
+  const inviteId = String(id);
+  if (!isUuid(inviteId)) return { ok: false, error: "That invite no longer exists." };
+  const revoked = await revokeInvite(inviteId);
+  revalidatePath("/admin/workspace");
+  return revoked ? { ok: true } : { ok: false, error: "That invite was already used or revoked." };
 }
