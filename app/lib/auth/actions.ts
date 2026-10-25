@@ -68,7 +68,14 @@ export async function signUpAction(
   if (!(await consumeAuthRateLimit("sign_up", email))) {
     return { error: AUTH_RATE_LIMITED_MESSAGE, request, workspaceName };
   }
-  const picked = await workspaceIntent(formData, email, Boolean(request));
+  let picked: Awaited<ReturnType<typeof workspaceIntent>>;
+  try {
+    picked = await workspaceIntent(formData, email, Boolean(request));
+  } catch (err) {
+    // Looking the link up failed: no account was made.
+    await refundAuthAttempt("sign_up_failed", email);
+    throw err;
+  }
   if ("error" in picked) {
     await refundAuthAttempt("sign_up_failed", email);
     return { error: picked.error, request, workspaceName };
@@ -92,10 +99,16 @@ export async function signUpAction(
     // Refused: no account was made and no email went out, so give the
     // email's quota back.
     await refundAuthAttempt("sign_up_failed", email);
-    // The trigger refuses a link that stopped working since the check above
-    // (rotated, revoked, expired, or used); Supabase reports that as a
-    // generic database error.
-    const message = picked.intent && !("workspace_name" in picked.intent) && error.message.includes("Database error") ? LINK_INVALID : error.message;
+    // ticketing.handle_new_user() refused the sign-up, which Supabase reports
+    // as a generic database error: a link that stopped working since the
+    // check above (rotated, revoked, expired, or used), or an email already
+    // held by another profile.
+    const refused = picked.intent && error.message.includes("Database error");
+    const message = !refused
+      ? error.message
+      : "workspace_name" in picked.intent!
+        ? "We couldn't set up your workspace. Try again, or sign up with a different email."
+        : LINK_INVALID;
     return { error: message, request, workspaceName };
   }
 

@@ -1,16 +1,17 @@
 import { SignupForm } from "../../signup/SignupForm";
 import { WorkspaceLinkNotice } from "@/app/components/WorkspaceLinkNotice";
 import { getUser } from "@/app/lib/auth/session";
-import { findOpenInvite } from "@/app/lib/db/workspaces";
+import { findOpenInvite, workspaceLinkLookupAllowed } from "@/app/lib/db/workspaces";
 
 // An agent invite (SUP-82): single-use, for one email, expires after 7 days.
 // Signing up here with that email joins the workspace as an agent; the
 // database checks the invite again and uses it up.
 export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  if (await getUser()) return <WorkspaceLinkNotice signedIn />;
+  if (await getUser()) return <WorkspaceLinkNotice reason="signed-in" />;
+  if (!(await workspaceLinkLookupAllowed())) return <WorkspaceLinkNotice reason="rate-limited" />;
   const invite = await findOpenInvite(token);
-  if (!invite) return <WorkspaceLinkNotice signedIn={false} />;
+  if (!invite) return <WorkspaceLinkNotice reason="invalid" />;
   return (
     <div className="flex w-full flex-col items-center gap-6">
       <div className="flex flex-col items-center gap-1 text-center">

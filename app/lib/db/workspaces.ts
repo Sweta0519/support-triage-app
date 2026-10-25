@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 
 import { createServerSupabaseClient } from "@/app/lib/auth/clients";
 import { RateLimitError } from "@/app/lib/db/rate-limit";
+import { visitorIp } from "@/app/lib/request-ip";
 import { createServiceSupabaseClient } from "@/app/lib/supabase/service";
 
 // Workspaces (SUP-78, part 2: SUP-82). Sign-up picks the workspace: the
@@ -33,6 +34,16 @@ export class InviteRefusedError extends Error {
 // The same sha256 hex the database keeps for an invite.
 function inviteHash(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+
+// The signed-out /join and /invite pages' per-IP limit (30 every 5
+// minutes): false = too many lookups from this visitor just now.
+export async function workspaceLinkLookupAllowed(): Promise<boolean> {
+  const { data, error } = await createServiceSupabaseClient().rpc("consume_workspace_link_rate_limit", {
+    p_ip: await visitorIp(),
+  });
+  if (error) throw new Error(error.message);
+  return data === true;
 }
 
 // The workspace behind a customer join link, or null.
@@ -76,14 +87,13 @@ export async function getJoinToken(): Promise<string> {
   return data as string;
 }
 
-export async function rotateJoinToken(): Promise<string> {
+export async function rotateJoinToken(): Promise<void> {
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase.rpc("rotate_workspace_join_token");
+  const { error } = await supabase.rpc("rotate_workspace_join_token");
   if (error) {
     if (error.message.includes("rate_limited")) throw new RateLimitError("workspace_join_rotate");
     throw new Error(error.message);
   }
-  return data as string;
 }
 
 export async function listInvites(): Promise<WorkspaceInvite[]> {
@@ -103,9 +113,12 @@ export async function createInvite(email: string): Promise<string> {
   const { data, error } = await supabase.rpc("create_workspace_invite", { p_email: email });
   if (error) {
     if (error.message.includes("invalid_email")) throw new InviteRefusedError("invalid_email");
-    if (error.message.includes("already_has_account")) throw new InviteRefusedError("already_has_account");
     if (error.message.includes("rate_limited")) throw new RateLimitError("workspace_invite");
     throw new Error(error.message);
+  }
+  // Returned, not raised, so the attempt still counts against the limit.
+  if ((data as { error?: string }).error === "already_has_account") {
+    throw new InviteRefusedError("already_has_account");
   }
   return (data as { token: string }).token;
 }

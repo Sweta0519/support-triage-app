@@ -8,6 +8,7 @@ import { WorkspacePanel } from "./WorkspacePanel";
 export default async function AdminWorkspacePage() {
   const admin = await requireAdmin();
   const [name, joinToken, invites] = await Promise.all([getWorkspaceName(admin.workspace_id), getJoinToken(), listInvites()]);
+  const now = new Date();
 
   return (
     <div className="flex flex-col gap-4">
@@ -17,7 +18,7 @@ export default async function AdminWorkspacePage() {
           Each account belongs to one workspace. People join this one through the links below.
         </p>
       </div>
-      <WorkspacePanel joinUrl={`${SITE_URL}/join/${joinToken}`} invites={invites} />
+      <WorkspacePanel joinUrl={`${SITE_URL}/join/${joinToken}`} invites={invites} now={now.getTime()} />
     </div>
   );
 }

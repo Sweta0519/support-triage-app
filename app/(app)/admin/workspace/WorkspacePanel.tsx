@@ -15,10 +15,11 @@ const sectionTitle = "text-base font-semibold text-black dark:text-zinc-50";
 // A fixed locale and time zone, so the server render and hydration agree.
 const expiryDate = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" });
 
-function inviteState(i: WorkspaceInvite): "accepted" | "revoked" | "expired" | "pending" {
+// `now` comes from the server render, so hydration reaches the same answer.
+function inviteState(i: WorkspaceInvite, now: number): "accepted" | "revoked" | "expired" | "pending" {
   if (i.accepted_at) return "accepted";
   if (i.revoked_at) return "revoked";
-  if (new Date(i.expires_at) <= new Date()) return "expired";
+  if (new Date(i.expires_at).getTime() <= now) return "expired";
   return "pending";
 }
 
@@ -44,7 +45,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
 
 // The workspace's customer sign-up link (copy, or replace it so the old one
 // stops working) and agent invites (made per email, shown once, revocable).
-export function WorkspacePanel({ joinUrl, invites }: { joinUrl: string; invites: WorkspaceInvite[] }) {
+export function WorkspacePanel({ joinUrl, invites, now }: { joinUrl: string; invites: WorkspaceInvite[]; now: number }) {
   const [rotating, startRotate] = useTransition();
   const [confirmRotate, setConfirmRotate] = useState(false);
   const [rotateError, setRotateError] = useState<string | null>(null);
@@ -162,7 +163,7 @@ export function WorkspacePanel({ joinUrl, invites }: { joinUrl: string; invites:
         {invites.length ? (
           <ul aria-label="Agent invites" className="flex flex-col divide-y divide-black/[.06] rounded-xl border border-black/[.08] dark:divide-white/[.08] dark:border-white/[.145]">
             {invites.map((i) => {
-              const s = inviteState(i);
+              const s = inviteState(i, now);
               return (
                 <li key={i.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
                   <div className="flex min-w-0 flex-1 flex-col">

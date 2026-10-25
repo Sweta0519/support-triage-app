@@ -129,12 +129,13 @@ export async function setWorkloadAction(_prevState: WorkloadState, formData: For
 // Admin > Workspace (SUP-82): the customer sign-up link and agent invites.
 // The RPCs re-check that the caller is an admin of their own workspace.
 
-export async function rotateJoinLinkAction(): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+// The page shows the new link once revalidated.
+export async function rotateJoinLinkAction(): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireAdmin();
   try {
-    const token = await rotateJoinToken();
+    await rotateJoinToken();
     revalidatePath("/admin/workspace");
-    return { ok: true, url: `${SITE_URL}/join/${token}` };
+    return { ok: true };
   } catch (err) {
     if (err instanceof RateLimitError) return { ok: false, error: RATE_LIMITED_MESSAGE };
     throw err;
