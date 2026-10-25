@@ -37,6 +37,9 @@ export default async function AdminLayout({
           <Link href="/admin/workload" className={navLinkClasses}>
             Workload
           </Link>
+          <Link href="/admin/workspace" className={navLinkClasses}>
+            Workspace
+          </Link>
         </nav>
       </div>
       {children}

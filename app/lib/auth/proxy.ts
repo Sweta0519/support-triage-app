@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { AUTH_COOKIE_OPTIONS } from "./clients";
 
-const PUBLIC_PATHS = ["/login", "/signup", "/auth/confirm", "/s/", "/privacy"];
+const PUBLIC_PATHS = ["/login", "/signup", "/join/", "/invite/", "/auth/confirm", "/s/", "/privacy"];
 // Exact, unlike the prefixes above, so a later /welcome-something route
 // isn't public by accident.
 const PUBLIC_EXACT = ["/welcome"];

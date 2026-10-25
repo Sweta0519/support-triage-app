@@ -26,10 +26,15 @@ export function LoginForm() {
         Sign in
       </button>
       <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
-        No account?{" "}
+        New team?{" "}
         <Link href="/signup" className={linkClass}>
-          Sign up
+          Create a workspace
         </Link>
+      </p>
+      {/* A plain sign-up makes a new workspace (SUP-82): customers and agents
+          join theirs through the link their team gives them. */}
+      <p className="-mt-2 text-center text-xs text-zinc-500 dark:text-zinc-500">
+        Joining your team or contacting their support? Use the sign-up link they gave you.
       </p>
     </form>
   );
