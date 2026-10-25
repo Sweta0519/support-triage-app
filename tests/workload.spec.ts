@@ -249,6 +249,10 @@ test.describe("admin workload", () => {
 
     // And nobody writes the columns directly.
     expect((await admin.from("profiles").update({ daily_case_cap: 1 }).eq("id", row.id)).error).not.toBeNull();
+
+    // Nor through the old three-argument version, which skipped the hours
+    // checks (SUP-87 dropped it): PostgREST finds no such function.
+    expect((await admin.rpc("admin_set_workload", { p_target: row.id, p_cap: 5, p_timezone: "UTC" })).error?.code).toBe("PGRST202");
   });
 
   // SUP-85. When the status follows the hours (no pick since the last shift
