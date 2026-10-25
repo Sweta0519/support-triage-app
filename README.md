@@ -103,6 +103,7 @@ Built since the core above, each through a reviewed PR (see Development process)
 | **MCP connector:** use Support Triage from Claude Code, Cursor, VS Code or Codex with a personal access token. Each request runs as its owner under RLS. Customers file and follow their tickets; agents work the queue, with the AI's triage as a suggestion only. Setup is on the homepage and on the Account page with the new token filled in (`docs/mcp.md`) | #65, #67, #68, #69, #70, #71 |
 | Staff presence: an Online / Away / Offline dropdown, with a coloured dot, under each agent's and admin's name in the sidebar; signing out sets Offline | #84 |
 | **Admin > Workload:** a daily cap on the new cases each person can be given, counted from midnight in their workplace timezone and enforced in the database on every way a ticket gets assigned | #85 |
+| **Working hours** on Admin > Workload: each person's days and shift set their status Online or Offline by themselves, in their workplace timezone (night and 24-hour shifts included). A status they pick holds until the shift next starts or ends, and signing out keeps them Offline until they sign in again. Working hours never assign tickets | #90 |
 | **Demo video** (2:17, narrated and captioned) on the homepage, covering the main features, including an MCP section: an AI assistant working the queue through `/api/mcp` | #57, #66, #80 |
 
 ## How it compares
@@ -422,7 +423,8 @@ task that went straight to `main` says so, with the commit.
     SUP-53 to SUP-57, SUP-44, SUP-65 to SUP-67) in PRs #65 to #73; access requests and "Get in
     touch" (SUP-58, SUP-68 to SUP-72) in PRs #74 to #79; and SUP-73, 74 and 75 in PRs #80 to #83.
     #49 (the demo re-dating script) and #51 (the comparison table) have no issue.
-  - Then SUP-76 (staff presence) in PR #84 and SUP-77 (Admin > Workload) in PR #85.
+  - Then SUP-76 (staff presence) in PR #84, SUP-77 (Admin > Workload) in PR #85 and SUP-85
+    (working hours) in PR #90.
 - **Since 2026-10-13, `main` is protected (SUP-35)**, and the rules bind admins too. GitHub
   **enforces** four things:
   - every change needs a PR;
