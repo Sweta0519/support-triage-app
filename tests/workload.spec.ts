@@ -118,7 +118,11 @@ test.describe("admin workload", () => {
 
       // Saving only a new cap keeps the timezone just saved.
       await target.getByRole("spinbutton").fill("8");
+      // "Saved." still shows from the first save, so wait for this save's
+      // response itself: reloading before it lands would cancel it.
+      const saved = page.waitForResponse((r) => r.request().method() === "POST" && !!r.request().headers()["next-action"]);
       await target.getByRole("button", { name: "Save" }).click();
+      await saved;
       await expect(target.getByRole("spinbutton")).toHaveValue("8");
       await expect(target.getByRole("combobox")).toHaveValue("Europe/Berlin");
 
