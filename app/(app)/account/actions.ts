@@ -258,7 +258,8 @@ export async function setPresenceAction(presence: string): Promise<{ ok: true } 
 }
 
 // The saved status, read fresh: after a call whose answer was lost, the
-// dropdown shows what the server actually holds (SUP-76).
+// dropdown shows what the server actually holds (SUP-76), as the working
+// hours have it now (SUP-85).
 export async function currentPresenceAction(): Promise<Presence> {
   return (await requireStaff()).presence;
 }

@@ -9,6 +9,7 @@ import { AccessDecisionError, countPendingAccessRequests, decideAccessRequest } 
 import { isUuid } from "@/app/lib/db/tickets";
 import { NotStaffError, setWorkload, WorkloadInputError } from "@/app/lib/db/workload";
 import { DAILY_CAP_MAX, isTimezone } from "@/app/lib/workload";
+import { isWeekday, timeToMinutes, type WorkSchedule } from "@/app/lib/work-hours";
 import { RATE_LIMITED_MESSAGE, RateLimitError } from "@/app/lib/db/rate-limit";
 import { createInvite, InviteRefusedError, revokeInvite, rotateJoinToken } from "@/app/lib/db/workspaces";
 import { SITE_URL } from "@/app/lib/site-url";
@@ -92,8 +93,12 @@ export async function pendingAccessRequestCountAction(): Promise<number> {
 }
 
 // One row of Admin > Workload (SUP-77): a person's daily cap of new cases
-// (blank = no cap) and their workplace timezone. admin_set_workload()
-// re-checks the caller, the values and that the person is still staff.
+// (blank = no cap), their workplace timezone and their working hours
+// (SUP-85: no days and no times = none). admin_set_workload() re-checks the
+// caller, the values and that the person is still staff.
+const HOURS_MESSAGE =
+  "For working hours, pick at least one day and a start and end time, or clear them all for no schedule.";
+
 export type WorkloadState = { status: "saved" } | { status: "error"; error: string } | undefined;
 
 export async function setWorkloadAction(_prevState: WorkloadState, formData: FormData): Promise<WorkloadState> {
@@ -107,8 +112,17 @@ export async function setWorkloadAction(_prevState: WorkloadState, formData: For
     return { status: "error", error: `Enter a whole number from 0 to ${DAILY_CAP_MAX}, or leave it blank for no cap.` };
   }
   if (!isTimezone(timezone)) return { status: "error", error: "Choose a timezone from the list." };
+  const days = formData.getAll("day").map(Number);
+  const start = String(formData.get("start") ?? "");
+  const end = String(formData.get("end") ?? "");
+  let hours: WorkSchedule | null = null;
+  if (days.length > 0 || start !== "" || end !== "") {
+    if (days.length === 0 || !days.every(isWeekday)) return { status: "error", error: HOURS_MESSAGE };
+    if (timeToMinutes(start) === null || timeToMinutes(end) === null) return { status: "error", error: HOURS_MESSAGE };
+    hours = { days, start, end };
+  }
   try {
-    await setWorkload(userId, cap, timezone);
+    await setWorkload(userId, cap, timezone, hours);
   } catch (err) {
     if (err instanceof WorkloadInputError) {
       return {
@@ -116,7 +130,9 @@ export async function setWorkloadAction(_prevState: WorkloadState, formData: For
         error:
           err.field === "timezone"
             ? "The database doesn't know that timezone yet. Choose a nearby city in the same timezone."
-            : `Enter a whole number from 0 to ${DAILY_CAP_MAX}, or leave it blank for no cap.`,
+            : err.field === "hours"
+              ? HOURS_MESSAGE
+              : `Enter a whole number from 0 to ${DAILY_CAP_MAX}, or leave it blank for no cap.`,
       };
     }
     if (err instanceof NotStaffError) return { status: "error", error: "They're no longer on the support team." };

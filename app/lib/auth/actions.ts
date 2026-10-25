@@ -6,7 +6,7 @@ import { createServerSupabaseClient } from "./clients";
 import { AUTH_RATE_LIMITED_MESSAGE, consumeAuthRateLimit, refundAuthAttempt } from "@/app/lib/db/auth-rate-limit";
 import { SITE_URL } from "@/app/lib/site-url";
 import { afterSignIn } from "./after-sign-in";
-import { PresenceRefusedError, setOwnPresence } from "@/app/lib/db/profiles";
+import { PresenceRefusedError, resumePresenceAfterSignIn, signOutPresence } from "@/app/lib/db/profiles";
 import { parseAccessRequest, type AccessRequestAnswers } from "@/app/lib/access-request-options";
 import { findOpenInvite, findWorkspaceByJoinToken } from "@/app/lib/db/workspaces";
 import { WORKSPACE_NAME_MAX } from "@/app/lib/workspace-options";
@@ -149,16 +149,24 @@ export async function signInAction(
     return { error: error.message };
   }
 
+  // Signed in again: their working hours set their status again, if they
+  // have any (SUP-85). Best effort, like the sign-out side.
+  try {
+    await resumePresenceAfterSignIn();
+  } catch (err) {
+    console.error("[sign-in] resuming presence failed:", err instanceof Error ? err.message : err);
+  }
+
   redirect((await afterSignIn(data.user?.user_metadata)) ?? "/");
 }
 
 export async function signOutAction() {
   // Staff signing out show as Offline (SUP-76), set while the session still
-  // exists. The function refuses customers itself, so there's no role read
+  // exists, and held until they sign in again (SUP-85). The function refuses customers itself, so there's no role read
   // first. Best effort: a failure here (e.g. the presence rate limit) is
   // logged and never stops the sign-out.
   try {
-    await setOwnPresence("offline");
+    await signOutPresence();
   } catch (err) {
     if (!(err instanceof PresenceRefusedError)) console.error("[sign-out] setting presence to offline failed:", err instanceof Error ? err.message : err);
   }

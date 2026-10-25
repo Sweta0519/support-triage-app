@@ -84,7 +84,7 @@ export default async function AppLayout({
           fullName: profile.full_name,
           avatarPath: profile.avatar_path,
           role: profile.role,
-          presence: staff ? profile.presence : null,
+          presence: staff ? { shown: profile.presence, byHours: profile.presence_source === "schedule" } : null,
         }}
         accessRequests={accessRequests}
       />
