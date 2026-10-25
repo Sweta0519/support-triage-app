@@ -45,21 +45,6 @@ setup("reset test users' rate-limit counters", async () => {
     }
   }
 
-  // And the workspace-wide budgets the test accounts count against (SUP-83).
-  const { data: members, error: membersError } = await db
-    .from("workspace_members")
-    .select("workspace_id")
-    .in("user_id", (profiles ?? []).map((p) => p.id));
-  if (membersError) {
-    throw new Error(membersError.message);
-  }
-  for (const workspaceId of new Set((members ?? []).map((m) => m.workspace_id as string))) {
-    const { error: deleteError } = await db.from("rate_limits").delete().like("key", `ws:${workspaceId}:%`);
-    if (deleteError) {
-      throw new Error(deleteError.message);
-    }
-  }
-
   // The sign-in limiter's per-email buckets (keyed by the same HMAC as
   // app/lib/db/auth-rate-limit.ts): tests that enter a wrong password on
   // purpose (e.g. account deletion) would otherwise lock a test account

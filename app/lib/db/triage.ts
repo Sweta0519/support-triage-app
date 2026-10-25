@@ -167,6 +167,15 @@ export async function claimTicketForTriage(
   return ticket ? { ticket, claimId } : null;
 }
 
+// Spends one unit of the ticket's workspace's hourly triage budget (SUP-83):
+// false = spent, so this run must not call a model.
+export async function consumeTriageBudget(ticketId: string): Promise<boolean> {
+  const supabase = createServiceSupabaseClient();
+  const { data, error } = await supabase.rpc("consume_triage_budget", { p_ticket_id: ticketId });
+  if (error) throw new Error(error.message);
+  return data === true;
+}
+
 // Whether claimId is still the ticket's current claim (a re-run may have
 // taken over a run that was too slow).
 export async function ownsTriageClaim(ticketId: string, claimId: string): Promise<boolean> {

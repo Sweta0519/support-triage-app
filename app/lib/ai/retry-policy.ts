@@ -136,7 +136,9 @@ function describeFailure(failure: AttemptFailure): string {
 
 // Why a triage run failed, for staff (stored on the triage state and in
 // the triage_failed event). Coarse on purpose: no provider error text.
-export type TriageFailureReason = "rate_limited" | "provider_unavailable" | "timeout" | "invalid_response" | "error";
+// "budget": the workspace's hourly triage budget was spent (SUP-83), so no
+// model was called.
+export type TriageFailureReason = "rate_limited" | "provider_unavailable" | "timeout" | "invalid_response" | "error" | "budget";
 
 export function failureReason(failure: AttemptFailure | null): TriageFailureReason {
   if (!failure) return "error";

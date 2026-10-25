@@ -24,17 +24,23 @@ const RUN = `${Date.now()}-${randomUUID().slice(0, 6)}`;
 // are a perfect match: only the workspace can keep one from the other.
 const VECTOR = `[${Array.from({ length: 1536 }, (_, i) => (i === 0 ? 1 : 0)).join(",")}]`;
 
+// Every account made, as soon as it exists, so afterAll deletes it even when
+// setup fails halfway.
+const made: { user: User; admin: boolean }[] = [];
+
 async function workspace(tag: string): Promise<Workspace> {
   const name = `Isolation ${tag} ${RUN}`;
   const admin = await throwawayWithToken(`iso-${tag}-admin`, { workspace_name: name });
+  made.push({ user: admin, admin: true });
   const { data: m } = await service().from("workspace_members").select("workspace_id").eq("user_id", admin.id).single();
   const { data: ws } = await service().from("workspaces").select("join_token").eq("id", m!.workspace_id).single();
   const join = { join_token: ws!.join_token as string };
-  const [agent, customer, customer2] = await Promise.all([
-    throwawayWithToken(`iso-${tag}-agent`, join),
-    throwawayWithToken(`iso-${tag}-cust`, join),
-    throwawayWithToken(`iso-${tag}-cust2`, join),
-  ]);
+  const member = async (kind: string) => {
+    const user = await throwawayWithToken(`iso-${tag}-${kind}`, join);
+    made.push({ user, admin: false });
+    return user;
+  };
+  const [agent, customer, customer2] = await Promise.all([member("agent"), member("cust"), member("cust2")]);
   await setRole(agent.id, "agent");
   return { id: m!.workspace_id as string, name, admin, agent, customer, customer2 };
 }
@@ -167,15 +173,9 @@ test.beforeAll(async () => {
 // while others are still in it.
 test.afterAll(async () => {
   const db = service();
-  for (const ws of [A, B].filter(Boolean)) {
-    for (const c of [ws.customer, ws.customer2]) {
-      await db.from("tickets").delete().eq("customer_id", c.id);
-    }
-  }
-  for (const ws of [A, B].filter(Boolean)) {
-    for (const u of [ws.customer, ws.customer2, ws.agent]) await u.remove();
-  }
-  for (const ws of [A, B].filter(Boolean)) await ws.admin.remove();
+  for (const { user } of made) await db.from("tickets").delete().eq("customer_id", user.id);
+  for (const { user } of made.filter((m) => !m.admin)) await user.remove();
+  for (const { user } of made.filter((m) => m.admin)) await user.remove();
 });
 
 test("the Data API shows A's customer, agent and admin nothing of B's, and refuses every write to it", async () => {
@@ -214,8 +214,9 @@ test("the Data API shows A's customer, agent and admin nothing of B's, and refus
     expect(renamed.data ?? []).toEqual([]);
     const closed = await db.from("incidents").update({ status: "resolved" }).eq("id", bIncident.id).select("id");
     expect(closed.data ?? []).toEqual([]);
-    expect((await db.from("ticket_comments").insert({ ticket_id: bTicket.id, author_id: user.id, body: "from A" })).error).not.toBeNull();
-    expect((await db.from("ticket_labels").insert({ ticket_id: bTicket.id, label_id: bLabel.id })).error).not.toBeNull();
+    // Refused by RLS (42501), not by some other check.
+    expect((await db.from("ticket_comments").insert({ ticket_id: bTicket.id, author_id: user.id, body: "from A" })).error?.code).toBe("42501");
+    expect((await db.from("ticket_labels").insert({ ticket_id: bTicket.id, label_id: bLabel.id })).error?.code).toBe("42501");
   }
 
   const { data: after } = await service().from("tickets").select("status, assignee_id").eq("id", bTicket.id).single();
@@ -316,6 +317,8 @@ test("AI triage's candidates never cross workspaces: duplicates, corrections and
   const a1 = await seededTicket(A.customer, `A probe ${RUN}`);
   const a2 = await seededTicket(A.customer2, `A twin ${RUN}`);
   await correct(a2, A.agent);
+  // A third from a1's customer: within A alone there's always enough for an incident.
+  const a3 = await seededTicket(A.customer, `A third ${RUN}`);
   const bIds = [bTicket.id, bTicket2.id, bTicket3.id];
 
   // Duplicate/related candidates: A's twin, none of B's identical tickets.
@@ -337,19 +340,22 @@ test("AI triage's candidates never cross workspaces: duplicates, corrections and
 
   // Incidents: B has an open incident and two more ungrouped tickets from two
   // customers, all identical to a1. Counted across workspaces, a1 would join
-  // B's incident. A has identical tickets of its own from two customers (the
-  // earlier tests' too), so a1 may start an incident: A's, with A's tickets.
+  // B's incident. A has three or more identical tickets of its own from two
+  // customers, so a1 starts a new incident: A's, with only A's tickets.
   const detect = (ticketId: string) =>
     db.rpc("detect_incident", { p_ticket_id: ticketId, p_threshold: 0.5, p_window_minutes: 60, p_min_tickets: 3 });
   const forA = await detect(a1.id);
   expect(forA.error).toBeNull();
+  expect(forA.data).toEqual([expect.objectContaining({ created: true })]);
   for (const { incident_id } of forA.data as { incident_id: string }[]) {
     expect(incident_id).not.toBe(bIncident.id);
     const { data: incident } = await db.from("incidents").select("workspace_id").eq("id", incident_id).single();
     expect(incident!.workspace_id).toBe(A.id);
     const { data: members } = await db.from("incident_tickets").select("ticket:tickets!inner(workspace_id)").eq("incident_id", incident_id);
+    expect(members!.length).toBeGreaterThanOrEqual(3);
     for (const m of members as unknown as { ticket: { workspace_id: string } }[]) expect(m.ticket.workspace_id).toBe(A.id);
   }
+  expect(a3.id).toBeTruthy();
   const { data: bMembers } = await db.from("incident_tickets").select("ticket_id").eq("incident_id", bIncident.id);
   expect(bMembers).toEqual([{ ticket_id: bTicket.id }]);
   // The same call on a B ticket does join B's incident.
@@ -406,27 +412,59 @@ test("a live triage run never offers the other workspace's identical ticket", as
   expect(count).toBe(0);
 });
 
-test("AI-spending actions also count against a workspace-wide budget", async ({ request }) => {
+test("the workspace's AI budget stops triage, never filing, and staff AI actions share a workspace cap", async ({ request }) => {
+  test.setTimeout(120_000);
   const db = service();
   const hour = Math.floor(Date.now() / 3_600_000) * 3_600_000;
-  // The current and next window, in case the hour turns mid-test.
-  const windows = [hour, hour + 3_600_000].map((t) => new Date(t).toISOString());
-  const wsKey = `ws:${A.id}:create_ticket`;
-  const ticket = { subject: `Budget probe ${RUN}`, description: "Checking the workspace budget." };
+  const tenMinutes = Math.floor(Date.now() / 600_000) * 600_000;
+  // The current and next window, in case one turns mid-test.
+  const windows = (start: number, length: number) => [start, start + length].map((t) => new Date(t).toISOString());
+  const spend = async (key: string, count: number, starts: string[]) => {
+    for (const window_start of starts) {
+      expect((await db.from("rate_limits").upsert({ key, window_start, count })).error).toBeNull();
+    }
+  };
 
-  // A's whole budget is spent: A's customer is refused, B's isn't.
-  for (const window_start of windows) {
-    expect((await db.from("rate_limits").upsert({ key: wsKey, window_start, count: 200 })).error).toBeNull();
+  // A's triage budget is spent: A's customer still files, and the ticket's
+  // triage fails as 'budget' without calling a model.
+  await spend(`ws:${A.id}:triage`, 200, windows(hour, 3_600_000));
+  const filed = await callTool(request, A.customer.token, "create_ticket", {
+    subject: `Budget probe ${RUN}`,
+    description: "Checking the workspace budget.",
+  });
+  expect(filed.error).toBeUndefined();
+  const { data: probe } = await db.from("tickets").select("id").eq("number", Number(String(filed.data.number).replace("#", ""))).single();
+  await expect
+    .poll(async () => (await db.from("ticket_triage_state").select("triage_status, failure_reason").eq("ticket_id", probe!.id).single()).data, {
+      timeout: 30_000,
+    })
+    .toEqual({ triage_status: "failed", failure_reason: "budget" });
+  const { count: runs } = await db.from("triage_results").select("id", { count: "exact", head: true }).eq("ticket_id", probe!.id);
+  expect(runs).toBe(0);
+  // B's budget is its own.
+  expect((await db.rpc("consume_triage_budget", { p_ticket_id: bTicket.id })).data).toBe(true);
+  // Filing and MCP requests are limited per person only now.
+  for (const action of ["create_ticket", "mcp_request"]) {
+    const { data } = await db.from("rate_limits").select("key").eq("key", `ws:${A.id}:${action}`);
+    expect(data).toEqual([]);
   }
-  expect((await callTool(request, A.customer.token, "create_ticket", ticket)).error).toContain("too often");
-  expect((await callTool(request, B.customer.token, "create_ticket", ticket)).error).toBeUndefined();
+
+  // A staff AI action: the workspace cap refuses, and gives the person's
+  // own count back.
+  const agent = await dataApi(A.agent);
+  const ownKey = `${A.agent.id}:assistant_message`;
+  const wsKey = `ws:${A.id}:assistant_message`;
+  const count = async (key: string) =>
+    ((await db.from("rate_limits").select("count").eq("key", key).eq("window_start", new Date(tenMinutes).toISOString())).data ?? [])[0]?.count ?? 0;
+  await spend(wsKey, 200, windows(tenMinutes, 600_000));
+  const ownBefore = await count(ownKey);
+  expect((await agent.rpc("consume_rate_limit", { p_action: "assistant_message" })).data).toBe(false);
+  expect(await count(ownKey)).toBe(ownBefore);
 
   // Someone over their own limit doesn't spend the workspace's.
   await db.from("rate_limits").delete().eq("key", wsKey);
-  for (const window_start of windows) {
-    expect((await db.from("rate_limits").upsert({ key: `${A.customer.id}:create_ticket`, window_start, count: 10 })).error).toBeNull();
-  }
-  expect((await callTool(request, A.customer.token, "create_ticket", ticket)).error).toContain("too often");
-  const { data: spent } = await db.from("rate_limits").select("count").eq("key", wsKey);
-  expect(spent).toEqual([]);
+  await spend(ownKey, 20, windows(tenMinutes, 600_000));
+  expect((await agent.rpc("consume_rate_limit", { p_action: "assistant_message" })).data).toBe(false);
+  expect(await count(wsKey)).toBe(0);
+  await db.from("rate_limits").delete().like("key", `ws:${A.id}:%`);
 });

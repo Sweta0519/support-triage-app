@@ -15,6 +15,7 @@ import { LEARNING_MAX_EXAMPLES, LEARNING_SIMILARITY } from "@/app/lib/learning";
 import {
   applyTriageToTicket,
   claimTicketForTriage,
+  consumeTriageBudget,
   insertTriageEvent,
   insertTriageResult,
   markTriageFailed,
@@ -58,6 +59,9 @@ export async function runTriage(ticketId: string, { retry = "background" }: { re
 
   const startedAt = Date.now();
   try {
+    // The workspace's budget bounds AI spend; the ticket itself is already
+    // filed, and staff can re-run it once the hour turns.
+    if (!(await consumeTriageBudget(ticket.id))) throw new TriageBudgetSpent();
     const {
       vector: embedding,
       costUsd: embeddingCostUsd,
@@ -192,8 +196,13 @@ function mostTellingFailure(errors: unknown[]): unknown {
   return candidates.find((err) => triageFailureReason(err) !== "error") ?? candidates[0];
 }
 
+class TriageBudgetSpent extends Error {
+  name = "TriageBudgetSpent";
+}
+
 // Coarse on purpose: staff see this, so no provider error text.
 function triageFailureReason(err: unknown): TriageFailureReason {
+  if (err instanceof TriageBudgetSpent) return "budget";
   if (err instanceof OpenRouterError) return failureReason(err.failure);
   if (err instanceof InvalidResponseError) return "invalid_response";
   return "error";
