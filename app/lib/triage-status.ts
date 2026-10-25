@@ -54,6 +54,7 @@ export const TRIAGE_FAILURE_COPY: Record<TriageFailureReason, string> = {
   timeout: "The AI provider took too long to answer.",
   invalid_response: "The AI's answer couldn't be read.",
   error: "Something went wrong while running it.",
+  budget: "This workspace has used its AI triage allowance for this hour.",
 };
 
 export function triageFailedCopy(reason: string | null | undefined): string {
