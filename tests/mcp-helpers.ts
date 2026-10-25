@@ -21,11 +21,13 @@ export function service() {
 // change), with a token of its own. Made entirely with the service role:
 // no password sign-in, which Supabase rate-limits across the whole suite.
 // (Creating tokens through create_access_token() is tested in
-// access-tokens.spec.ts.)
-export async function throwawayWithToken(tag = "mcp") {
+// access-tokens.spec.ts.) Sign-up metadata picks the workspace as the form
+// does (SUP-82): none joins the default one as a customer.
+export async function throwawayWithToken(tag = "mcp", userMetadata?: Record<string, string>) {
   const admin = service();
   const email = `e2e-${tag}-${Date.now()}-${randomUUID().slice(0, 8)}@example.com`;
-  const { data, error } = await admin.auth.admin.createUser({ email, password: `Pw-${randomUUID()}`, email_confirm: true });
+  const password = `Pw-${randomUUID()}`;
+  const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: userMetadata });
   expect(error).toBeNull();
   const id = data.user!.id;
   const remove = () => admin.auth.admin.deleteUser(id);
@@ -39,7 +41,7 @@ export async function throwawayWithToken(tag = "mcp") {
       expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
     });
     expect(tokenError).toBeNull();
-    return { id, email, token, remove };
+    return { id, email, password, token, remove };
   } catch (err) {
     await remove();
     throw err;
