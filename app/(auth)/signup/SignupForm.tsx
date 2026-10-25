@@ -5,16 +5,53 @@ import Link from "next/link";
 import { useSafeActionState } from "@/app/components/useSafeActionState";
 import { signUpAction } from "@/app/lib/auth/actions";
 import { ACCESS_PURPOSE_MAX, ACCESS_TEAM_MAX, TEAM_SIZES } from "@/app/lib/access-request-options";
+import { WORKSPACE_NAME_MAX } from "@/app/lib/workspace-options";
 import { inputClass, linkClass, primaryButtonClass } from "@/app/lib/styles";
 
 const labelClass = "text-xs font-medium text-zinc-600 dark:text-zinc-400";
 
-export function SignupForm({ requestingAccess = false }: { requestingAccess?: boolean }) {
+// One form, four ways in (SUP-82): a new workspace (plain sign-up), a
+// customer join link, an agent invite, or "Get in touch". The server
+// decides from what's sent; the tokens ride along as hidden fields.
+export function SignupForm({
+  requestingAccess = false,
+  joinToken,
+  invite,
+}: {
+  requestingAccess?: boolean;
+  joinToken?: string;
+  invite?: { token: string; email: string };
+}) {
   const [state, action, pending, formRef] = useSafeActionState(signUpAction, undefined);
+  const creatingWorkspace = !requestingAccess && !joinToken && !invite;
 
   return (
     <form ref={formRef} action={action} className="flex w-full flex-col gap-4">
-      <input name="email" type="email" placeholder="Email" required className={inputClass} />
+      {joinToken ? <input type="hidden" name="join_token" value={joinToken} /> : null}
+      {invite ? <input type="hidden" name="invite_token" value={invite.token} /> : null}
+      {creatingWorkspace ? (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="workspace_name" className={labelClass}>
+            Team or company name
+          </label>
+          <input
+            id="workspace_name"
+            name="workspace_name"
+            required
+            maxLength={WORKSPACE_NAME_MAX}
+            defaultValue={state?.workspaceName}
+            className={inputClass}
+          />
+        </div>
+      ) : null}
+      <input
+        name="email"
+        type="email"
+        placeholder="Email"
+        required
+        defaultValue={invite?.email}
+        className={inputClass}
+      />
       <input
         name="password"
         type="password"

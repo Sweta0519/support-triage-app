@@ -1,8 +1,9 @@
 import { SignupForm } from "./SignupForm";
 
-// /signup?access=1 is "Get in touch" from the homepage (SUP-58, SUP-72): the same
-// customer sign-up, with a few optional questions that become an
-// access-request ticket once the email is confirmed.
+// A plain sign-up creates a workspace, with the new account as its admin
+// (SUP-82). /signup?access=1 is "Get in touch" from the homepage (SUP-58,
+// SUP-72): a customer sign-up in the default workspace, with a few optional
+// questions that become an access-request ticket once the email is confirmed.
 export default async function SignupPage({ searchParams }: { searchParams: Promise<{ access?: string | string[] }> }) {
   const { access } = await searchParams;
   const requestingAccess = (Array.isArray(access) ? access[0] : access) === "1";
@@ -15,7 +16,7 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
         <p className="text-sm text-zinc-500 dark:text-zinc-500">
           {requestingAccess
             ? "Create an account and tell us about your team. Once your account is ready, your message reaches our team as a ticket, and we reply there."
-            : "File and track your own support tickets."}
+            : "Set up a support workspace for your team. You'll be its admin, and can invite agents and share a sign-up link with your customers."}
         </p>
       </div>
       <SignupForm requestingAccess={requestingAccess} />

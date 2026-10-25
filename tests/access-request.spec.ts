@@ -89,7 +89,10 @@ test("the Get in touch form asks the optional questions; a plain sign-up doesn't
 
   await page.goto("/signup");
   await expect(page.getByRole("heading", { name: "Create an account" })).toBeVisible();
-  await expect(page.getByLabel("Team or company name")).toHaveCount(0);
+  // A plain sign-up names its new workspace (SUP-82), but asks none of the
+  // Get in touch questions.
+  await expect(page.getByLabel("Team size")).toHaveCount(0);
+  await expect(page.getByLabel("What would you use it for?")).toHaveCount(0);
 
   // Every homepage "Get in touch" button leads to the form with the questions.
   await page.goto("/welcome");
