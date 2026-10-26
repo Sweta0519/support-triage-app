@@ -121,6 +121,8 @@ test.describe("signed out", () => {
     await expect(pricing.getByRole("heading", { name: "Free" })).toBeVisible();
     await expect(pricing.getByRole("heading", { name: "Custom" })).toBeVisible();
     await expect(pricing.getByRole("link", { name: "Contact us" })).toHaveAttribute("href", "/signup?access=1");
+    // Free's button makes the visitor's own workspace (SUP-84), not a Get in touch ticket.
+    await expect(pricing.getByRole("link", { name: "Create a workspace" })).toHaveAttribute("href", "/signup");
     // Nothing promises agent access: "Get in touch" is a conversation (SUP-72).
     await expect(page.locator("main")).not.toContainText("agent access");
 
