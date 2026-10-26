@@ -132,11 +132,16 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
   go through Next.js Server Actions, relying on their built-in POST-only + Origin/Host check.
   Do not add a plain mutating Route Handler without re-evaluating this -- Route Handlers don't
   get the same protection.
-  The one exception so far is the MCP endpoint `app/api/mcp/route.ts` (SUP-54, `docs/mcp.md`):
+  One exception is the MCP endpoint `app/api/mcp/route.ts` (SUP-54, `docs/mcp.md`):
   it never reads cookies and signs in only with a bearer access token, which browsers don't
   send by themselves, and it sends no CORS headers. Its requests run as the token's owner
   through `runWithUserSession()` (`app/lib/auth/clients.ts`), so RLS applies (including the
   workspace check), and the role is re-read from `workspace_members` on every request.
+  The second is the email webhook `app/api/email/inbound/route.ts` (SUP-88, `docs/email.md`):
+  it never reads cookies, sends no CORS headers, and accepts only requests carrying a valid
+  Resend (Svix) signature within 5 minutes. Each delivery and email is recorded once per
+  workspace. It writes with the service role, and the workspaces come from the recipient
+  addresses inside `ticketing.record_inbound_email_event()`, never from the request.
 - Rate limiting: a Postgres-backed atomic counter (`ticketing.rate_limits`, RPC-only, deny-all
   RLS) on sensitive/public actions, plus a Vercel WAF rule as a coarse network-level backstop.
 - Assignment must use a conditional `UPDATE ... WHERE assignee_id IS NULL` with a rowcount
