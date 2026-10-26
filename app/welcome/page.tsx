@@ -214,8 +214,8 @@ const SAFETY = [
   {
     title: "Customers see only their own tickets",
     // The one exception is a status page staff choose to publish (read via
-    // the service role by token), so the copy says so.
-    text: "Enforced by the database itself, with row-level security on every table. The only way a ticket is seen outside its owner's account is a read-only status page that staff choose to publish.",
+    // the service role by token), so the copy says so. Workspaces: SUP-78.
+    text: "Enforced by the database itself, with row-level security on every table. Each team's tickets live in its own workspace, which no other team can see. The only way a ticket is seen outside its owner's account is a read-only status page that staff choose to publish.",
   },
   {
     // Mitigations, not a guarantee against prompt injection: worded as what

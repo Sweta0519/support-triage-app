@@ -10,7 +10,8 @@ Linear: SUP-
 - [ ] **Migrations:** each schema change is a new file in `supabase/migrations/`, applied with
       `supabase db push`. Already-applied migrations aren't edited. (Or: no schema change.)
 - [ ] **RLS reviewed:** new tables have RLS enabled and owner- or role-scoped policies; grants are
-      as narrow as the feature needs; `profiles.role` changes only through `admin_set_role()`.
+      as narrow as the feature needs; policies on tables with `workspace_id` check the caller's
+      workspace; `workspace_members.role` changes only through `admin_set_role()`.
       (Or: no data-access change.)
 - [ ] **Server-side rules held (CLAUDE.md):**
   - mutations go through Server Actions, and DB access through `app/lib/db/`;

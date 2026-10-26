@@ -104,6 +104,7 @@ Built since the core above, each through a reviewed PR (see Development process)
 | Staff presence: an Online / Away / Offline dropdown, with a coloured dot, under each agent's and admin's name in the sidebar; signing out sets Offline | #84 |
 | **Admin > Workload:** a daily cap on the new cases each person can be given, counted from midnight in their workplace timezone and enforced in the database on every way a ticket gets assigned | #85 |
 | **Working hours** on Admin > Workload: each person's days and shift set their status Online or Offline by themselves, in their workplace timezone (night and 24-hour shifts included). A status they pick holds until the shift next starts or ends, and signing out keeps them Offline until they sign in again. Working hours never assign tickets | #90 |
+| **Workspaces:** many support teams in one app, each in its own workspace. Signing up at `/signup` creates a workspace with you as its admin; customers join through the workspace's sign-up link and agents through a single-use invite, both shared from Admin > Workspace. RLS keeps every ticket, label, incident and person inside their workspace, and AI triage only ever compares tickets from the same one. The AI actions have workspace-wide budgets as well as per-person limits. A Playwright test with two workspaces checks it all through the web app, the database API, MCP and Sage (`docs/supabase-schema.md`) | #88, #89, #93 |
 | **Demo video** (2:17, narrated and captioned) on the homepage, covering the main features, including an MCP section: an AI assistant working the queue through `/api/mcp` | #57, #66, #80 |
 
 ## How it compares
@@ -152,7 +153,7 @@ itself, is measured against the team's own reviews, and is built privacy- and se
 - channels beyond the web form: no email, chat, phone or social;
 - automation rules, saved reply templates and a public help centre;
 - integrations with Slack, CRMs or Jira;
-- support for many separate companies (multi-tenancy), and testing at real scale.
+- testing at real scale.
 
 ## Stack
 
@@ -162,10 +163,17 @@ embeddings) · Vercel.
 
 ## Security model (baseline, not the centrepiece)
 
-- Three roles (`customer` / `agent` / `admin`) enforced by **RLS on every table**, not UI checks.
-  Customers see only their own tickets; agents see unassigned tickets and their own; admins see all.
-- Role changes only through a `SECURITY DEFINER` RPC that refuses self-changes and demoting the
-  last admin. Signup **hard-codes** `customer` and ignores client metadata.
+- **Workspaces** (SUP-78): each support team is a workspace, and each person belongs to exactly
+  one. Every RLS policy checks the caller's workspace, `workspace_id` is set by triggers (never
+  by the client), and composite foreign keys stop a row from pointing into another workspace.
+  `tests/workspace-isolation.spec.ts` proves it with two workspaces.
+- Three roles (`customer` / `agent` / `admin`), held per workspace membership and read from the
+  database on every request, enforced by **RLS on every table**, not UI checks. Customers see
+  only their own tickets; agents see unassigned tickets and their own; admins see all of their
+  workspace's.
+- Role changes only through a `SECURITY DEFINER` RPC that refuses self-changes and demoting a
+  workspace's last admin. Sign-up never reads a role from client metadata: the database works it
+  out from what it can check (a new workspace's name, a join link, or an invite for that email).
 - A `BEFORE UPDATE` trigger enforces what RLS can't: immutable ticket text, legal status
   transitions, staff-only assignees, race-free claiming. Two more triggers, one on update and one
   on insert, share `enforce_daily_case_cap()`: no path can give a capped person more new cases in
@@ -179,8 +187,10 @@ embeddings) · Vercel.
   tickets unattributed rather than vanishing.
 - **Rate limiting** in Postgres:
   - per-user limits on sensitive actions;
+  - workspace-wide caps on the AI actions and an hourly triage budget per workspace (#93). Over
+    the budget a ticket is still filed, and its triage waits for a staff re-run;
   - sign-in throttled per IP, per email and IP, and per email; sign-up per IP and per email;
-  - an IP-keyed limiter on the public share page.
+  - IP-keyed limiters on the public share page and the join and invite links.
 
   A Vercel firewall rule is the network-level backstop: 30 POSTs per minute per IP, on every path.
   It lives only in the Vercel dashboard, and was confirmed live on 2026-10-16
@@ -219,10 +229,13 @@ Then in the Supabase dashboard: **Settings -> API -> Data API -> Exposed schemas
 `ticketing`. This app keeps every table in its own `ticketing` schema, not `public` (see
 `docs/supabase-schema.md` for why).
 
-Make yourself admin once you've signed up (SQL editor):
+Sign up at `/signup` ("Create a workspace" on the login page): you become the admin of the new
+workspace. To make an account admin of the default workspace instead (where "Get in touch"
+sign-ups land), use the SQL editor:
 
 ```sql
-update ticketing.profiles set role = 'admin' where email = 'you@example.com';
+update ticketing.workspace_members set role = 'admin'
+where user_id = (select id from ticketing.profiles where email = 'you@example.com');
 ```
 
 Without `OPENROUTER_API_KEY` the app still runs, but tickets stay `pending` triage, and staff
@@ -303,7 +316,7 @@ It needs dedicated test accounts in `.env.local` (`TEST_USER_*` customer A, `TES
 customer B, `TEST_AGENT_*`, `TEST_ADMIN_*`, `TEST_ROLEFLIP_EMAIL`; they aren't in `.env.example`,
 so add them by hand) -- create them with the Supabase
 Admin API (`auth.admin.createUser` with `email_confirm: true`) and set roles via the service role.
-About 175 tests in 43 spec files. Feature PRs add their own tests.
+About 200 tests in 46 spec files. Feature PRs add their own tests.
 
 - **The last five projects** (`settings`, `people`, `ai-health`, `incidents`, `workload`) change shared
   test accounts, so they run one after another. To rerun them without the main suite, keep them in
@@ -317,6 +330,8 @@ About 175 tests in 43 spec files. Feature PRs add their own tests.
 
 Highlights:
 - **Isolation:**
+  - two workspaces, A and B: A's customer, agent and admin can't see or change anything of B's,
+    in the web app, the database API, MCP and Sage, and triage never offers a B ticket;
   - customer B gets a 404 for customer A's ticket;
   - an agent gets a 404 for another staff member's ticket;
   - customers are bounced from staff routes;
@@ -424,7 +439,11 @@ task that went straight to `main` says so, with the commit.
     touch" (SUP-58, SUP-68 to SUP-72) in PRs #74 to #79; and SUP-73, 74 and 75 in PRs #80 to #83.
     #49 (the demo re-dating script) and #51 (the comparison table) have no issue.
   - Then SUP-76 (staff presence) in PR #84, SUP-77 (Admin > Workload) in PR #85 and SUP-85
-    (working hours) in PR #90.
+    (working hours) in PRs #90 and #91, with SUP-87 in PR #92. #86 (a README catch-up) has no
+    issue.
+  - SUP-79 (the Supabase project becomes this app's own) in PR #87. Then workspaces, epic
+    SUP-78, in four parts: SUP-81 in PR #88, SUP-82 in PR #89, SUP-83 in PR #93, and SUP-84 (the
+    docs and homepage copy) in this PR.
 - **Since 2026-10-13, `main` is protected (SUP-35)**, and the rules bind admins too. GitHub
   **enforces** four things:
   - every change needs a PR;
@@ -447,7 +466,8 @@ task that went straight to `main` says so, with the commit.
   and Supabase sources).
 - `docs/notes-rag.md` -- Sage's notes retrieval: chunking, the tool loop, threshold calibration,
   and why the match function takes no user id.
-- `docs/supabase-schema.md` -- every table, policy, trigger and function.
+- `docs/supabase-schema.md` -- every table, policy, trigger and function, and how workspaces keep
+  teams apart.
 - `docs/security/` -- security reports:
   - four fresh-context audit passes, each with its fixes recorded, ending in a clean rescan
     (0 critical, 0 warning) before PR #1 was merged, plus that PR's diff review

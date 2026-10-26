@@ -44,11 +44,50 @@ how things were when they were written.
 - `public` and `ticketing` never reference each other. RLS policies, helper functions, and
   grants in this app are scoped entirely to `ticketing.*`.
 
+## Workspaces: one support team each (SUP-78)
+
+Since 2026-10-24 the app holds many support teams, each in its own **workspace**. Built in
+three parts: the schema and RLS (SUP-81, PR #88), sign-up and invites (SUP-82, PR #89), and
+workspace-wide AI budgets plus an A/B isolation test (SUP-83, PR #93).
+
+- **One workspace per person.** `workspace_members.user_id` is the primary key, so a person's
+  role and workspace are a single row. The role moved there from `profiles.role`, which was
+  dropped. `app_role()`, `is_staff()` and `is_admin()` read the membership on every call, never
+  a JWT claim, so a demotion takes effect at once.
+- **How people get in.** A plain sign-up names a new workspace and becomes its admin. A
+  customer signs up through the workspace's join link (`/join/<token>`), and an agent through a
+  single-use, 7-day invite link (`/invite/<token>`) made for their email. Admins copy and share
+  both links from Admin > Workspace; the app sends no email. A sign-up with none of these, which
+  includes "Get in touch", joins the **default workspace** (`is_default`, which held everything
+  before SUP-78) as a customer. The role is never read from sign-up metadata: `handle_new_user()`
+  checks the name or token and works the role out itself.
+- **`workspace_id` on every shared table.** The roots (`tickets`, `labels`, `incidents`) and
+  every table that hangs off a ticket carry it. A ticket takes its customer's workspace, and a
+  child row takes its ticket's, both from a `BEFORE INSERT` trigger, never from the client. A
+  composite foreign key to `tickets (id, workspace_id)` (and to `labels` / `incidents` for the
+  link tables) makes a row in the wrong workspace impossible, not just unlikely.
+- **Personal tables stay owner-scoped:** `notes`, `documents`, `assistant_*` and
+  `access_tokens` have no `workspace_id`. A person has one workspace, so their own rows are
+  already inside it.
+- **Every RLS policy also checks `workspace_id = current_workspace_id()`**, and every
+  `SECURITY DEFINER` function, which bypasses RLS, filters by the workspace itself.
+- **The AI never crosses workspaces.** The service-role AI functions (`match_tickets()`,
+  `match_triage_corrections()`, `detect_incident()`) take the workspace from the ticket being
+  triaged, so duplicate and related candidates, correction examples and incident members all
+  come from that workspace. `check_triage_result_workspace()` refuses to store a related ticket
+  from another workspace, and `duplicate_of` has a composite foreign key.
+- **Leaving.** A workspace's last admin can't delete their account while other members remain,
+  and the default workspace always keeps an admin. When the last member of any other workspace
+  leaves, the workspace is deleted with everything in it.
+- **Proof:** `tests/workspace-isolation.spec.ts` creates workspaces A and B and checks that a
+  customer, an agent and an admin in A can't see or change anything in B, through the web app,
+  MCP and Sage, and that triage never offers a B ticket.
+
 ## Enums
 
 | Enum                        | Values                                                                 |
 |-----------------------------|------------------------------------------------------------------------|
-| `ticketing.app_role`        | `customer`, `agent`, `admin`                                           |
+| `ticketing.app_role`        | `customer`, `agent`, `admin` (held in `workspace_members.role`)        |
 | `ticketing.ticket_status`   | `new`, `triaged`, `assigned`, `in_progress`, `resolved`, `closed`      |
 | `ticketing.ticket_priority` | `low`, `normal`, `high`, `urgent`                                      |
 | `ticketing.ticket_category` | `general`, `billing`, `technical`, `bug`, `feature_request`, `account` |
@@ -56,6 +95,46 @@ how things were when they were written.
 | `ticketing.triage_status`   | `pending`, `processing`, `completed`, `failed`                         |
 
 ## Tables
+
+### `ticketing.workspaces`
+
+One row per support team.
+
+| Column       | Type          | Notes                                                                 |
+|--------------|---------------|-----------------------------------------------------------------------|
+| `id`         | `uuid`        | Primary key.                                                          |
+| `name`       | `text`        | 1-80 characters, named at sign-up.                                    |
+| `is_default` | `boolean`     | `true` for exactly one row (partial unique index): the workspace that held everything before SUP-78. New sign-ups with no link, including "Get in touch", join it. It is never deleted. |
+| `join_token` | `text`        | Unique, 24 random bytes in hex. The customer sign-up link `/join/<token>`. Not readable through a column grant: only an admin gets it, through `workspace_join_token()`, and `rotate_workspace_join_token()` replaces it (the old link stops working at once). |
+| `created_at` | `timestamptz` | Default `now()`.                                                      |
+
+### `ticketing.workspace_members`
+
+A person's workspace and their role in it.
+
+| Column         | Type                 | Notes                                                                |
+|----------------|----------------------|----------------------------------------------------------------------|
+| `user_id`      | `uuid`               | **Primary key** (one workspace per person). FK -> `profiles.id`, `on delete cascade`. |
+| `workspace_id` | `uuid`               | FK -> `workspaces.id`, `on delete cascade`.                          |
+| `role`         | `ticketing.app_role` | Default `customer`. Written only by `handle_new_user()`, `ensure_profile()` and `admin_set_role()`: `authenticated` has `select` only. |
+| `created_at`   | `timestamptz`        | Default `now()`.                                                     |
+
+Deleting the last member of a workspace other than the default one deletes the workspace
+(`delete_empty_workspace()` trigger), and with it every ticket, label and incident in it.
+
+### `ticketing.workspace_invites`
+
+Agent invites. Only the token's sha256 is kept: the link is shown to the admin once.
+
+| Column                       | Type          | Notes                                                    |
+|------------------------------|---------------|----------------------------------------------------------|
+| `id`                         | `uuid`        | Primary key.                                             |
+| `workspace_id`               | `uuid`        | FK -> `workspaces.id`, `on delete cascade`.              |
+| `email`                      | `text`        | The only address the invite works for (lower-cased).     |
+| `token_hash`                 | `text`        | Unique. Not in any client column grant.                  |
+| `created_by`, `accepted_by`  | `uuid`        | FK -> `profiles.id`, `on delete set null`.               |
+| `created_at`, `expires_at`   | `timestamptz` | Expires 7 days after it was made.                        |
+| `accepted_at`, `revoked_at`  | `timestamptz` | Single use: set when accepted. A new invite for the same email revokes the pending one. |
 
 ### `ticketing.profiles`
 
@@ -67,7 +146,6 @@ One row per `auth.users.id`. Created automatically on signup, or lazily via
 | `id`         | `uuid`               | Primary key. FK -> `auth.users.id`, `on delete cascade`. |
 | `email`      | `text`               | Copied from `auth.users` at profile-creation time.       |
 | `full_name`  | `text`               | Nullable, user-editable.                                 |
-| `role`       | `ticketing.app_role` | Defaults to `customer`.                                  |
 | `presence`   | `text`               | `online` / `away` / `offline`, default `online`. The person's last pick, via `set_own_presence()` (SUP-76). The status shown follows their working hours unless this pick is newer than the last shift start or end (SUP-85, `app/lib/work-hours.ts`). A label only: it never changes assignment or status. |
 | `presence_set_at` | `timestamptz`   | Nullable. When the person last picked a status (`set_own_presence()`), or `infinity` after signing out (`sign_out_presence()`), which holds Offline until `resume_presence_after_sign_in()` clears it on the next sign-in (SUP-85). |
 | `daily_case_cap` | `int`            | Nullable (null = no cap), 0-200. New cases a day; set by `admin_set_workload()` (SUP-77). |
@@ -76,11 +154,11 @@ One row per `auth.users.id`. Created automatically on signup, or lazily via
 | `created_at` | `timestamptz`        | Default `now()`.                                         |
 | `updated_at` | `timestamptz`        | Default `now()`.                                         |
 
-`role` can **only** change via the `ticketing.admin_set_role()` RPC. Clients are granted
-`update` on `full_name`/`updated_at` only -- `role` and `email` are excluded at the
-column-privilege level, independent of RLS, so even an RLS policy bug could not let a client
-rewrite their own role or impersonate another address in the admin UI. `email` is unique
-(`lower(email)`) and kept in sync from `auth.users` by trigger.
+The role is not here any more: it is `workspace_members.role` (SUP-81), and it can **only**
+change via the `ticketing.admin_set_role()` RPC. Clients are granted `update` on
+`full_name`/`updated_at` only -- `email` is excluded at the column-privilege level, independent
+of RLS, so even an RLS policy bug could not let a client impersonate another address in the
+admin UI. `email` is unique (`lower(email)`) and kept in sync from `auth.users` by trigger.
 
 ### `ticketing.tickets`
 
@@ -93,6 +171,7 @@ their own submission even through the Data API.
 |---------------------|-----------------------------|------------------------------------------------------------------------------|
 | `id`                | `uuid`                      | Primary key, `gen_random_uuid()`.                                            |
 | `number`            | `bigint`                    | Short readable number (#1042) from `tickets_number_seq`; unique, never client-set. |
+| `workspace_id`      | `uuid`                      | FK -> `workspaces.id`, `on delete cascade`. Always the customer's workspace, set by the `tickets_000_set_workspace` trigger whoever files the ticket; an assignee given at insert must be staff in that workspace. Never client-set, and the update guard refuses a change. |
 | `customer_id`       | `uuid`                      | FK -> `auth.users.id`, `on delete cascade`. Defaults to `auth.uid()`. **Immutable.** |
 | `subject`           | `text`                      | **Immutable** after insert.                                                  |
 | `body`              | `text`                      | **Immutable** after insert.                                                  |
@@ -172,7 +251,7 @@ zero policies, zero grants to `authenticated`. Only reachable through the RPC.
 
 | Column         | Type          | Notes                                              |
 |----------------|---------------|----------------------------------------------------|
-| `key`          | `text`        | `<auth.uid()>:<action>`. Part of the primary key.  |
+| `key`          | `text`        | `<auth.uid()>:<action>` per person, or `ws:<workspace_id>:<action>` for a workspace-wide budget (SUP-83). Part of the primary key. |
 | `window_start` | `timestamptz` | Start of the fixed window. Part of the primary key. |
 | `count`        | `int`         | Requests seen in this window.                      |
 
@@ -282,9 +361,18 @@ vector from an earlier version can't linger and a note can't exist without its i
 All grants to `authenticated` are the minimum each table needs; `service_role` has `all` on
 every table and bypasses RLS entirely (it is confined to server-only code).
 
+**Every policy on a table with `workspace_id` also requires `workspace_id =
+current_workspace_id()`** (SUP-81), on `using` and on `with check`. The table below leaves that
+condition out of each row to stay readable; "admins: every row" means every row in their own
+workspace. `profiles` has no `workspace_id`: its policy checks the other person's
+`workspace_members` row instead.
+
 | Table             | select                                                                                        | insert                                                                              | update                                                             | delete |
 |-------------------|-----------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------|--------------------------------------------------------------------|--------|
-| `profiles`        | own row; admins: every row; agents: staff rows only                                           | none (trigger/RPC only)                                                             | none -- nothing writes or renders `full_name`; `email` is synced from `auth.users`, `role` via RPC | none   |
+| `workspaces`      | own workspace only; `join_token` is outside the column grant                                  | none (sign-up trigger only)                                                         | none (`rotate_workspace_join_token()` only)                        | none (trigger, when the last member leaves) |
+| `workspace_members` | own row; admins: every member of their workspace; agents: its staff rows                    | none (trigger/RPC only)                                                             | none (`admin_set_role()` only)                                     | none (cascade from the profile) |
+| `workspace_invites` | admins of the workspace; `token_hash` is outside the column grant                           | none (`create_workspace_invite()` only)                                             | none (`revoke_workspace_invite()` only)                            | none   |
+| `profiles`        | own row; admins: every member of their workspace; agents: its staff rows                      | none (trigger/RPC only)                                                             | none -- nothing writes or renders `full_name`; `email` is synced from `auth.users` | none   |
 | `tickets`         | `customer_id = auth.uid()`; or `is_admin()`; or agent and (`assignee_id = auth.uid()` or null) | caller's role must be `customer` (checked in the policy, not just the app), `customer_id = auth.uid()`, row must be in pristine state incl. null timestamps (see `tickets_insert_customer`); INSERT privilege limited to `customer_id, subject, body`; per-user rate limit enforced by trigger | `is_admin()`; or agent and (`assignee_id = auth.uid()` or null) on **both** old and new row -- and only columns `status, assignee_id` | none   |
 | `ticket_comments` | `can_view_ticket(ticket_id)` and (`not is_internal` or `is_staff()`)                          | `author_id = auth.uid()` and `can_view_ticket(ticket_id)` and (`not is_internal` or `is_staff()`); INSERT privilege limited to `ticket_id, author_id, body, is_internal`; ticket must not be `closed`; per-user rate limit enforced by trigger | none                                                               | none   |
 | `ticket_events`   | `is_staff()` and `can_view_ticket(ticket_id)`                                                 | none (trigger only)                                                                 | none                                                               | none   |
@@ -311,22 +399,30 @@ Two things RLS deliberately does *not* try to do, because it can't:
 
 | Function                                              | Security  | Purpose                                                                                                       |
 |-------------------------------------------------------|-----------|---------------------------------------------------------------------------------------------------------------|
-| `app_role()`, `is_staff()`, `is_admin()`              | DEFINER   | Role lookups used inside policies. DEFINER so a `profiles` policy can check the caller's role without recursing into itself. |
+| `app_role()`, `is_staff()`, `is_admin()`              | DEFINER   | Role lookups used inside policies, read from the caller's `workspace_members` row. DEFINER so a policy can check the caller's role without recursing into itself. |
+| `current_workspace_id()`                              | DEFINER   | The caller's workspace, from `workspace_members` (`auth.uid()`, no parameter). Every workspace check in a policy calls it. |
+| `set_ticket_workspace()`, `set_workspace_from_ticket()`, `set_label_workspace()` (triggers, `before insert`) | DEFINER | Fill `workspace_id`: a ticket from its customer's membership, a ticket child from its ticket, a label from the signed-in creator. Whatever the client sent is overwritten. |
+| `check_triage_result_workspace()` (trigger on `triage_results`) | DEFINER | Refuses a `related_ticket_ids` entry that names a ticket in another workspace. A ticket deleted while triage ran is let through. |
+| `workspace_join_token()`, `rotate_workspace_join_token()` | DEFINER | Admins only (42501): read or replace their workspace's customer join token. Rotating is rate-limited (`workspace_join_rotate`). |
+| `create_workspace_invite(text)`, `revoke_workspace_invite(uuid)` | DEFINER | Admins only. Create returns the invite token once and keeps its hash. It charges the `workspace_invite` limit before checking the email, so an admin can't probe for free whether an address has an account (that case returns `{"error": "already_has_account"}` rather than raising, which would roll the count back). |
+| `consume_workspace_link_rate_limit(text)`             | DEFINER   | IP-keyed limiter for the signed-out `/join` and `/invite` token lookups (30 every 5 minutes), like the public status page's. `service_role` only. |
+| `delete_empty_workspace()` (trigger, `after delete` on `workspace_members`) | DEFINER | Deletes a workspace with no members left, except the default one. |
 | `can_view_ticket(uuid)`                               | **INVOKER** | "Can the caller see this ticket?" for child tables. INVOKER on purpose: it inherits the caller's own `tickets` RLS. Making it DEFINER would bypass ticket RLS for every child table. |
-| `handle_new_user()` (trigger)                         | DEFINER   | On `auth.users` insert: creates a `profiles` row with `role` **hard-coded to `customer`**, ignoring signup metadata (blocks self-escalation). Skipped for a user with no email, so this trigger can never break a signup it doesn't understand (written when `auth.users` was shared with notes-collections). |
-| `ensure_profile()`                                    | DEFINER   | Get-or-create the caller's profile (first needed when `auth.users` was shared with notes-collections; kept so code never assumes the row exists). Always creates as `customer`. |
-| `admin_set_role(uuid, app_role)`                      | DEFINER   | The only path to change a role. Re-checks `is_admin()`; takes a transaction-scoped advisory lock so two concurrent demotions can't both pass the last-admin check; refuses changing your own role and demoting the last admin; demoting staff to `customer` unassigns their tickets so they return to the shared queue. |
+| `handle_new_user()` (trigger)                         | DEFINER   | On `auth.users` insert: creates the `profiles` row and the membership (SUP-82). The role is **never read from sign-up metadata**. The trigger reads at most one intent and works the role out from what it can check: a workspace name creates that workspace with the person as `admin`; a valid join token makes them a `customer` of its workspace; a valid, unexpired invite for this exact email makes them an `agent` and uses the invite up; no intent joins the default workspace as a `customer`. A bad token, or more than one intent, aborts the sign-up rather than placing anyone in the wrong workspace. The intent keys are then removed from the account's metadata. Skipped for a user with no email. |
+| `ensure_profile()`                                    | DEFINER   | Get-or-create the caller's profile and membership (first needed when `auth.users` was shared with notes-collections; kept so code never assumes the row exists). Always creates a `customer` of the default workspace. Returns the profile with `role` and `workspace_id`. |
+| `admin_set_role(uuid, app_role)`                      | DEFINER   | The only path to change a role, inside the caller's own workspace: a target in another workspace is "no such user". Re-checks `is_admin()`; takes a per-workspace advisory lock so two concurrent demotions can't both pass the last-admin check; refuses changing your own role and demoting the workspace's last admin; demoting staff to `customer` unassigns their tickets so they return to the shared queue. |
 | `review_triage(uuid, uuid, ticket_priority, ticket_category, ticket_team)` | DEFINER | Staff confirm or correct a ticket's AI triage. Checks `is_staff()` and visibility itself (admins: any ticket; agents: unassigned or their own -- mirrors `tickets_select`, since `can_view_ticket()` would see everything inside a DEFINER function); refuses a `p_result_id` that is not the ticket's latest run (`stale_triage`); writes the fields plus `reviewed_*`, a `*_changed` event per changed field and a `triage_reviewed` event (`confirmed` / `corrected` / `manual`). Granted to `authenticated`. |
 | `set_updated_at()` (trigger)                          | INVOKER   | Maintains `tickets.updated_at`.                                                                               |
 | `guard_ticket_update()` (trigger, `before update` on `tickets`) | DEFINER | Immutable `customer_id`/`subject`/`body`; `assignee_id` must be an agent or admin; legal status transitions (agents only -- admins bypass); stamps `resolved_at`/`closed_at`; writes `ticket_events`. DEFINER so it can insert into `ticket_events`. |
 | `stamp_first_response()` (trigger, `after insert` on `ticket_comments`) | DEFINER | Sets `tickets.first_response_at` on the first public staff comment.                                    |
-| `guard_last_admin_delete()` (trigger, `before delete` on `profiles`) | DEFINER | Refuses to delete the only admin's profile. Because account deletion is a cascade from `auth.users`, the raise aborts the whole deletion. Mirrors `admin_set_role()`'s last-admin rule. |
+| `guard_last_admin_delete()` (trigger, `before delete` on `profiles`) | DEFINER | Refuses to delete a workspace's only admin while it has other members, and the default workspace's only admin at any time. Because account deletion is a cascade from `auth.users`, the raise aborts the whole deletion. An admin alone in their own workspace can leave, and the workspace goes with them. |
 | `export_own_data()`                                   | **INVOKER** | GDPR Art. 15/20 export: one `jsonb` with the caller's profile, own tickets (with comments and history), comments and actions on other tickets, assigned tickets, published share links, notes and assistant chats. INVOKER so RLS still applies (a customer gets no internal comments or triage output) and every branch is also pinned to `auth.uid()`. Granted to `authenticated`. |
-| `consume_rate_limit(text)`                            | DEFINER   | Fixed-window counter. The caller names only the action (`create_ticket` / `add_comment` / `rerun_triage` / `assistant_message` / `save_note`); limit and window are hard-coded per action inside the function, and the key's identity half comes from `auth.uid()` -- so a client can neither loosen its own limit, target another user's bucket, nor mint rows with made-up windows. Returns `false` when over the limit; prunes windows older than a day on ~1% of calls. |
+| `consume_rate_limit(text)`                            | DEFINER   | Fixed-window counter. The caller names only the action (`create_ticket` / `add_comment` / `rerun_triage` / `assistant_message` / `save_note` and the others below); limit and window are hard-coded per action inside the function, and the key's identity half comes from `auth.uid()` -- so a client can neither loosen its own limit, target another user's bucket, nor mint rows with made-up windows. For the staff AI actions it then charges the workspace's budget too (SUP-83), only once the person's own limit has passed; when the workspace refuses, the person's count is given back. Returns `false` when over the limit; prunes windows older than a day on ~1% of calls. |
+| `consume_triage_budget(uuid)`                         | DEFINER   | One unit of the ticket's workspace's triage budget (200 an hour), spent before any model call of a triage run. The workspace comes from the ticket, since the triage pipeline runs as the service role. `false` fails the run with reason `budget`; the ticket stays filed. `service_role` only. |
 | `create_triage_state()` (trigger, `after insert` on `tickets`) | DEFINER | Creates the ticket's `ticket_triage_state` row so the triage pipeline always has a row to claim. |
 | `rate_limit_ticket_insert()`, `rate_limit_comment_insert()` (triggers, `before insert`) | INVOKER | Call `consume_rate_limit()` for the inserting user and raise `rate_limited:<action>` when over -- so the limit applies to direct Data API calls too, not just the app. Skipped for `service_role` (`auth.uid()` is null). |
 | `sync_profile_email()` (trigger, `after update of email` on `auth.users`) | DEFINER | Keeps `profiles.email` equal to the auth email. Users cannot update `profiles.email` themselves. |
-| `match_tickets(vector(1536), int, uuid)`              | INVOKER   | Nearest tickets by cosine distance (`<=>`), returning subject + latest summary only. EXECUTE revoked from PUBLIC; granted to `service_role` only. |
+| `match_tickets(vector(1536), int, uuid)`              | INVOKER   | Nearest tickets by cosine distance (`<=>`), returning subject + latest summary only, and only from the workspace of the ticket being triaged (the excluded id; an unknown id matches nothing). An iterative HNSW scan keeps going until enough rows pass the workspace filter. EXECUTE revoked from PUBLIC; granted to `service_role` only. `match_triage_corrections()` and `detect_incident()` are scoped the same way (`docs/learning.md`, `docs/incidents.md`). |
 | `save_note(uuid, text, text, jsonb, text)`           | INVOKER   | Insert (`p_id` null) or update the caller's own note **and** replace its chunks in one transaction. INVOKER so the caller's RLS and column grants on `notes`/`documents` apply inside; owner is `auth.uid()`, never an argument. Returns null when an update matched nothing visible. Granted to `authenticated`. |
 | `set_own_presence(text)`                              | DEFINER   | The write path for `profiles.presence` (with `sign_out_presence()` below), which also stamps `presence_set_at` (SUP-85): always the caller's own row (`auth.uid()`, no id parameter), staff only (42501), one of the three values (22023), rate-limited (`set_presence`). Signing out calls it with `offline`. Granted to `authenticated`. |
 | `sign_out_presence()`, `resume_presence_after_sign_in()` | DEFINER | SUP-85. Sign-out sets the caller's own row Offline with `presence_set_at = 'infinity'`: staff only (42501), rate-limited as `set_presence`. Sign-in clears that hold (only the caller's own row, only when it holds), so working hours decide the status again. |
@@ -358,14 +454,25 @@ Enforced for agents by `guard_ticket_update()`; mirrored in `ALLOWED_STATUS_TRAN
 
 ## Rate limits in use
 
-| Action          | Limit | Window     | Where enforced                                                     |
-|-----------------|-------|------------|--------------------------------------------------------------------|
-| `create_ticket` | 10    | 60 minutes | `BEFORE INSERT` trigger on `tickets` (database)                    |
-| `add_comment`   | 30    | 10 minutes | `BEFORE INSERT` trigger on `ticket_comments` (database)            |
-| `rerun_triage`  | 5     | 10 minutes | `rerunTriageAction()` via `checkRateLimit()` (no row is inserted) |
-| `assistant_message` | 20 | 10 minutes | `sendMessageAction()` via `checkRateLimit()` -- a paid completion (up to 3 with tool rounds) |
-| `save_note`     | 30    | 10 minutes | `createNoteAction()` / `updateNoteAction()` via `checkRateLimit()` -- a paid embedding call, before any row is written (not consumed for a no-op edit or a missing note) |
-| `set_presence`  | 60    | 10 minutes | Inside `set_own_presence()` (database) |
+| Action          | Limit | Workspace cap | Window     | Where enforced                                                     |
+|-----------------|-------|---------------|------------|--------------------------------------------------------------------|
+| `create_ticket` | 10    | --            | 60 minutes | `BEFORE INSERT` trigger on `tickets` (database)                    |
+| `add_comment`   | 30    | --            | 10 minutes | `BEFORE INSERT` trigger on `ticket_comments` (database)            |
+| `rerun_triage`  | 5     | 50            | 10 minutes | `rerunTriageAction()` via `checkRateLimit()` (no row is inserted) |
+| `assistant_message` | 20 | 200          | 10 minutes | `sendMessageAction()` via `checkRateLimit()` -- a paid completion (up to 3 with tool rounds) |
+| `save_note`     | 30    | 200           | 10 minutes | `createNoteAction()` / `updateNoteAction()` via `checkRateLimit()` -- a paid embedding call, before any row is written (not consumed for a no-op edit or a missing note) |
+| `set_presence`  | 60    | --            | 10 minutes | Inside `set_own_presence()` (database) |
+| `workspace_invite` | 20 | --            | 60 minutes | Inside `create_workspace_invite()` (database), per admin           |
+| `workspace_join_rotate` | 10 | --       | 60 minutes | Inside `rotate_workspace_join_token()` (database), per admin       |
+| triage budget   | --    | 200           | 60 minutes | `consume_triage_budget()`, before each triage run's model calls    |
+
+**Workspace caps (SUP-83).** Per-person limits alone would let a workspace spend as many model
+calls as it has people. The staff-only AI actions above therefore also count against a
+workspace-wide cap, and every triage run spends one unit of its workspace's triage budget.
+Filing a ticket and MCP requests stay per person only, on purpose: customers sign themselves up,
+so a workspace-wide cap on filing would let a few throwaway accounts stop every real customer in
+a workspace from filing for an hour. Over the triage budget, the ticket is still filed; its
+triage fails with reason `budget` and staff can re-run it later.
 
 The insert limits are enforced in the database so that a user calling the Data API directly with
 their session token is limited exactly like the app. The app maps the trigger's
@@ -419,10 +526,12 @@ bounds cost/availability abuse of the endpoint; the 128-bit token already makes 
 
 ## Admin surface
 
-`/admin` (overview analytics), `/admin/users` (role management) and `/admin/workload` (daily
-case caps and timezones, SUP-77) are gated by `requireAdmin()`
+`/admin` (overview analytics), `/admin/users` (role management), `/admin/workload` (daily
+case caps, timezones and working hours, SUP-77/SUP-85) and `/admin/workspace` (the customer join
+link and agent invites, SUP-82) are gated by `requireAdmin()`
 in the route-segment layout and again in each page. Analytics are aggregated in app code over a
-bounded select that runs as the signed-in admin -- RLS is what makes it "all tickets". Role
+bounded select that runs as the signed-in admin -- RLS is what makes it "all tickets" of their
+workspace. Role
 changes call `admin_set_role()`; reassignment is a plain `tickets` update permitted for admins by
 `tickets_update_staff` and validated by `guard_ticket_update()`.
 

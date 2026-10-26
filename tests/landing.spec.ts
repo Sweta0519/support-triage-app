@@ -110,6 +110,7 @@ test.describe("signed out", () => {
     // The sentences that carry the claims, so the copy can't drift silently.
     await expect(safe).toContainText("never replies to a customer");
     await expect(safe).toContainText("row-level security on every table");
+    await expect(safe).toContainText("its own workspace, which no other team can see");
     await expect(safe).toContainText("a read-only status page that staff choose to publish");
     await expect(safe).toContainText("checked against a strict format");
     // Pricing (SUP-51): Free and Custom; Custom's "Contact us" goes through
