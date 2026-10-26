@@ -18,7 +18,8 @@ When triage finishes for a ticket (`app/lib/ai/triage.ts`), `checkForIncident()`
 A ticket is checked only if it's open and was itself filed within the window. Re-running triage
 on an old ticket never pulls it into today's burst.
 
-A ticket's **neighbours** are the other tickets that meet all three conditions:
+A ticket's **neighbours** are the other tickets that meet all four conditions:
+- in the same workspace (SUP-81);
 - still open (not resolved or closed);
 - filed within the last `INCIDENT_WINDOW_MINUTES` (60), counted back from when the check runs;
 - with an embedding at least `INCIDENT_SIMILARITY` (0.50) cosine-similar to it.

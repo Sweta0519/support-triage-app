@@ -62,10 +62,14 @@ workspace-wide AI budgets plus an A/B isolation test (SUP-83, PR #93).
   before SUP-78) as a customer. The role is never read from sign-up metadata: `handle_new_user()`
   checks the name or token and works the role out itself.
 - **`workspace_id` on every shared table.** The roots (`tickets`, `labels`, `incidents`) and
-  every table that hangs off a ticket carry it. A ticket takes its customer's workspace, and a
-  child row takes its ticket's, both from a `BEFORE INSERT` trigger, never from the client. A
+  every table that hangs off a ticket carry it. A ticket takes its customer's workspace, a child
+  row its ticket's, and a label its creator's, from triggers; an incident takes the triaged
+  ticket's, in `detect_incident()`. It never comes from a signed-in client. A
   composite foreign key to `tickets (id, workspace_id)` (and to `labels` / `incidents` for the
-  link tables) makes a row in the wrong workspace impossible, not just unlikely.
+  link tables) makes a row in the wrong workspace impossible, not just unlikely. The one
+  exception is `profile_cards.workspace_id`: nullable (`on delete set null`, since a profile can
+  exist a moment before its membership) and kept in sync from the membership by
+  `sync_member_card()`.
 - **Personal tables stay owner-scoped:** `notes`, `documents`, `assistant_*` and
   `access_tokens` have no `workspace_id`. A person has one workspace, so their own rows are
   already inside it.
@@ -81,7 +85,7 @@ workspace-wide AI budgets plus an A/B isolation test (SUP-83, PR #93).
   leaves, the workspace is deleted with everything in it.
 - **Proof:** `tests/workspace-isolation.spec.ts` creates workspaces A and B and checks that a
   customer, an agent and an admin in A can't see or change anything in B, through the web app,
-  MCP and Sage, and that triage never offers a B ticket.
+  the database API, MCP and Sage, and that triage never offers a B ticket.
 
 ## Enums
 
@@ -251,7 +255,7 @@ zero policies, zero grants to `authenticated`. Only reachable through the RPC.
 
 | Column         | Type          | Notes                                              |
 |----------------|---------------|----------------------------------------------------|
-| `key`          | `text`        | `<auth.uid()>:<action>` per person, or `ws:<workspace_id>:<action>` for a workspace-wide budget (SUP-83). Part of the primary key. |
+| `key`          | `text`        | `<auth.uid()>:<action>` per person, `ws:<workspace_id>:<action>` for a workspace-wide budget (SUP-83), or an IP key: `public_share:<ip>` (the status page) and `workspace_link:<ip>` (the join and invite links). Part of the primary key. |
 | `window_start` | `timestamptz` | Start of the fixed window. Part of the primary key. |
 | `count`        | `int`         | Requests seen in this window.                      |
 
@@ -401,7 +405,7 @@ Two things RLS deliberately does *not* try to do, because it can't:
 |-------------------------------------------------------|-----------|---------------------------------------------------------------------------------------------------------------|
 | `app_role()`, `is_staff()`, `is_admin()`              | DEFINER   | Role lookups used inside policies, read from the caller's `workspace_members` row. DEFINER so a policy can check the caller's role without recursing into itself. |
 | `current_workspace_id()`                              | DEFINER   | The caller's workspace, from `workspace_members` (`auth.uid()`, no parameter). Every workspace check in a policy calls it. |
-| `set_ticket_workspace()`, `set_workspace_from_ticket()`, `set_label_workspace()` (triggers, `before insert`) | DEFINER | Fill `workspace_id`: a ticket from its customer's membership, a ticket child from its ticket, a label from the signed-in creator. Whatever the client sent is overwritten. |
+| `set_ticket_workspace()` (`before insert` on `tickets`), `set_workspace_from_ticket()` (`before insert or update of ticket_id, workspace_id` on each ticket child), `set_label_workspace()` (`before insert` on `labels`) | DEFINER | Fill `workspace_id`: a ticket from its customer's membership, a ticket child from its ticket (again whenever its `ticket_id` or `workspace_id` changes), a label from the signed-in creator's membership. Whatever a signed-in client sent is overwritten; only the service role (no `auth.uid()`) may name a label's workspace. Incidents get theirs from `detect_incident()`, which takes it from the triaged ticket. |
 | `check_triage_result_workspace()` (trigger on `triage_results`) | DEFINER | Refuses a `related_ticket_ids` entry that names a ticket in another workspace. A ticket deleted while triage ran is let through. |
 | `workspace_join_token()`, `rotate_workspace_join_token()` | DEFINER | Admins only (42501): read or replace their workspace's customer join token. Rotating is rate-limited (`workspace_join_rotate`). |
 | `create_workspace_invite(text)`, `revoke_workspace_invite(uuid)` | DEFINER | Admins only. Create returns the invite token once and keeps its hash. It charges the `workspace_invite` limit before checking the email, so an admin can't probe for free whether an address has an account (that case returns `{"error": "already_has_account"}` rather than raising, which would roll the count back). |
@@ -461,6 +465,12 @@ Enforced for agents by `guard_ticket_update()`; mirrored in `ALLOWED_STATUS_TRAN
 | `rerun_triage`  | 5     | 50            | 10 minutes | `rerunTriageAction()` via `checkRateLimit()` (no row is inserted) |
 | `assistant_message` | 20 | 200          | 10 minutes | `sendMessageAction()` via `checkRateLimit()` -- a paid completion (up to 3 with tool rounds) |
 | `save_note`     | 30    | 200           | 10 minutes | `createNoteAction()` / `updateNoteAction()` via `checkRateLimit()` -- a paid embedding call, before any row is written (not consumed for a no-op edit or a missing note) |
+| `staff_create_ticket` | 30 | --         | 60 minutes | Inside `staff_create_ticket()` (database), on every call |
+| `rate_ticket`   | 10    | --            | 10 minutes | Inside `rate_ticket()` (database): rating a resolved ticket (CSAT) |
+| `update_profile` | 20   | --            | 10 minutes | Inside `update_own_profile()` (database): account settings |
+| `update_avatar` | 10    | --            | 10 minutes | Profile picture upload via `checkRateLimit()` |
+| `access_token`  | 10    | --            | 60 minutes | `BEFORE INSERT` trigger on `access_tokens` (database): creating an MCP token |
+| `mcp_request`   | 120   | --            | 10 minutes | Every `/api/mcp` request via `checkRateLimit()`, per token owner; the AI calls it makes count under their own actions |
 | `set_presence`  | 60    | --            | 10 minutes | Inside `set_own_presence()` (database) |
 | `workspace_invite` | 20 | --            | 60 minutes | Inside `create_workspace_invite()` (database), per admin           |
 | `workspace_join_rotate` | 10 | --       | 60 minutes | Inside `rotate_workspace_join_token()` (database), per admin       |

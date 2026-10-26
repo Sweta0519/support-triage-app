@@ -102,7 +102,8 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
   `profiles.role` no longer exists (dropped in SUP-81).
 - Every person belongs to exactly one workspace (`workspace_members.user_id` is the primary key;
   `docs/supabase-schema.md`, SUP-78). Every table shared within a team (tickets, their child
-  tables, labels, incidents) has a `workspace_id` filled by a trigger, never by the client, and
+  tables, labels, incidents) has a `workspace_id` that never comes from a signed-in client: a
+  trigger fills it (for incidents, `detect_incident()` does, from the triaged ticket), and
   every RLS policy on it checks `workspace_id = ticketing.current_workspace_id()`. A
   `SECURITY DEFINER` function or a service-role read must filter by workspace itself. Personal
   tables (notes, documents, assistant_*, access_tokens) stay owner-scoped.

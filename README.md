@@ -164,7 +164,7 @@ embeddings) · Vercel.
 ## Security model (baseline, not the centrepiece)
 
 - **Workspaces** (SUP-78): each support team is a workspace, and each person belongs to exactly
-  one. Every RLS policy checks the caller's workspace, `workspace_id` is set by triggers (never
+  one. Every RLS policy checks the caller's workspace, `workspace_id` is set by the database (never
   by the client), and composite foreign keys stop a row from pointing into another workspace.
   `tests/workspace-isolation.spec.ts` proves it with two workspaces.
 - Three roles (`customer` / `agent` / `admin`), held per workspace membership and read from the
@@ -183,7 +183,8 @@ embeddings) · Vercel.
 - GDPR data rights are self-service on `/account`: a JSON **export** of everything the caller can
   see (an RLS-scoped `SECURITY INVOKER` function) and **real account deletion**. Deletion asks for
   the current password first. The `auth.users` row goes and every table cascades; a trigger
-  refuses to delete the last admin, and a departed staff member's replies stay on customers'
+  refuses to delete a workspace's last admin while other members remain (the default
+  workspace's, always), and a departed staff member's replies stay on customers'
   tickets unattributed rather than vanishing.
 - **Rate limiting** in Postgres:
   - per-user limits on sensitive actions;
@@ -230,12 +231,14 @@ Then in the Supabase dashboard: **Settings -> API -> Data API -> Exposed schemas
 `docs/supabase-schema.md` for why).
 
 Sign up at `/signup` ("Create a workspace" on the login page): you become the admin of the new
-workspace. To make an account admin of the default workspace instead (where "Get in touch"
-sign-ups land), use the SQL editor:
+workspace. An account that joined the default workspace (where "Get in touch" sign-ups land)
+can be made its admin in the SQL editor. One made at `/signup` already belongs to its own
+workspace, and a person has only one:
 
 ```sql
 update ticketing.workspace_members set role = 'admin'
-where user_id = (select id from ticketing.profiles where email = 'you@example.com');
+where user_id = (select id from ticketing.profiles where email = 'you@example.com')
+  and workspace_id = (select id from ticketing.workspaces where is_default);
 ```
 
 Without `OPENROUTER_API_KEY` the app still runs, but tickets stay `pending` triage, and staff
