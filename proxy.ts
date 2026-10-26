@@ -14,6 +14,8 @@ export const config = {
     // so no other .mp4/.vtt path ever skips the session check.
     // The MCP endpoint (exactly /api/mcp) signs in with access tokens, never
     // cookies, and answers 401 itself (SUP-54), so it skips the proxy too.
-    "/((?!_next/static|_next/image|favicon.ico|marketing/|api/mcp$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // So does the email webhook (exactly /api/email/inbound, SUP-88), which
+    // signs in with Resend's signature.
+    "/((?!_next/static|_next/image|favicon.ico|marketing/|api/mcp$|api/email/inbound$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
