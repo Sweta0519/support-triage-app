@@ -40,6 +40,27 @@ function inboundLocalParts(data: NonNullable<ReceivedEvent["data"]>, domain: str
   return [...parts];
 }
 
+// The body as text, or null once it passes MAX_BODY_BYTES: read in chunks
+// and abandoned there, so an oversized (or chunked, length-less) request is
+// never buffered whole.
+async function readLimited(request: Request): Promise<string | null> {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY_BYTES) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 function reply(status: number, message: string, headers: Record<string, string> = {}) {
   return Response.json({ message }, { status, headers });
 }
@@ -53,8 +74,8 @@ export async function POST(request: Request) {
   }
 
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return reply(413, "Too large.");
-  const body = await request.text();
-  if (Buffer.byteLength(body) > MAX_BODY_BYTES) return reply(413, "Too large.");
+  const body = await readLimited(request);
+  if (body === null) return reply(413, "Too large.");
 
   const signed = verifyWebhookSignature(
     secret,
@@ -73,16 +94,20 @@ export async function POST(request: Request) {
   } catch {
     return reply(400, "Not JSON.");
   }
+  if (!event || typeof event !== "object") return reply(400, "Not an event.");
   // Signed, but not an event we subscribe to: acknowledge, so it isn't retried.
   if (event.type !== "email.received") return reply(200, "Ignored.");
   const emailId = event.data?.email_id;
   if (typeof emailId !== "string" || !event.data) return reply(400, "No email_id.");
+  // The table's limits: a longer id could never be recorded, and a 503 would
+  // only make Resend retry it.
+  const svixId = request.headers.get("svix-id")!;
+  if (emailId.length > 100 || svixId.length > 100) return reply(400, "Id too long.");
 
   try {
-    const outcome = await recordInboundEmailEvent(request.headers.get("svix-id")!, emailId, inboundLocalParts(event.data, domain));
-    // Over the workspace's cap: a non-2xx makes Resend retry later.
-    if (outcome === "rate_limited") return reply(429, "Too many emails for this workspace.", { "Retry-After": "600" });
-    return reply(200, outcome);
+    // Every outcome is final, including 'held' (over the workspace's cap):
+    // it's recorded, so there's nothing for Resend to retry.
+    return reply(200, await recordInboundEmailEvent(svixId, emailId, inboundLocalParts(event.data, domain)));
   } catch (err) {
     console.error("Email webhook failed:", err);
     return reply(503, "Unavailable right now.", { "Retry-After": "30" });
