@@ -16,8 +16,9 @@ Check for:
 - **Project rules from `CLAUDE.md`**:
   - All Supabase reads and writes go through `app/lib/db/`; no component or route handler calls the client directly.
   - The service-role key is used only in `app/lib/supabase/service.ts`, never anywhere reachable from client code.
-  - Role comes from `ticketing.profiles.role` via `requireRole()`/`requireStaff()`/`requireAdmin()` in `app/lib/auth/session.ts` — never a JWT claim, never in `proxy.ts`.
+  - Role comes from `ticketing.workspace_members.role` via `requireRole()`/`requireStaff()`/`requireAdmin()` in `app/lib/auth/session.ts` — never a JWT claim, never in `proxy.ts`.
   - Any read of the current user's profile calls `ticketing.ensure_profile()` first.
+  - Workspace isolation: every RLS policy on a table with `workspace_id` checks `current_workspace_id()`; `workspace_id` never comes from a signed-in client (a trigger sets it; for incidents, `detect_incident()` from the ticket); a `SECURITY DEFINER` function or service-role read filters by workspace itself.
   - State-changing operations are Server Actions, not plain mutating Route Handlers.
   - Schema changes are files in `supabase/migrations/`, and every new table has RLS with a real policy.
   - Ticket assignment uses a conditional `UPDATE ... WHERE assignee_id IS NULL` with a rowcount check.

@@ -72,7 +72,8 @@ it from the ticket page.
 2. **Embed.** `subject + body` (body capped at 6,000 chars) -> `openai/text-embedding-3-small`
    via `POST https://openrouter.ai/api/v1/embeddings` -> upsert into `ticket_embeddings`
    (`vector(1536)`, HNSW cosine index).
-3. **Find candidates.** `match_tickets()` returns the 5 nearest tickets by cosine distance --
+3. **Find candidates.** `match_tickets()` returns the 5 nearest tickets in the ticket's own
+   workspace (SUP-81) by cosine distance --
    **subject and prior summary only, never bodies**. Each is flattened to one line (newlines and
    tabs stripped), capped at 120 / 200 characters, and the whole list is wrapped in
    `<candidate_tickets>` tags.

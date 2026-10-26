@@ -110,7 +110,7 @@ Each tool's own docs: [Claude Code](https://code.claude.com/docs/en/mcp),
    instead of reading cookies, so every `app/lib/db/` function runs as the owner under the same
    RLS as the web app. The service role is never used for the tools' reads or writes.
 4. **The role, every time.** The profile comes from `ensure_profile()` on every request, so the
-   role is the one in `ticketing.profiles` right now, never a JWT claim. `session.ts`'s
+   role is the one in `ticketing.workspace_members` right now, never a JWT claim. `session.ts`'s
    `getUser()` verifies the request's JWT (`currentUserSessionToken()`), so `getProfile()` and
    the `require*` helpers work here too. A demoted agent loses
    staff tools on their next call. The MCP server is built per request from that profile
@@ -205,7 +205,7 @@ their own and unassigned tickets, admins every ticket.
 - **Not available means not yours.** A ticket an agent can't see gets the same answer as one that
   doesn't exist.
 - **Admin-only actions** (role changes, learning exclusions) aren't offered.
-- **Every role, every request.** The tool set is built from the role in `profiles` on each
+- **Every role, every request.** The tool set is built from the role in `workspace_members` on each
   request, so a demoted agent loses the staff tools on their next call. Only `agent` and `admin`
   get them; any other role gets none.
 - **People** are `{"you": true}`, `{"name": {untrusted_text}}` (or `null` when they have no display

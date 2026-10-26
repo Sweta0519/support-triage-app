@@ -83,8 +83,8 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
     text, and the draft customer update is sanitized of customer-specific details.
 - The public homepage's "Safe by design" strip (`SAFETY` in `app/welcome/page.tsx`) states three of
   these rules to visitors: advisory triage (no status changes or replies by the AI), RLS on every
-  table (with published status pages as the one exception), and untrusted ticket text with
-  strict-format output. Changing any of them means updating that copy (and its test) too.
+  table with each team in its own workspace (with published status pages as the one exception),
+  and untrusted ticket text with strict-format output. Changing any of them means updating that copy (and its test) too.
 - Ticket bodies are untrusted input to the model (prompt injection risk). The triage prompt must
   keep instructions and untrusted ticket content clearly delimited, use `response_format:
   json_schema` with `strict: true`, and restrict any duplicate/related-ticket IDs the model can
@@ -97,8 +97,19 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
   passwords.
 - Every page under the `(app)` route group requires a signed-in user, verified server-side
   (`app/lib/auth/session.ts`); redirect to `/login` if not signed in.
-- Role is `ticketing.profiles.role` (`customer` | `agent` | `admin`), never a JWT claim -- a
-  demoted admin must lose access immediately, not only after token refresh.
+- Role is `ticketing.workspace_members.role` (`customer` | `agent` | `admin`), never a JWT
+  claim -- a demoted admin must lose access immediately, not only after token refresh.
+  `profiles.role` no longer exists (dropped in SUP-81).
+- Every person belongs to exactly one workspace (`workspace_members.user_id` is the primary key;
+  `docs/supabase-schema.md`, SUP-78). Every table shared within a team (tickets, their child
+  tables, labels, incidents) has a `workspace_id` that never comes from a signed-in client: a
+  trigger fills it (for incidents, `detect_incident()` does, from the triaged ticket), and
+  every RLS policy on it checks `workspace_id = ticketing.current_workspace_id()`. A
+  `SECURITY DEFINER` function or a service-role read must filter by workspace itself. Personal
+  tables (notes, documents, assistant_*, access_tokens) stay owner-scoped.
+- Sign-up never takes a role from client metadata: `handle_new_user()` works it out from what it
+  can check (a new workspace's name makes an admin, a join link a customer, an invite for that
+  email an agent; no intent joins the default workspace as a customer).
 - `requireRole(...)` / `requireStaff()` / `requireAdmin()` in `app/lib/auth/session.ts` gate
   role-specific routes server-side. `proxy.ts` (`middleware.ts`) only refreshes sessions and
   redirects unauthenticated visitors -- it must never contain role/authorization logic (Next.js
@@ -124,8 +135,8 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
   The one exception so far is the MCP endpoint `app/api/mcp/route.ts` (SUP-54, `docs/mcp.md`):
   it never reads cookies and signs in only with a bearer access token, which browsers don't
   send by themselves, and it sends no CORS headers. Its requests run as the token's owner
-  through `runWithUserSession()` (`app/lib/auth/clients.ts`), so RLS applies, and the role is
-  re-read from `profiles` on every request.
+  through `runWithUserSession()` (`app/lib/auth/clients.ts`), so RLS applies (including the
+  workspace check), and the role is re-read from `workspace_members` on every request.
 - Rate limiting: a Postgres-backed atomic counter (`ticketing.rate_limits`, RPC-only, deny-all
   RLS) on sensitive/public actions, plus a Vercel WAF rule as a coarse network-level backstop.
 - Assignment must use a conditional `UPDATE ... WHERE assignee_id IS NULL` with a rowcount
@@ -163,5 +174,5 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
 - Put secrets or API keys in source files -- use `.env.local`.
 - Store passwords or write custom password-handling logic anywhere -- Supabase Auth handles it.
 - Grant a client-facing path (RLS policy or column grant) that lets any role update
-  `ticketing.profiles.role` directly -- role changes go through `ticketing.admin_set_role()`
+  `ticketing.workspace_members` directly -- role changes go through `ticketing.admin_set_role()`
   only.

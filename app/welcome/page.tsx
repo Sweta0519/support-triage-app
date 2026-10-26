@@ -69,6 +69,8 @@ const MCP_STEPS = [
 // way to reach that team, not access to a team of your own.
 // Custom's "Contact us" leads to the same form (signed in, to a new ticket).
 const REQUEST_ACCESS = "/signup?access=1";
+// A plain sign-up names a new workspace and makes you its admin (SUP-82).
+const CREATE_WORKSPACE = "/signup";
 
 const ink = "text-[#15171C]";
 const graphite = "text-[#5B606B]";
@@ -214,8 +216,8 @@ const SAFETY = [
   {
     title: "Customers see only their own tickets",
     // The one exception is a status page staff choose to publish (read via
-    // the service role by token), so the copy says so.
-    text: "Enforced by the database itself, with row-level security on every table. The only way a ticket is seen outside its owner's account is a read-only status page that staff choose to publish.",
+    // the service role by token), so the copy says so. Workspaces: SUP-78.
+    text: "Enforced by the database itself, with row-level security on every table. Each team's tickets live in its own workspace, which no other team can see. The only way a ticket is seen outside its owner's account is a read-only status page that staff choose to publish.",
   },
   {
     // Mitigations, not a guarantee against prompt injection: worded as what
@@ -540,7 +542,8 @@ export default async function WelcomePage() {
                 <h3 className="text-[20px] font-semibold">Free</h3>
                 <p className="mt-3 text-[44px] font-semibold leading-none tracking-[-0.025em]">€0</p>
                 <p className={`mt-3 text-[15px] leading-[1.6] ${graphite}`}>
-                  Every feature listed here, at no cost. Get in touch and tell us about your team.
+                  Every feature listed here, at no cost. Create a workspace for your team: you&apos;re its admin, and you
+                  invite your agents and customers.
                 </p>
                 <ul className={`mt-6 flex flex-col gap-2.5 text-[15px] leading-[1.5] ${ink}`}>
                   {FREE_INCLUDES.map((item) => (
@@ -550,8 +553,8 @@ export default async function WelcomePage() {
                     </li>
                   ))}
                 </ul>
-                <Link href={signedIn ? "/" : REQUEST_ACCESS} className={`${primaryButton} mt-8`}>
-                  {signedIn ? "Open the app" : "Get in touch"}
+                <Link href={signedIn ? "/" : CREATE_WORKSPACE} className={`${primaryButton} mt-8`}>
+                  {signedIn ? "Open the app" : "Create a workspace"}
                 </Link>
               </div>
               <div className="border-t border-[#E3E5EA] py-8 md:border-l md:border-t-0 md:pl-10">

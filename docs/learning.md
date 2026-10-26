@@ -12,7 +12,8 @@ improving.
    plain confirmation teaches nothing new, so it isn't used. Any staff member's correction counts
    (the owner's choice).
 2. **Finding examples.** When a ticket is triaged, `ticketing.match_triage_corrections()` (service
-   role only) finds the most similar corrected tickets by embedding similarity. It reuses
+   role only) finds the most similar corrected tickets in the ticket's own workspace (SUP-81) by
+   embedding similarity. It reuses
    `ticket_embeddings`, as duplicate and incident detection do. It returns at most
    `LEARNING_MAX_EXAMPLES` (3) at or above `LEARNING_SIMILARITY` (0.45), and never a correction an
    admin has excluded.

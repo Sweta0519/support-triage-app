@@ -5,10 +5,11 @@ address. This page records how that is exposed, and why.
 
 ## The problem
 
-`ticketing.profiles` holds each user's email and role. Its read policy is
-deliberately narrow (audit S4): you can read your own row; agents can read
-staff rows; admins can read everything. Agents can't read customer
-profiles at all.
+`ticketing.profiles` holds each user's email; their role is in
+`ticketing.workspace_members` (SUP-81). The read policy is deliberately
+narrow (audit S4): you can read your own row; agents can read the staff
+rows of their own workspace; admins can read everyone in their workspace.
+Agents can't read customer profiles at all.
 
 Showing a customer's *name* to the agent working their ticket therefore
 needs a new read path. Widening the `profiles` policy isn't an option: RLS
