@@ -111,6 +111,10 @@ const icons = {
 // A link is active on its own page and anything below it.
 const under = (href: string) => (p: string) => p === href || p.startsWith(`${href}/`);
 
+// The access section: Users and Access requests share one heading and tab
+// set (the (access) route group under /admin).
+const underAccess = (p: string) => under("/admin/access-requests")(p) || under("/admin/users")(p);
+
 function navItems(role: AppRole, accessRequests: number): NavItem[] {
   if (role === "customer") {
     return [
@@ -145,14 +149,14 @@ function navItems(role: AppRole, accessRequests: number): NavItem[] {
         href: "/admin/access-requests",
         label: "Access requests",
         icon: icons.userPlus,
-        isActive: under("/admin/access-requests"),
+        isActive: underAccess,
         count: accessRequests,
       },
       {
         href: "/admin",
         label: "Admin",
         icon: icons.shield,
-        isActive: (p) => under("/admin")(p) && !under("/admin/access-requests")(p),
+        isActive: (p) => under("/admin")(p) && !underAccess(p),
       }
     );
   }

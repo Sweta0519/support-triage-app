@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireAdmin } from "@/app/lib/auth/session";
 import { APP_ROLES, listProfiles } from "@/app/lib/db/profiles";
-import { setRoleAction } from "../actions";
+import { setRoleAction } from "@/app/(app)/admin/actions";
 import { Badge } from "@/app/components/Badge";
 import { roleBadgeClasses } from "@/app/lib/badges";
 import { Avatar } from "@/app/components/Avatar";
