@@ -1,6 +1,6 @@
 "use client";
 
-import { setWorkloadAction } from "../actions";
+import { setWorkloadAction } from "@/app/(app)/admin/actions";
 import { Avatar } from "@/app/components/Avatar";
 import { useSafeActionState } from "@/app/components/useSafeActionState";
 import { PRESENCE_DOT, PRESENCES } from "@/app/lib/presence";

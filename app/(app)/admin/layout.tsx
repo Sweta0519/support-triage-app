@@ -1,13 +1,11 @@
-import { AdminNav } from "./AdminNav";
 import { requireAdmin } from "@/app/lib/auth/session";
-import { Breadcrumbs } from "@/app/components/Breadcrumbs";
-import { ADMIN_CRUMB } from "@/app/lib/crumbs";
 import { widePageClass } from "@/app/lib/styles";
 
 // Route-segment guard: every page under /admin requires the admin role,
 // verified server-side. Pages still call requireAdmin() themselves where
 // they read data, and RLS is the final line -- this layout is the first
-// gate, not the only one.
+// gate, not the only one. The heading and tabs live in the (settings) and
+// (access) route-group layouts below.
 export default async function AdminLayout({
   children,
 }: {
@@ -15,14 +13,5 @@ export default async function AdminLayout({
 }) {
   await requireAdmin();
 
-  return (
-    <div className={widePageClass}>
-      <div>
-        <Breadcrumbs current={ADMIN_CRUMB.label} />
-        <h1 className="mt-2 text-2xl font-semibold text-black dark:text-zinc-50">Admin</h1>
-        <AdminNav />
-      </div>
-      {children}
-    </div>
-  );
+  return <div className={widePageClass}>{children}</div>;
 }

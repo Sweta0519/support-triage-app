@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 
-import { createInviteAction, revokeInviteAction, rotateJoinLinkAction } from "../actions";
+import { createInviteAction, revokeInviteAction, rotateJoinLinkAction } from "@/app/(app)/admin/actions";
 import { useCopy } from "@/app/components/useCopy";
 import { useSafeActionState } from "@/app/components/useSafeActionState";
 import type { WorkspaceInvite } from "@/app/lib/db/workspaces";

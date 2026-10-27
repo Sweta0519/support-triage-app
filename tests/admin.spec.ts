@@ -96,3 +96,35 @@ test("admin can reassign a ticket to an agent, who then sees it as theirs", asyn
   await expect(agentPage.getByLabel("Reassign")).not.toBeVisible();
   await agentContext.close();
 });
+
+test("admin pages: Access requests group and Admin group each show their own heading, tabs and active sidebar item", async ({
+  browser,
+}) => {
+  const adminContext = await browser.newContext();
+  const adminPage = await adminContext.newPage();
+  await login(adminPage, requireEnv("TEST_ADMIN_EMAIL"), requireEnv("TEST_ADMIN_PASSWORD"));
+
+  // Tab nav = the navigation landmark holding a tab's href. Sidebar links are
+  // excluded because no tab href appears in the sidebar.
+  const tabsWith = (href: string) => adminPage.getByRole("navigation").filter({ has: adminPage.locator(`a[href="${href}"]`) });
+  const sidebar = adminPage.getByRole("navigation", { name: "Main" });
+  const activeItem = sidebar.locator('a[aria-current="page"]');
+
+  // Access requests group: Users and Access requests share one heading and two tabs.
+  for (const path of ["/admin/users", "/admin/access-requests"]) {
+    await adminPage.goto(path);
+    await expect(adminPage.getByRole("heading", { level: 1, name: "Access requests" })).toBeVisible();
+    await expect(tabsWith("/admin/users").getByRole("link")).toHaveText(["Users", "Access requests"]);
+    await expect(activeItem).toHaveText(/^Access requests/);
+  }
+
+  // Admin group: Overview, Workload and Workspace share the "Admin" heading.
+  for (const path of ["/admin", "/admin/workload", "/admin/workspace"]) {
+    await adminPage.goto(path);
+    await expect(adminPage.getByRole("heading", { level: 1, name: "Admin" })).toBeVisible();
+    await expect(tabsWith("/admin/workload").getByRole("link")).toHaveText(["Overview", "Workload", "Workspace"]);
+    await expect(activeItem).toHaveText(/^Admin$/);
+  }
+
+  await adminContext.close();
+});
