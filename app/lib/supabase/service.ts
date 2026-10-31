@@ -18,7 +18,8 @@ import { createClient } from "@supabase/supabase-js";
 // (resolving an access token's hash, and starting a session for its owner,
 // after which everything runs as that user), and the email webhook's
 // recording in app/lib/db/inbound-email.ts (no signed-in user; called only
-// after Resend's signature checks out) may import it. Never pass a
+// after Resend's signature checks out), and the outbound webhook log in
+// app/lib/db/webhooks.ts (background; touches only the row it inserted) may import it. Never pass a
 // client-supplied ticket id into a service-role read without the caller having
 // already proven it may see that ticket -- the one exception is shares.ts's
 // token-based public read, where an unguessable 128-bit token is itself the

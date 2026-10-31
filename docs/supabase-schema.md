@@ -248,6 +248,23 @@ at all, so a client can never fabricate an event.
 | `to_value`   | `text`        |                                                                       |
 | `created_at` | `timestamptz` | Default `now()`.                                                      |
 
+### `ticketing.webhook_events`
+
+Log of signed outbound webhooks to n8n (SUP-94). One row per (`event_type`, `ticket_id`), so a
+triage re-run never sends the same event twice. Written only by the service role
+(`app/lib/db/webhooks.ts`); admins can read their own workspace's rows.
+
+| Column         | Type          | Notes                                                                  |
+|----------------|---------------|------------------------------------------------------------------------|
+| `id`           | `uuid`        | Primary key; sent as `X-Event-Id`.                                      |
+| `event_type`   | `text`        | Currently `ticket.escalation_flagged`.                                  |
+| `ticket_id`    | `uuid`        | FK -> `tickets.id`, `on delete cascade`.                                |
+| `workspace_id` | `uuid`        | FK -> `workspaces.id`. Filled by trigger from the ticket.               |
+| `status`       | `text`        | `pending`, `sent`, `failed` or `skipped` (no URL/secret configured).    |
+| `error`        | `text`        |                                                                        |
+| `created_at`   | `timestamptz` | Default `now()`.                                                        |
+| `sent_at`      | `timestamptz` | Set when `status = 'sent'`.                                             |
+
 ### `ticketing.rate_limits`
 
 Fixed-window counters backing `ticketing.consume_rate_limit()`. **Deny-all**: RLS enabled,

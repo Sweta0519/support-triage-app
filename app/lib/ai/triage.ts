@@ -11,6 +11,7 @@ import {
 import { failureReason, type RetryPolicy, type TriageFailureReason } from "@/app/lib/ai/retry-policy";
 import { retriesLabel } from "@/app/lib/triage-status";
 import { checkForIncident } from "@/app/lib/ai/incidents";
+import { notifyEscalationFlagged } from "@/app/lib/webhooks/n8n";
 import { LEARNING_MAX_EXAMPLES, LEARNING_SIMILARITY } from "@/app/lib/learning";
 import {
   applyTriageToTicket,
@@ -162,6 +163,9 @@ export async function runTriage(ticketId: string, { retry = "background" }: { re
     });
     if (applied) {
       await insertTriageEvent(ticket.id, "triage_completed", output.priority);
+      // Signed webhook to n8n (SUP-94). Runs after the response, never throws,
+      // and changes nothing on the ticket.
+      if (output.is_escalation_risk) notifyEscalationFlagged(ticket.id, output);
     }
     // Part of a burst of similar tickets? (SUP-42). Uses the embedding just
     // stored; never throws.
