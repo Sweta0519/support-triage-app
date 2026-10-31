@@ -50,7 +50,7 @@ const source = {
   category: "billing",
   is_escalation_risk: true,
   summary: "Customer was charged twice and is threatening to cancel.",
-} as unknown as Parameters<typeof buildEscalationPayload>[3];
+} as unknown as Parameters<N8n["buildEscalationPayload"]>[3];
 
 function configure(url: string | null = "https://n8n.example.com/webhook/x", secret: string | null = SECRET) {
   if (url === null) delete process.env.N8N_WEBHOOK_URL;
@@ -104,7 +104,7 @@ test("buildEscalationPayload has exactly the envelope keys and the allow-listed 
     description: "full text",
     email: "customer@example.com",
     customer_name: "Jane Roe",
-  } as unknown as Parameters<typeof buildEscalationPayload>[3]);
+  } as unknown as Parameters<N8n["buildEscalationPayload"]>[3]);
 
   expect(Object.keys(ev).sort()).toEqual(["created_at", "data", "id", "type"]);
   expect(ev.id).toBe("evt_1");
@@ -159,7 +159,7 @@ test("an email, phone number and URL in summary and priority_reason become [remo
     ...source,
     summary: "Mail jane.roe@acme.com or call +44 20 7946 0958 about https://acme.example/invoice",
     priority_reason: "Escalated: see www.acme.example, phone (030) 123 4567",
-  } as unknown as Parameters<typeof buildEscalationPayload>[3];
+  } as unknown as Parameters<N8n["buildEscalationPayload"]>[3];
   const { data } = n8n.buildEscalationPayload("e", TICKET_ID, WORKSPACE_ID, dirty);
 
   expect(data.summary).toBe("Mail [removed] or call [removed] about [removed]");
@@ -175,7 +175,7 @@ test("dates and times survive the scrub in summary", () => {
     "e",
     TICKET_ID,
     WORKSPACE_ID,
-    { ...source, summary: "Outage since 2026-10-13 14:00." } as unknown as Parameters<typeof buildEscalationPayload>[3],
+    { ...source, summary: "Outage since 2026-10-13 14:00." } as unknown as Parameters<N8n["buildEscalationPayload"]>[3],
   );
   expect(data.summary).toBe("Outage since 2026-10-13 14:00.");
 });

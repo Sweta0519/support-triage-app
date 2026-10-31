@@ -114,6 +114,9 @@ export async function sendWebhook(
 // the work runs after the response, and a failure only lands in the log and
 // the webhook_events row.
 export function notifyEscalationFlagged(ticketId: string, output: EscalationSource): void {
+  // Unconfigured: record nothing, so the ticket's one event isn't used up as
+  // "skipped" before the webhook is switched on.
+  if (!process.env.N8N_WEBHOOK_URL || !process.env.N8N_WEBHOOK_SECRET) return;
   after(async () => {
     try {
       const ev = await recordWebhookEvent("ticket.escalation_flagged", ticketId);
