@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHmac } from "node:crypto";
 import { after } from "next/server";
+import { createServiceSupabaseClient } from "@/app/lib/supabase/service";
 import { sanitizeIncidentText } from "@/app/lib/incidents";
 import { markWebhookEvent, recordWebhookEvent } from "@/app/lib/db/webhooks";
 import type { TriageCategory, TriagePriority, TriageTeam } from "@/app/lib/triage-fields";
@@ -11,17 +12,18 @@ import type { TriageCategory, TriagePriority, TriageTeam } from "@/app/lib/triag
 // sends nothing to the customer. The payload is built field by field (no
 // spreads) so a new triage field can't leak out by accident, and the free
 // text is scrubbed of emails, links, phone numbers and reference codes.
-// Person names are kept out of the summary by the summary prompt itself.
+// Person names are kept out of the summary by the summary prompt (best
+// effort, not a guarantee). priority_reason is left out on purpose: it comes
+// from the assessment call, which also sees other customers' candidate
+// tickets. The event type already says it is an escalation.
 
 export type EscalationData = {
   ticket_id: string;
   workspace_id: string;
   link: string;
   priority: TriagePriority;
-  priority_reason: string;
   team: TriageTeam;
   category: TriageCategory;
-  is_escalation_risk: boolean;
   summary: string;
 };
 
@@ -29,13 +31,12 @@ export type EscalationData = {
 export type WebhookEvent = { id: string; type: "ticket.escalation_flagged"; created_at: string; data: EscalationData };
 
 export type WebhookResult = "skipped" | "sent" | "failed";
+export type WebhookOutcome = { result: WebhookResult; error?: string };
 
 type EscalationSource = {
   priority: TriagePriority;
-  priority_reason: string;
   team: TriageTeam;
   category: TriageCategory;
-  is_escalation_risk: boolean;
   summary: string;
 };
 
@@ -59,10 +60,8 @@ export function buildEscalationPayload(
       workspace_id: workspaceId,
       link: `${site}/tickets/${ticketId}`,
       priority: o.priority,
-      priority_reason: sanitizeIncidentText(o.priority_reason),
       team: o.team,
       category: o.category,
-      is_escalation_risk: o.is_escalation_risk,
       summary: sanitizeIncidentText(o.summary),
     },
   };
@@ -71,7 +70,7 @@ export function buildEscalationPayload(
 export function assertWebhookUrl(raw: string): URL {
   const url = new URL(raw);
   if (url.username || url.password) throw new Error("webhook URL must not contain credentials");
-  const local = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(url.hostname);
+  const local = process.env.NODE_ENV !== "production" && ["localhost", "127.0.0.1", "[::1]", "::1"].includes(url.hostname);
   if (url.protocol !== "https:" && !(url.protocol === "http:" && local)) {
     throw new Error("webhook URL must be https");
   }
@@ -81,10 +80,10 @@ export function assertWebhookUrl(raw: string): URL {
 export async function sendWebhook(
   event: WebhookEvent,
   { fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {},
-): Promise<WebhookResult> {
+): Promise<WebhookOutcome> {
   const rawUrl = process.env.N8N_WEBHOOK_URL;
   const secret = process.env.N8N_WEBHOOK_SECRET;
-  if (!rawUrl || !secret) return "skipped";
+  if (!rawUrl || !secret) return { result: "skipped" };
   try {
     const url = assertWebhookUrl(rawUrl);
     const body = JSON.stringify(event);
@@ -103,26 +102,34 @@ export async function sendWebhook(
       body,
     });
     if (res.status < 200 || res.status >= 300) throw new Error(`HTTP ${res.status}`);
-    return "sent";
+    return { result: "sent" };
   } catch (err) {
-    console.error(`[webhook] ${event.type} ${event.id} failed: ${err instanceof Error ? err.message : String(err)}`);
-    return "failed";
+    const reason = err instanceof Error ? err.message : String(err);
+    console.error(`[webhook] ${event.type} ${event.id} failed: ${reason}`);
+    return { result: "failed", error: reason };
   }
 }
 
 // Called from triage once a ticket is flagged. Synchronous and never throws:
 // the work runs after the response, and a failure only lands in the log and
-// the webhook_events row.
+// the webhook_events row. Only the one configured workspace ever sends.
 export function notifyEscalationFlagged(ticketId: string, output: EscalationSource): void {
   // Unconfigured: record nothing, so the ticket's one event isn't used up as
   // "skipped" before the webhook is switched on.
   if (!process.env.N8N_WEBHOOK_URL || !process.env.N8N_WEBHOOK_SECRET) return;
+  const workspaceId = process.env.N8N_WEBHOOK_WORKSPACE_ID;
+  if (!workspaceId) return;
+  if (!process.env.NEXT_PUBLIC_SITE_URL) {
+    console.error(`[webhook] escalation for ticket ${ticketId} skipped: NEXT_PUBLIC_SITE_URL unset`);
+    return;
+  }
   after(async () => {
     try {
-      const ev = await recordWebhookEvent("ticket.escalation_flagged", ticketId);
+      const db = createServiceSupabaseClient();
+      const ev = await recordWebhookEvent(db, "ticket.escalation_flagged", ticketId, workspaceId);
       if (!ev) return;
-      const result = await sendWebhook(buildEscalationPayload(ev.id, ticketId, ev.workspace_id, output));
-      await markWebhookEvent(ev.id, result);
+      const { result, error } = await sendWebhook(buildEscalationPayload(ev.id, ticketId, ev.workspace_id, output));
+      await markWebhookEvent(db, ev.id, result, error);
     } catch (err) {
       console.error(`[webhook] escalation for ticket ${ticketId} failed:`, err instanceof Error ? err.message : err);
     }

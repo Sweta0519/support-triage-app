@@ -11,6 +11,8 @@ import type { WebhookEvent } from "../app/lib/webhooks/n8n";
 type N8n = typeof import("../app/lib/webhooks/n8n");
 let n8n: N8n;
 
+// Test-only patch: plain Node can't resolve "server-only" (Next handles it in
+// the app build), so map it to Next's own empty stub.
 // n8n.ts (and db/webhooks.ts) start with `import "server-only"`. Next replaces
 // that with an empty module at build time; plain Node has no such package, and
 // the one in next/dist/compiled throws. Point the bare specifier at Next's empty
@@ -25,7 +27,7 @@ test.beforeAll(async () => {
   n8n = await import("../app/lib/webhooks/n8n");
 });
 
-const ENV_KEYS = ["N8N_WEBHOOK_URL", "N8N_WEBHOOK_SECRET", "NEXT_PUBLIC_SITE_URL"] as const;
+const ENV_KEYS = ["N8N_WEBHOOK_URL", "N8N_WEBHOOK_SECRET", "N8N_WEBHOOK_WORKSPACE_ID", "NEXT_PUBLIC_SITE_URL", "NODE_ENV"] as const;
 const saved: Record<string, string | undefined> = {};
 
 test.beforeEach(() => {
@@ -34,8 +36,9 @@ test.beforeEach(() => {
 
 test.afterEach(() => {
   for (const k of ENV_KEYS) {
-    if (saved[k] === undefined) delete process.env[k];
-    else process.env[k] = saved[k];
+    const env = process.env as Record<string, string | undefined>;
+    if (saved[k] === undefined) delete env[k];
+    else env[k] = saved[k];
   }
 });
 
@@ -45,7 +48,7 @@ const WORKSPACE_ID = "9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d";
 
 const source = {
   priority: "urgent",
-  priority_reason: "Customer reports payment failure on a live order.",
+  priority_reason: "Customer reports payment failure on a live order. Also sees Acme's ticket.",
   team: "billing",
   category: "billing",
   is_escalation_risk: true,
@@ -114,10 +117,8 @@ test("buildEscalationPayload has exactly the envelope keys and the allow-listed 
   expect(Object.keys(ev.data).sort()).toEqual(
     [
       "category",
-      "is_escalation_risk",
       "link",
       "priority",
-      "priority_reason",
       "summary",
       "team",
       "ticket_id",
@@ -126,7 +127,7 @@ test("buildEscalationPayload has exactly the envelope keys and the allow-listed 
   );
   // None of the extra input fields leak into the payload.
   const serialized = JSON.stringify(ev);
-  for (const leaked of ["Charged twice", "full text", "customer@example.com", "Jane Roe", "Please help"]) {
+  for (const leaked of ["priority_reason", "is_escalation_risk", "payment failure", "Charged twice", "full text", "customer@example.com", "Jane Roe", "Please help"]) {
     expect(serialized, leaked).not.toContain(leaked);
   }
 });
@@ -150,21 +151,18 @@ test("buildEscalationPayload passes the triage fields through unchanged", () => 
   expect(data.priority).toBe("urgent");
   expect(data.team).toBe("billing");
   expect(data.category).toBe("billing");
-  expect(data.is_escalation_risk).toBe(true);
 });
 
-test("an email, phone number and URL in summary and priority_reason become [removed]", () => {
+test("an email, phone number and URL in summary become [removed]", () => {
   process.env.NEXT_PUBLIC_SITE_URL = "https://support.example.com";
   const dirty = {
     ...source,
     summary: "Mail jane.roe@acme.com or call +44 20 7946 0958 about https://acme.example/invoice",
-    priority_reason: "Escalated: see www.acme.example, phone (030) 123 4567",
   } as unknown as Parameters<N8n["buildEscalationPayload"]>[3];
   const { data } = n8n.buildEscalationPayload("e", TICKET_ID, WORKSPACE_ID, dirty);
 
   expect(data.summary).toBe("Mail [removed] or call [removed] about [removed]");
-  expect(data.priority_reason).toBe("Escalated: see [removed] phone [removed]");
-  for (const leaked of ["jane.roe@acme.com", "7946", "acme.example", "4567"]) {
+  for (const leaked of ["jane.roe@acme.com", "7946", "acme.example"]) {
     expect(JSON.stringify(data), leaked).not.toContain(leaked);
   }
 });
@@ -183,14 +181,14 @@ test("dates and times survive the scrub in summary", () => {
 test("sendWebhook is skipped when N8N_WEBHOOK_URL is unset and never calls fetch", async () => {
   configure(null, SECRET);
   const { fetchImpl, calls } = stubFetch(() => new Response("ok", { status: 200 }));
-  expect(await n8n.sendWebhook(sampleEvent(), { fetchImpl })).toBe("skipped");
+  expect(await n8n.sendWebhook(sampleEvent(), { fetchImpl })).toEqual({ result: "skipped" });
   expect(calls.length).toBe(0);
 });
 
 test("sendWebhook is skipped when N8N_WEBHOOK_SECRET is unset and never calls fetch", async () => {
   configure("https://n8n.example.com/webhook/x", null);
   const { fetchImpl, calls } = stubFetch(() => new Response("ok", { status: 200 }));
-  expect(await n8n.sendWebhook(sampleEvent(), { fetchImpl })).toBe("skipped");
+  expect(await n8n.sendWebhook(sampleEvent(), { fetchImpl })).toEqual({ result: "skipped" });
   expect(calls.length).toBe(0);
 });
 
@@ -200,7 +198,7 @@ test("sendWebhook POSTs a signed request and returns sent on 200", async () => {
   const event = sampleEvent();
   const { fetchImpl, calls } = stubFetch(() => new Response("ok", { status: 200 }));
 
-  expect(await n8n.sendWebhook(event, { fetchImpl })).toBe("sent");
+  expect(await n8n.sendWebhook(event, { fetchImpl })).toEqual({ result: "sent" });
   expect(calls.length).toBe(1);
 
   const { url, init } = calls[0];
@@ -227,13 +225,13 @@ test("sendWebhook POSTs a signed request and returns sent on 200", async () => {
 test("sendWebhook returns failed on a 302 redirect", async () => {
   configure("https://n8n.example.com/webhook/x", SECRET);
   const { fetchImpl } = stubFetch(() => new Response(null, { status: 302, headers: { Location: "https://evil.example/" } }));
-  expect(await n8n.sendWebhook(sampleEvent(), { fetchImpl })).toBe("failed");
+  expect(await n8n.sendWebhook(sampleEvent(), { fetchImpl })).toEqual({ result: "failed", error: "HTTP 302" });
 });
 
 test("sendWebhook returns failed on a 500", async () => {
   configure("https://n8n.example.com/webhook/x", SECRET);
   const { fetchImpl } = stubFetch(() => new Response("boom", { status: 500 }));
-  expect(await n8n.sendWebhook(sampleEvent(), { fetchImpl })).toBe("failed");
+  expect(await n8n.sendWebhook(sampleEvent(), { fetchImpl })).toEqual({ result: "failed", error: "HTTP 500" });
 });
 
 test("sendWebhook returns failed when fetch rejects, without throwing", async () => {
@@ -241,7 +239,7 @@ test("sendWebhook returns failed when fetch rejects, without throwing", async ()
   const fetchImpl = (async () => {
     throw new TypeError("fetch failed");
   }) as unknown as typeof fetch;
-  await expect(n8n.sendWebhook(sampleEvent(), { fetchImpl })).resolves.toBe("failed");
+  await expect(n8n.sendWebhook(sampleEvent(), { fetchImpl })).resolves.toEqual({ result: "failed", error: "fetch failed" });
 });
 
 test("sendWebhook returns failed within about 3.5 s when fetch never resolves but honours the abort signal", async () => {
@@ -254,7 +252,8 @@ test("sendWebhook returns failed within about 3.5 s when fetch never resolves bu
   const started = Date.now();
   const result = await n8n.sendWebhook(sampleEvent(), { fetchImpl });
   const elapsed = Date.now() - started;
-  expect(result).toBe("failed");
+  expect(result.result).toBe("failed");
+  expect(result.error).toBe("aborted");
   expect(elapsed).toBeLessThan(3500);
 });
 
@@ -273,4 +272,23 @@ test("assertWebhookUrl accepts https URLs and plain http only for localhost", ()
   expect(n8n.assertWebhookUrl("https://n8n.example.com/webhook/x").hostname).toBe("n8n.example.com");
   expect(n8n.assertWebhookUrl("http://localhost:5678/webhook/x").hostname).toBe("localhost");
   expect(n8n.assertWebhookUrl("http://127.0.0.1:5678").hostname).toBe("127.0.0.1");
+});
+
+test("assertWebhookUrl allows only https when NODE_ENV is production", () => {
+  const env = process.env as Record<string, string | undefined>;
+  env.NODE_ENV = "production";
+  expect(() => n8n.assertWebhookUrl("http://localhost:5678/webhook/x")).toThrow();
+  expect(() => n8n.assertWebhookUrl("http://127.0.0.1:5678")).toThrow();
+  expect(n8n.assertWebhookUrl("https://n8n.example.com/webhook/x").hostname).toBe("n8n.example.com");
+});
+
+test("notifyEscalationFlagged records and sends nothing without a workspace id or site URL", () => {
+  configure("https://n8n.example.com/webhook/x", SECRET);
+  delete process.env.N8N_WEBHOOK_WORKSPACE_ID;
+  process.env.NEXT_PUBLIC_SITE_URL = "https://support.example.com";
+  // after() would throw outside a request scope if it were reached.
+  expect(() => n8n.notifyEscalationFlagged(TICKET_ID, source)).not.toThrow();
+  process.env.N8N_WEBHOOK_WORKSPACE_ID = WORKSPACE_ID;
+  delete process.env.NEXT_PUBLIC_SITE_URL;
+  expect(() => n8n.notifyEscalationFlagged(TICKET_ID, source)).not.toThrow();
 });

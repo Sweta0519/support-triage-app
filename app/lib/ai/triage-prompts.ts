@@ -16,7 +16,7 @@ import {
 } from "@/app/lib/triage-fields";
 import { stripAllLinks, stripForeignLinks } from "@/app/lib/ai/links";
 
-export const PROMPT_VERSION = "2026-10-14.1";
+export const PROMPT_VERSION = "2026-10-31.1";
 
 // Three OpenRouter calls per ticket (an embedding, then the assessment and
 // the reply in parallel); cap what we send so a pasted log dump can't run
