@@ -248,6 +248,29 @@ at all, so a client can never fabricate an event.
 | `to_value`   | `text`        |                                                                       |
 | `created_at` | `timestamptz` | Default `now()`.                                                      |
 
+### `ticketing.webhook_events`
+
+Log of signed outbound webhooks to n8n (SUP-94). One row per (`event_type`, `ticket_id`), so a
+triage re-run does not send the same event twice. Written only by the service role
+(`app/lib/db/webhooks.ts`); admins can read their own workspace's rows.
+
+Only one workspace sends: the one whose id is in `N8N_WEBHOOK_WORKSPACE_ID` (server-only). If it
+is unset, or the URL, secret or `NEXT_PUBLIC_SITE_URL` is, nothing is sent and no row is written.
+A re-triage retries a row whose `status` is `failed`, or `pending` for over 5 minutes, by claiming
+it with one conditional `UPDATE`. There is no background retry loop, so delivery is at-most-once
+per triage run.
+
+| Column         | Type          | Notes                                                                  |
+|----------------|---------------|------------------------------------------------------------------------|
+| `id`           | `uuid`        | Primary key; sent as `X-Event-Id`.                                      |
+| `event_type`   | `text`        | Currently `ticket.escalation_flagged`.                                  |
+| `ticket_id`    | `uuid`        | Composite FK `(ticket_id, workspace_id)` -> `tickets (id, workspace_id)`, `on delete cascade`. |
+| `workspace_id` | `uuid`        | FK -> `workspaces.id`. Filled by trigger from the ticket.               |
+| `status`       | `text`        | `pending`, `sent`, `failed` or `skipped` (reserved, the app never writes it). |
+| `error`        | `text`        | Failure reason when `status = 'failed'`.                                |
+| `created_at`   | `timestamptz` | Default `now()`; reset when a retry claims the row.                     |
+| `sent_at`      | `timestamptz` | Set when `status = 'sent'`.                                             |
+
 ### `ticketing.rate_limits`
 
 Fixed-window counters backing `ticketing.consume_rate_limit()`. **Deny-all**: RLS enabled,
