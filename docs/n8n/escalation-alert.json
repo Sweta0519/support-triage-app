@@ -46,6 +46,16 @@
           },
           "conditions": [
             {
+              "id": "c0",
+              "leftValue": "={{ !!$env.N8N_WEBHOOK_SECRET }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
               "id": "c1",
               "leftValue": "={{ $json.headers['x-signature'] }}",
               "rightValue": "=sha256={{ $json.expected_signature }}",
