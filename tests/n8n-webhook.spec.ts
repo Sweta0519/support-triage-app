@@ -400,7 +400,13 @@ test("notifyIncidentOpened records and sends nothing when URL, secret, workspace
 type WfNode = {
   name: string;
   type: string;
+  typeVersion?: number;
+  onError?: string;
+  continueOnFail?: boolean;
   parameters: {
+    action?: string;
+    value?: string;
+    secret?: unknown;
     text?: string;
     responseBody?: string;
     conditions?: { conditions: { id: string; leftValue: string }[] };
@@ -431,13 +437,13 @@ function renderField(expr: string, data: Record<string, unknown>): string {
   return new Function("$json", `return (${inner});`)($json) as string;
 }
 
-test("workflow: the IF node checks secret, signature and age but not the event type", () => {
+test("workflow: the IF node checks digest, signature and age but not the event type", () => {
   const { wf, node } = loadWorkflow();
   const ifNode = node("Signed and fresh?");
   const conds = ifNode.parameters.conditions!.conditions;
   expect(conds.map((c) => c.id)).toEqual(["c0", "c1", "c2"]);
   expect(JSON.stringify(conds)).not.toContain("body.type");
-  expect(conds[0].leftValue).toContain("$env.N8N_WEBHOOK_SECRET");
+  expect(conds[0].leftValue).toBe("={{ !!$json.expected_signature }}");
   // The false branch posts nothing: only Respond 401.
   expect(wf.connections["Signed and fresh?"].main[1].map((c) => c.node)).toEqual(["Respond 401"]);
   expect(wf.connections["Respond 401"]).toBeUndefined();
@@ -461,6 +467,18 @@ test("workflow: the Switch routes both event types and sends anything else to a 
   expect(node("Respond 422").parameters.responseBody).toContain("unsupported event type");
   expect(wf.connections["Post to Slack"].main[0].map((c) => c.node)).toEqual(["Respond 200"]);
   expect(wf.connections["Post incident to Slack"].main[0].map((c) => c.node)).toEqual(["Respond 200"]);
+});
+
+test("workflow: Compute HMAC is v2, takes its key only from the credential, and stops on error", () => {
+  const { wf, node } = loadWorkflow();
+  const hmac = node("Compute HMAC");
+  expect(hmac.typeVersion).toBe(2);
+  expect(hmac.parameters.action).toBe("hmac");
+  expect(hmac.parameters).not.toHaveProperty("secret");
+  expect(hmac.parameters.value).toBe("={{ $json.headers['x-timestamp'] }}.{{ JSON.stringify($json.body) }}");
+  expect(hmac.onError).toBeUndefined();
+  expect(hmac.continueOnFail).toBeUndefined();
+  expect(JSON.stringify(wf)).not.toContain("$env");
 });
 
 test("workflow: no credentials and no top-level id", () => {
