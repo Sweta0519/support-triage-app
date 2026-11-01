@@ -105,7 +105,7 @@
           "value": "#support-alerts",
           "mode": "name"
         },
-        "text": "=:rotating_light: *Escalation risk* - {{ $json.body.data.priority }} priority, {{ $json.body.data.team }} team, {{ $json.body.data.category }}\n*Summary:* {{ $json.body.data.summary.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\n<{{ $json.body.data.link }}|View ticket>",
+        "text": "=:rotating_light: *Escalation risk* - {{ $json.body.data.priority }} priority, {{ $json.body.data.team }} team, {{ $json.body.data.category }}\n*Summary:* {{ $json.body.data.summary.replace(/\\s+/g, ' ').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\n<{{ $json.body.data.link }}|View ticket>",
         "otherOptions": {
           "includeLinkToWorkflow": false
         }
@@ -210,6 +210,5 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "pinData": {},
-  "id": "cJDSZK74gNdj9MGg"
+  "pinData": {}
 }
