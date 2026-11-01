@@ -1,5 +1,5 @@
 {
-  "name": "Support triage: escalation alert (SUP-95)",
+  "name": "Support triage: escalation and incident alerts (SUP-95, SUP-96)",
   "nodes": [
     {
       "parameters": {
@@ -73,15 +73,6 @@
                 "operation": "true",
                 "singleValue": true
               }
-            },
-            {
-              "id": "c3",
-              "leftValue": "={{ $json.body.type }}",
-              "rightValue": "ticket.escalation_flagged",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
-              }
             }
           ],
           "combinator": "and"
@@ -115,8 +106,8 @@
       "type": "n8n-nodes-base.slack",
       "typeVersion": 2.2,
       "position": [
-        720,
-        200
+        960,
+        100
       ]
     },
     {
@@ -132,7 +123,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        960,
+        1200,
         200
       ]
     },
@@ -150,7 +141,110 @@
       "typeVersion": 1.1,
       "position": [
         720,
-        420
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "escalation",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "r-escalation",
+                    "leftValue": "={{ $json.body.type }}",
+                    "rightValue": "ticket.escalation_flagged",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "incident",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "r-incident",
+                    "leftValue": "={{ $json.body.type }}",
+                    "rightValue": "incident.opened",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Unsupported"
+        }
+      },
+      "id": "8f0b3c1e-0007-4a00-9000-000000000007",
+      "name": "Route by event type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.5,
+      "position": [
+        720,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#support-alerts",
+          "mode": "name"
+        },
+        "text": "=:warning: *Possible incident* - {{ $json.body.data.ticket_count }} tickets\n*Title:* {{ $json.body.data.title.replace(/\\s+/g, ' ').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\n*Summary:* {{ ($json.body.data.summary ?? 'No AI summary available. See the incident page.').replace(/\\s+/g, ' ').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\n<{{ $json.body.data.link }}|View incident>",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "id": "8f0b3c1e-0008-4a00-9000-000000000008",
+      "name": "Post incident to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"error\": \"unsupported event type\" }",
+        "options": {
+          "responseCode": 422
+        }
+      },
+      "id": "8f0b3c1e-0009-4a00-9000-000000000009",
+      "name": "Respond 422",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        500
       ]
     }
   ],
@@ -181,7 +275,7 @@
       "main": [
         [
           {
-            "node": "Post to Slack",
+            "node": "Route by event type",
             "type": "main",
             "index": 0
           }
@@ -196,6 +290,42 @@
       ]
     },
     "Post to Slack": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by event type": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Post incident to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 422",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post incident to Slack": {
       "main": [
         [
           {

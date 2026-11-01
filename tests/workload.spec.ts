@@ -2,6 +2,7 @@ import { test, expect, type Browser } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
 import { login, requireEnv, selectStaffByEmail } from "./helpers";
+import { clearTestUserRateLimits } from "./rate-limits";
 
 // SUP-77: Admin > Workload -- a daily cap on new cases per person, and
 // their workplace timezone. Runs in its own "workload" project after the
@@ -92,6 +93,11 @@ async function staffPage(browser: Browser, email: string, password: string) {
 
 test.describe("admin workload", () => {
   test.describe.configure({ mode: "serial" });
+  // Customer A's create_ticket budget (10/hour) is shared with every earlier
+  // project in a full run; clear it before each test files probes.
+  test.beforeEach(async () => {
+    await clearTestUserRateLimits(requireEnv("TEST_USER_EMAIL"));
+  });
 
   test.afterEach(async () => {
     await resetAgent(await asAdmin());

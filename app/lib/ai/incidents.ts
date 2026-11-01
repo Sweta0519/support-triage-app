@@ -4,6 +4,7 @@ import { completeJson, type JsonSchema } from "@/app/lib/ai/openrouter";
 import type { RetryPolicy } from "@/app/lib/ai/retry-policy";
 import { detectIncident, listIncidentSummaries, setIncidentAiText } from "@/app/lib/db/incidents";
 import { sanitizeIncidentText } from "@/app/lib/incidents";
+import { notifyIncidentOpened } from "@/app/lib/webhooks/n8n";
 
 // Incident detection after triage (SUP-42). Detection itself is pure vector
 // maths in ticketing.detect_incident(); the model is called only when an
@@ -46,6 +47,33 @@ function escape(text: string): string {
   return text.replace(/</g, "＜").replace(/>/g, "＞");
 }
 
+// Writes the incident's title, summary and draft update. Throws on failure;
+// the caller logs it and still sends the alert.
+async function writeIncidentNote(incidentId: string, retry: RetryPolicy): Promise<void> {
+  const summaries = await listIncidentSummaries(incidentId);
+  if (summaries.length === 0) return;
+  const lines = summaries
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .map((s) => `- [${s.createdAt}] ${escape(s.summary.slice(0, 300))}`)
+    .join("\n");
+  const { data } = await completeJson<{ title: string; summary: string; customer_update: string }>({
+    system: SYSTEM,
+    user: `<ticket_summaries>\n${lines}\n</ticket_summaries>`,
+    schemaName: "incident_note",
+    schema: INCIDENT_SCHEMA,
+    maxTokens: 500,
+    retry,
+  });
+  // All three are shown to every staff member (the title in a banner on
+  // every page), and an agent may not see every grouped ticket: all three
+  // are scrubbed of customer-specific details, not just the draft.
+  await setIncidentAiText(incidentId, {
+    title: sanitizeIncidentText(data.title, 200) || "Possible incident",
+    summary: sanitizeIncidentText(data.summary),
+    draft_update: sanitizeIncidentText(data.customer_update),
+  });
+}
+
 // Detects an incident for a freshly triaged ticket and, when one opens or
 // grows, (re)writes its text. Never throws: incident detection must never
 // break triage.
@@ -59,28 +87,14 @@ export async function checkForIncident(ticketId: string, { retry = "background" 
     console.log(
       `[incident] ticket ${ticketId} ${found.created ? "opened" : "joined"} incident ${found.incidentId} (${found.ticketCount} tickets)`
     );
-    const summaries = await listIncidentSummaries(found.incidentId);
-    if (summaries.length === 0) return;
-    const lines = summaries
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-      .map((s) => `- [${s.createdAt}] ${escape(s.summary.slice(0, 300))}`)
-      .join("\n");
-    const { data } = await completeJson<{ title: string; summary: string; customer_update: string }>({
-      system: SYSTEM,
-      user: `<ticket_summaries>\n${lines}\n</ticket_summaries>`,
-      schemaName: "incident_note",
-      schema: INCIDENT_SCHEMA,
-      maxTokens: 500,
-      retry,
-    });
-    // All three are shown to every staff member (the title in a banner on
-    // every page), and an agent may not see every grouped ticket: all three
-    // are scrubbed of customer-specific details, not just the draft.
-    await setIncidentAiText(found.incidentId, {
-      title: sanitizeIncidentText(data.title, 200) || "Possible incident",
-      summary: sanitizeIncidentText(data.summary),
-      draft_update: sanitizeIncidentText(data.customer_update),
-    });
+    try {
+      await writeIncidentNote(found.incidentId, retry);
+    } catch (err) {
+      console.error(`[incident] note for ${found.incidentId} failed:`, err instanceof Error ? err.message : err);
+    }
+    // SUP-96: the staff alert goes out after the note attempt, whether or not
+    // it worked, and only for a newly opened incident (a join never alerts).
+    if (found.created) notifyIncidentOpened(found.incidentId);
   } catch (err) {
     console.error(`[incident] detection for ticket ${ticketId} failed:`, err instanceof Error ? err.message : err);
   }

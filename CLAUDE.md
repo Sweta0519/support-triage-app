@@ -80,7 +80,9 @@ the centerpiece; the AI triage behavior is what should get the most scrutiny.
   - an incident never changes ticket status by itself;
   - its update is posted only when staff press the button;
   - the incident note's model call sees only the grouped tickets' AI summaries, never raw ticket
-    text, and the draft customer update is sanitized of customer-specific details.
+    text, and the draft customer update is sanitized of customer-specific details;
+  - its `incident.opened` webhook (SUP-96) alerts staff only: scrubbed title and summary, never
+    the customer update, sent at most once per incident, and it changes no status.
 - The public homepage's "Safe by design" strip (`SAFETY` in `app/welcome/page.tsx`) states three of
   these rules to visitors: advisory triage (no status changes or replies by the AI), RLS on every
   table with each team in its own workspace (with published status pages as the one exception),

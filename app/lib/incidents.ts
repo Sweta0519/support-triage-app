@@ -27,7 +27,7 @@ export const INCIDENT_STATUS_LABEL: Record<IncidentStatus, string> = {
 
 // The AI's incident text -- above all the draft update, which goes to
 // every customer in the group -- must not carry anything that could belong
-// to one of them. Removed: email addresses, links, phone numbers (any
+// to one of them. Removed: email addresses, links (bare domains too, and file names and dotted identifiers go with them), phone numbers (any
 // spacing or brackets), reference codes like ORD-55120 or INV 20431,
 // money amounts, and any other run of 5+ digits. Kept: years, dates and
 // times ("2026", "2026-10-13", "14:00"), which describe the incident, not a
@@ -35,6 +35,7 @@ export const INCIDENT_STATUS_LABEL: Record<IncidentStatus, string> = {
 const SCRUB: RegExp[] = [
   /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, // email
   /\b(?:https?:\/\/|www\.)\S+/gi, // link
+  /(?<![\p{L}\p{N}_-])(?:[\p{L}\p{N}_-]+\.)+(?!js\b)\p{L}{2,}(?![\p{L}\p{N}_-])(?:[:\/?#]\S*)?/giu, // bare domain ("Node.js" stays: .js is no TLD)
   /(?:\+\d{1,3}[\s.-]?)?(?:\(\d{2,4}\)[\s.-]?)?\d{2,4}(?:[\s.-]\d{2,4}){2,}/g, // phone (3+ groups)
   /\(\d{2,4}\)[\s.-]?\d{2,4}[\s.-]?\d{2,4}/g, // phone with an area code in brackets
   /\b[A-Z]{2,6}[\s#:-]?\d{3,}\b/g, // reference code
