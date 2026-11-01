@@ -4,13 +4,14 @@ import type { createServiceSupabaseClient } from "@/app/lib/supabase/service";
 
 type ServiceClient = ReturnType<typeof createServiceSupabaseClient>;
 
-// Outbound webhook log (SUP-94). Service role, because it runs in the
+// Outbound webhook log (SUP-94, SUP-96). Service role, because it runs in the
 // background after triage with no signed-in user. It only inserts or claims a
 // row and then updates that same row by id; the workspace is filled by a
-// trigger from the ticket, never passed in. The caller passes the one
-// workspace allowed to send, and nothing is recorded for any other.
+// trigger from the ticket (or the incident), never passed in. The caller
+// passes the one workspace allowed to send, and nothing is recorded for any
+// other.
 
-export type WebhookEventType = "ticket.escalation_flagged";
+export type WebhookEventType = "ticket.escalation_flagged" | "incident.opened";
 
 // A pending row older than this is a send that died; it may be claimed again.
 const STALE_PENDING_MS = 5 * 60 * 1000;
@@ -21,7 +22,7 @@ const STALE_PENDING_MS = 5 * 60 * 1000;
 // a re-run of triage never sends the same escalation twice.
 export async function recordWebhookEvent(
   db: ServiceClient,
-  eventType: WebhookEventType,
+  eventType: "ticket.escalation_flagged",
   ticketId: string,
   allowedWorkspaceId: string,
 ): Promise<{ id: string; workspace_id: string } | null> {
@@ -72,4 +73,45 @@ export async function markWebhookEvent(
     })
     .eq("id", id);
   if (dbError) throw new Error(dbError.message);
+}
+
+// What the incident alert needs, read fresh at send time and filtered by
+// workspace. draft_update (the customer update) is never selected.
+export async function readIncidentForAlert(
+  db: ServiceClient,
+  incidentId: string,
+  workspaceId: string,
+): Promise<{ id: string; title: string; summary: string | null; status: string; ticket_count: number } | null> {
+  const { data, error } = await db
+    .from("incidents")
+    .select("id, title, summary, status, tickets:incident_tickets(count)")
+    .eq("id", incidentId)
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  const { tickets, ...rest } = data as unknown as {
+    id: string;
+    title: string;
+    summary: string | null;
+    status: string;
+    tickets: { count: number }[];
+  };
+  return { ...rest, ticket_count: tickets[0]?.count ?? 0 };
+}
+
+// One incident.opened row per incident: the unique (incident_id, event_type)
+// is the send-once guard. Returns the new row, or null when one exists. No
+// re-claim: a failed or stuck incident alert is never resent.
+export async function recordIncidentOpenedEvent(
+  db: ServiceClient,
+  incidentId: string,
+): Promise<{ id: string; workspace_id: string } | null> {
+  const { data, error } = await db
+    .from("webhook_events")
+    .upsert({ event_type: "incident.opened", incident_id: incidentId }, { onConflict: "incident_id,event_type", ignoreDuplicates: true })
+    .select("id, workspace_id")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ?? null;
 }

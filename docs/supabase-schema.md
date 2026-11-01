@@ -250,22 +250,27 @@ at all, so a client can never fabricate an event.
 
 ### `ticketing.webhook_events`
 
-Log of signed outbound webhooks to n8n (SUP-94). One row per (`event_type`, `ticket_id`), so a
-triage re-run does not send the same event twice. Written only by the service role
+Log of signed outbound webhooks to n8n (SUP-94, SUP-96). A row is about a ticket
+(`ticket.escalation_flagged`) or an incident (`incident.opened`), never both (check
+`webhook_events_event_subject_check`). There is one row per (`event_type`, `ticket_id`) and one per
+(`incident_id`, `event_type`), both plain UNIQUE constraints, so a triage re-run does not send the
+same event twice and an incident alerts once. Written only by the service role
 (`app/lib/db/webhooks.ts`); admins can read their own workspace's rows.
 
 Only one workspace sends: the one whose id is in `N8N_WEBHOOK_WORKSPACE_ID` (server-only). If it
 is unset, or the URL, secret or `NEXT_PUBLIC_SITE_URL` is, nothing is sent and no row is written.
-A re-triage retries a row whose `status` is `failed`, or `pending` for over 5 minutes, by claiming
-it with one conditional `UPDATE`. There is no background retry loop, so delivery is at-most-once
-per triage run.
+For ticket events, a re-triage retries a row whose `status` is `failed`, or `pending` for over 5
+minutes, by claiming it with one conditional `UPDATE`. There is no background retry loop, so
+delivery is at-most-once per triage run. Incident events are never retried or re-claimed: a failed
+alert stays `failed`.
 
 | Column         | Type          | Notes                                                                  |
 |----------------|---------------|------------------------------------------------------------------------|
 | `id`           | `uuid`        | Primary key; sent as `X-Event-Id`.                                      |
-| `event_type`   | `text`        | Currently `ticket.escalation_flagged`.                                  |
-| `ticket_id`    | `uuid`        | Composite FK `(ticket_id, workspace_id)` -> `tickets (id, workspace_id)`, `on delete cascade`. |
-| `workspace_id` | `uuid`        | FK -> `workspaces.id`. Filled by trigger from the ticket.               |
+| `event_type`   | `text`        | `ticket.escalation_flagged` or `incident.opened`.                       |
+| `incident_id`  | `uuid`        | Nullable. Composite FK `(incident_id, workspace_id)` -> `incidents (id, workspace_id)`, `on delete cascade`. Set only for `incident.opened`. |
+| `ticket_id`    | `uuid`        | Nullable (null for `incident.opened`). Composite FK `(ticket_id, workspace_id)` -> `tickets (id, workspace_id)`, `on delete cascade`. |
+| `workspace_id` | `uuid`        | FK -> `workspaces.id`. Filled by trigger from the incident, else the ticket (`set_webhook_event_workspace()`).            |
 | `status`       | `text`        | `pending`, `sent`, `failed` or `skipped` (reserved, the app never writes it). |
 | `error`        | `text`        | Failure reason when `status = 'failed'`.                                |
 | `created_at`   | `timestamptz` | Default `now()`; reset when a retry claims the row.                     |

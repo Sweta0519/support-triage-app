@@ -4,7 +4,7 @@ import { createHmac } from "node:crypto";
 import { after } from "next/server";
 import { createServiceSupabaseClient } from "@/app/lib/supabase/service";
 import { sanitizeIncidentText } from "@/app/lib/incidents";
-import { markWebhookEvent, recordWebhookEvent } from "@/app/lib/db/webhooks";
+import { markWebhookEvent, readIncidentForAlert, recordIncidentOpenedEvent, recordWebhookEvent } from "@/app/lib/db/webhooks";
 import type { TriageCategory, TriagePriority, TriageTeam } from "@/app/lib/triage-fields";
 
 // Signed outbound webhook to n8n (SUP-94). Fires after triage flags a ticket
@@ -27,8 +27,20 @@ export type EscalationData = {
   summary: string;
 };
 
-// Extended by SUP-96 with "incident.opened".
-export type WebhookEvent = { id: string; type: "ticket.escalation_flagged"; created_at: string; data: EscalationData };
+// SUP-96: the incident alert. Same rules as the escalation: field by field,
+// scrubbed text, and never the customer update (draft_update).
+export type IncidentOpenedData = {
+  incident_id: string;
+  workspace_id: string;
+  link: string;
+  title: string;
+  ticket_count: number;
+  summary: string | null;
+};
+
+export type EscalationEvent = { id: string; type: "ticket.escalation_flagged"; created_at: string; data: EscalationData };
+export type IncidentOpenedEvent = { id: string; type: "incident.opened"; created_at: string; data: IncidentOpenedData };
+export type WebhookEvent = EscalationEvent | IncidentOpenedEvent;
 
 export type WebhookResult = "skipped" | "sent" | "failed";
 export type WebhookOutcome = { result: WebhookResult; error?: string };
@@ -49,7 +61,7 @@ export function buildEscalationPayload(
   ticketId: string,
   workspaceId: string,
   o: EscalationSource,
-): WebhookEvent {
+): EscalationEvent {
   const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
   return {
     id: eventId,
@@ -63,6 +75,29 @@ export function buildEscalationPayload(
       team: o.team,
       category: o.category,
       summary: sanitizeIncidentText(o.summary),
+    },
+  };
+}
+
+type IncidentSource = { id: string; title: string; summary: string | null; ticket_count: number };
+
+export function buildIncidentOpenedPayload(
+  eventId: string,
+  workspaceId: string,
+  source: IncidentSource,
+): IncidentOpenedEvent {
+  const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
+  return {
+    id: eventId,
+    type: "incident.opened",
+    created_at: new Date().toISOString(),
+    data: {
+      incident_id: source.id,
+      workspace_id: workspaceId,
+      link: `${site}/incidents/${source.id}`,
+      title: sanitizeIncidentText(source.title, 200) || "Possible incident",
+      ticket_count: source.ticket_count,
+      summary: source.summary ? sanitizeIncidentText(source.summary) || null : null,
     },
   };
 }
@@ -132,6 +167,43 @@ export function notifyEscalationFlagged(ticketId: string, output: EscalationSour
       await markWebhookEvent(db, ev.id, result, error);
     } catch (err) {
       console.error(`[webhook] escalation for ticket ${ticketId} failed:`, err instanceof Error ? err.message : err);
+    }
+  });
+}
+
+// Sends the incident alert once. Exported without after() so it can be tested.
+// Reads the incident fresh (workspace-filtered), skips one that was dismissed
+// or resolved meanwhile, and lets the unique row decide who sends. A failed
+// send is never retried.
+export async function deliverIncidentOpened(
+  db: ReturnType<typeof createServiceSupabaseClient>,
+  incidentId: string,
+  workspaceId: string,
+  { fetchImpl }: { fetchImpl?: typeof fetch } = {},
+): Promise<void> {
+  const incident = await readIncidentForAlert(db, incidentId, workspaceId);
+  if (!incident || incident.status !== "open") return;
+  const ev = await recordIncidentOpenedEvent(db, incidentId);
+  if (!ev) return;
+  const { result, error } = await sendWebhook(buildIncidentOpenedPayload(ev.id, ev.workspace_id, incident), { fetchImpl });
+  await markWebhookEvent(db, ev.id, result, error);
+}
+
+// Called once from incident detection when a new incident opens. Same rules
+// as notifyEscalationFlagged: synchronous, never throws, one workspace only.
+export function notifyIncidentOpened(incidentId: string): void {
+  if (!process.env.N8N_WEBHOOK_URL || !process.env.N8N_WEBHOOK_SECRET) return;
+  const workspaceId = process.env.N8N_WEBHOOK_WORKSPACE_ID;
+  if (!workspaceId) return;
+  if (!process.env.NEXT_PUBLIC_SITE_URL) {
+    console.error(`[webhook] alert for incident ${incidentId} skipped: NEXT_PUBLIC_SITE_URL unset`);
+    return;
+  }
+  after(async () => {
+    try {
+      await deliverIncidentOpened(createServiceSupabaseClient(), incidentId, workspaceId);
+    } catch (err) {
+      console.error(`[webhook] alert for incident ${incidentId} failed:`, err instanceof Error ? err.message : err);
     }
   });
 }

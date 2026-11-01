@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import Module from "node:module";
+import path from "node:path";
 
 import {
   INCIDENT_MIN_TICKETS,
@@ -235,4 +237,205 @@ test("a dismissed incident goes quiet and absorbs later look-alikes", async ({ p
   expect(await detect(late.id)).toMatchObject({ incident_id: opened!.incident_id, created: false });
   const { data: status } = await service().from("incidents").select("status").eq("id", opened!.incident_id).single();
   expect(status!.status).toBe("dismissed");
+});
+
+// SUP-96: the incident.opened alert. deliverIncidentOpened is called directly
+// (no after(), no network) with a stub fetch and this spec's service client.
+type Delivery = typeof import("../app/lib/webhooks/n8n");
+type Hooks = typeof import("../app/lib/db/webhooks");
+let delivery: Delivery;
+let hooks: Hooks;
+
+const ENV_KEYS = ["N8N_WEBHOOK_URL", "N8N_WEBHOOK_SECRET", "NEXT_PUBLIC_SITE_URL"] as const;
+const savedEnv: Record<string, string | undefined> = {};
+
+test.describe("incident alert (SUP-96)", () => {
+  test.beforeAll(async () => {
+    // Same server-only patch as tests/n8n-webhook.spec.ts: plain Node can't resolve it.
+    const emptyServerOnly = path.join(path.dirname(require.resolve("next/package.json")), "dist/compiled/server-only/empty.js");
+    const hooked = Module as unknown as { _resolveFilename: (request: string, ...rest: unknown[]) => string };
+    const original = hooked._resolveFilename;
+    hooked._resolveFilename = function (request: string, ...rest: unknown[]) {
+      return original.call(this, request === "server-only" ? emptyServerOnly : request, ...rest);
+    };
+    delivery = await import("../app/lib/webhooks/n8n");
+    hooks = await import("../app/lib/db/webhooks");
+    for (const k of ENV_KEYS) savedEnv[k] = process.env[k];
+    process.env.N8N_WEBHOOK_URL = "https://n8n.example.com/webhook/x";
+    process.env.N8N_WEBHOOK_SECRET = "whsec_test";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://support.example.com";
+  });
+
+  test.afterAll(() => {
+    const env = process.env as Record<string, string | undefined>;
+    for (const k of ENV_KEYS) {
+      if (savedEnv[k] === undefined) delete env[k];
+      else env[k] = savedEnv[k];
+    }
+  });
+
+  function stub(status = 200) {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls++;
+      return new Response("{}", { status });
+    }) as unknown as typeof fetch;
+    return { fetchImpl, count: () => calls };
+  }
+
+  // Seeds three look-alikes one at a time; the third opens the incident.
+  async function openIncident(seedNo: number) {
+    const base = randomUnit(seedNo);
+    let found = null;
+    for (let i = 0; i < 3; i++) found = await detect((await seed(`Incident alert probe ${seedNo}-${i}`, similar(base, seedNo + i + 1))).id);
+    expect(found?.created).toBe(true);
+    const { data } = await service().from("incidents").select("workspace_id").eq("id", found!.incident_id).single();
+    return { id: found!.incident_id, workspaceId: data!.workspace_id as string, base };
+  }
+
+  async function events(incidentId: string) {
+    const { data, error } = await service().from("webhook_events").select("*").eq("incident_id", incidentId);
+    if (error) throw new Error(error.message);
+    return data as { id: string; status: string; error: string | null; ticket_id: string | null; workspace_id: string }[];
+  }
+
+  test("four similar tickets detected in parallel: exactly one reports created", async () => {
+    const base = randomUnit(301);
+    const tickets = [];
+    for (let i = 0; i < 4; i++) tickets.push(await seed(`Incident alert parallel ${i}`, similar(base, 310 + i)));
+    const results = await Promise.all(tickets.map((t) => detect(t.id)));
+    expect(results.filter((r) => r?.created).length).toBe(1);
+  });
+
+  test("two sequential deliveries send once and mark the row sent", async () => {
+    const inc = await openIncident(320);
+    const { fetchImpl, count } = stub();
+    await delivery.deliverIncidentOpened(service() as never, inc.id, inc.workspaceId, { fetchImpl });
+    await delivery.deliverIncidentOpened(service() as never, inc.id, inc.workspaceId, { fetchImpl });
+    expect(count()).toBe(1);
+    const rows = await events(inc.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: "sent", ticket_id: null, workspace_id: inc.workspaceId });
+  });
+
+  test("two parallel deliveries send once", async () => {
+    const inc = await openIncident(340);
+    const { fetchImpl, count } = stub();
+    await Promise.all([
+      delivery.deliverIncidentOpened(service() as never, inc.id, inc.workspaceId, { fetchImpl }),
+      delivery.deliverIncidentOpened(service() as never, inc.id, inc.workspaceId, { fetchImpl }),
+    ]);
+    expect(count()).toBe(1);
+    expect(await events(inc.id)).toHaveLength(1);
+  });
+
+  test("a ticket joining the incident later does not send another alert", async () => {
+    const inc = await openIncident(360);
+    const first = stub();
+    await delivery.deliverIncidentOpened(service() as never, inc.id, inc.workspaceId, { fetchImpl: first.fetchImpl });
+    const joined = await detect((await seed("Incident alert probe join", similar(inc.base, 370))).id);
+    expect(joined).toMatchObject({ incident_id: inc.id, created: false });
+    expect(joined!.ticket_count).toBeGreaterThan(3);
+    // The app only calls the alert when created is true; even called, the unique row stops a resend.
+    const second = stub();
+    await delivery.deliverIncidentOpened(service() as never, inc.id, inc.workspaceId, { fetchImpl: second.fetchImpl });
+    expect(first.count()).toBe(1);
+    expect(second.count()).toBe(0);
+  });
+
+  test("a failed send is recorded as HTTP 500 and never resent", async () => {
+    const inc = await openIncident(380);
+    const bad = stub(500);
+    await delivery.deliverIncidentOpened(service() as never, inc.id, inc.workspaceId, { fetchImpl: bad.fetchImpl });
+    expect(bad.count()).toBe(1);
+    const rows = await events(inc.id);
+    expect(rows[0]).toMatchObject({ status: "failed", error: "HTTP 500" });
+    const again = stub();
+    await delivery.deliverIncidentOpened(service() as never, inc.id, inc.workspaceId, { fetchImpl: again.fetchImpl });
+    expect(again.count()).toBe(0);
+    expect((await events(inc.id))[0].status).toBe("failed");
+  });
+
+  test("a wrong workspace id or a closed incident records and sends nothing", async () => {
+    const inc = await openIncident(400);
+    const none = stub();
+    await delivery.deliverIncidentOpened(service() as never, inc.id, "00000000-0000-4000-8000-000000000000", { fetchImpl: none.fetchImpl });
+    expect(none.count()).toBe(0);
+    expect(await events(inc.id)).toHaveLength(0);
+
+    for (const status of ["dismissed", "resolved"]) {
+      const closed = await openIncident(410 + (status === "resolved" ? 20 : 0));
+      const { error } = await service().from("incidents").update({ status }).eq("id", closed.id);
+      if (error) throw new Error(error.message);
+      await delivery.deliverIncidentOpened(service() as never, closed.id, closed.workspaceId, { fetchImpl: none.fetchImpl });
+      expect(none.count()).toBe(0);
+      expect(await events(closed.id)).toHaveLength(0);
+    }
+  });
+
+  test("the table rejects an unknown type, both ids, a type/subject mismatch and neither id", async () => {
+    const inc = await openIncident(450);
+    const { data: t } = await service().from("incident_tickets").select("ticket_id").eq("incident_id", inc.id).limit(1).single();
+    const ticketId = t!.ticket_id as string;
+    const insert = async (row: Record<string, unknown>) => (await service().from("webhook_events").insert(row)).error;
+    expect(await insert({ event_type: "nope", ticket_id: ticketId })).not.toBeNull();
+    expect(await insert({ event_type: "incident.opened", ticket_id: ticketId, incident_id: inc.id })).not.toBeNull();
+    expect(await insert({ event_type: "ticket.escalation_flagged", ticket_id: ticketId, incident_id: inc.id })).not.toBeNull();
+    expect(await insert({ event_type: "incident.opened", ticket_id: ticketId })).not.toBeNull();
+    expect(await insert({ event_type: "ticket.escalation_flagged", incident_id: inc.id })).not.toBeNull();
+    expect(await insert({ event_type: "incident.opened" })).not.toBeNull();
+    expect(await insert({ event_type: "ticket.escalation_flagged" })).not.toBeNull();
+    expect(await events(inc.id)).toHaveLength(0);
+  });
+
+  test("the trigger overwrites a client-supplied workspace_id with the incident's", async () => {
+    const inc = await openIncident(470);
+    const { data, error } = await service()
+      .from("webhook_events")
+      .insert({ event_type: "incident.opened", incident_id: inc.id, workspace_id: "00000000-0000-4000-8000-000000000000" })
+      .select("workspace_id")
+      .single();
+    expect(error).toBeNull();
+    expect(data!.workspace_id).toBe(inc.workspaceId);
+  });
+
+  test("deleting all of an incident's tickets removes its event row", async () => {
+    const inc = await openIncident(490);
+    await delivery.deliverIncidentOpened(service() as never, inc.id, inc.workspaceId, { fetchImpl: stub().fetchImpl });
+    const { data: links } = await service().from("incident_tickets").select("ticket_id").eq("incident_id", inc.id);
+    const ids = links!.map((l) => l.ticket_id as string);
+    expect(await events(inc.id)).toHaveLength(1);
+    const { error } = await service().from("tickets").delete().in("id", ids);
+    expect(error).toBeNull();
+    expect(await events(inc.id)).toHaveLength(0);
+  });
+
+  test("customers and agents see no event rows and cannot insert them", async () => {
+    const inc = await openIncident(510);
+    await delivery.deliverIncidentOpened(service() as never, inc.id, inc.workspaceId, { fetchImpl: stub().fetchImpl });
+    for (const [email, password] of [
+      [requireEnv("TEST_USER_EMAIL"), requireEnv("TEST_USER_PASSWORD")],
+      [requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD")],
+    ]) {
+      const client = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
+        db: { schema: "ticketing" },
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      await client.auth.signInWithPassword({ email, password });
+      expect((await client.from("webhook_events").select("id")).data ?? []).toEqual([]);
+      expect((await client.from("webhook_events").insert({ event_type: "incident.opened", incident_id: inc.id })).error).not.toBeNull();
+    }
+  });
+
+  test("escalation events still insert once, then null, and re-claim after a failure", async () => {
+    const t = await seed("Incident alert escalation regression", randomUnit(530));
+    const { data: row } = await service().from("tickets").select("workspace_id").eq("id", t.id).single();
+    const ws = row!.workspace_id as string;
+    const first = await hooks.recordWebhookEvent(service() as never, "ticket.escalation_flagged", t.id, ws);
+    expect(first).not.toBeNull();
+    expect(await hooks.recordWebhookEvent(service() as never, "ticket.escalation_flagged", t.id, ws)).toBeNull();
+    await hooks.markWebhookEvent(service() as never, first!.id, "failed", "boom");
+    const reclaimed = await hooks.recordWebhookEvent(service() as never, "ticket.escalation_flagged", t.id, ws);
+    expect(reclaimed?.id).toBe(first!.id);
+  });
 });

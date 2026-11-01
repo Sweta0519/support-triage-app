@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { createHmac } from "node:crypto";
 import Module from "node:module";
+import fs from "node:fs";
 import path from "node:path";
 
 import type { WebhookEvent } from "../app/lib/webhooks/n8n";
@@ -291,4 +292,186 @@ test("notifyEscalationFlagged records and sends nothing without a workspace id o
   process.env.N8N_WEBHOOK_WORKSPACE_ID = WORKSPACE_ID;
   delete process.env.NEXT_PUBLIC_SITE_URL;
   expect(() => n8n.notifyEscalationFlagged(TICKET_ID, source)).not.toThrow();
+});
+
+// SUP-96: the incident.opened alert.
+const INCIDENT_ID = "3c2b1a09-8f7e-4d6c-b5a4-93827160fedc";
+
+function incidentSource(over: Record<string, unknown> = {}) {
+  return {
+    id: INCIDENT_ID,
+    title: "Webhook deliveries failing",
+    summary: "Several customers report failed deliveries since 09:30.",
+    ticket_count: 4,
+    ...over,
+  } as unknown as Parameters<N8n["buildIncidentOpenedPayload"]>[2];
+}
+
+test("buildIncidentOpenedPayload has exactly the envelope keys and the allow-listed data keys", () => {
+  process.env.NEXT_PUBLIC_SITE_URL = "https://support.example.com";
+  const ev = n8n.buildIncidentOpenedPayload(
+    "evt_9",
+    WORKSPACE_ID,
+    incidentSource({ draft_update: "We are sorry", number: 12, email: "a@b.co", subject: "Charged twice" }),
+  );
+  expect(Object.keys(ev).sort()).toEqual(["created_at", "data", "id", "type"]);
+  expect(ev.id).toBe("evt_9");
+  expect(ev.type).toBe("incident.opened");
+  expect(Number.isNaN(Date.parse(ev.created_at))).toBe(false);
+  expect(Object.keys(ev.data).sort()).toEqual(["incident_id", "link", "summary", "ticket_count", "title", "workspace_id"]);
+  expect(ev.data.incident_id).toBe(INCIDENT_ID);
+  expect(ev.data.workspace_id).toBe(WORKSPACE_ID);
+  expect(ev.data.ticket_count).toBe(4);
+  const serialized = JSON.stringify(ev);
+  for (const leaked of ["draft_update", "We are sorry", "a@b.co", "Charged twice", "number"]) {
+    expect(serialized, leaked).not.toContain(leaked);
+  }
+});
+
+test("buildIncidentOpenedPayload links to /incidents/<id> without a trailing slash", () => {
+  process.env.NEXT_PUBLIC_SITE_URL = "https://support.example.com///";
+  expect(n8n.buildIncidentOpenedPayload("e", WORKSPACE_ID, incidentSource()).data.link).toBe(
+    `https://support.example.com/incidents/${INCIDENT_ID}`,
+  );
+});
+
+test("buildIncidentOpenedPayload scrubs title and summary, keeps dates, caps the title, nulls an empty summary", () => {
+  process.env.NEXT_PUBLIC_SITE_URL = "https://support.example.com";
+  const { data } = n8n.buildIncidentOpenedPayload(
+    "e",
+    WORKSPACE_ID,
+    incidentSource({
+      title: "Outage for jane@acme.com",
+      summary: "See https://acme.example/x order ORD-55120, started 2026-10-31 09:30.",
+    }),
+  );
+  expect(data.title).toBe("Outage for [removed]");
+  expect(data.summary).toBe("See [removed] order [removed], started 2026-10-31 09:30.");
+
+  const long = n8n.buildIncidentOpenedPayload("e", WORKSPACE_ID, incidentSource({ title: "x ".repeat(300) })).data.title;
+  expect(long.length).toBeLessThanOrEqual(200);
+
+  expect(n8n.buildIncidentOpenedPayload("e", WORKSPACE_ID, incidentSource({ summary: null })).data.summary).toBeNull();
+  expect(n8n.buildIncidentOpenedPayload("e", WORKSPACE_ID, incidentSource({ summary: "" })).data.summary).toBeNull();
+  expect(n8n.buildIncidentOpenedPayload("e", WORKSPACE_ID, incidentSource({ title: "" })).data.title).toBe("Possible incident");
+});
+
+test("sendWebhook signs an incident.opened event so the signature verifies", async () => {
+  configure();
+  process.env.NEXT_PUBLIC_SITE_URL = "https://support.example.com";
+  const { fetchImpl, calls } = stubFetch(() => new Response("{}", { status: 200 }));
+  const ev = n8n.buildIncidentOpenedPayload("evt_7", WORKSPACE_ID, incidentSource());
+  expect(await n8n.sendWebhook(ev, { fetchImpl })).toEqual({ result: "sent" });
+  const headers = calls[0].init.headers as Record<string, string>;
+  const body = calls[0].init.body as string;
+  expect(JSON.parse(body).type).toBe("incident.opened");
+  expect(headers["X-Signature"]).toBe(
+    "sha256=" + createHmac("sha256", SECRET).update(`${headers["X-Timestamp"]}.${body}`).digest("hex"),
+  );
+  expect(headers["X-Event-Id"]).toBe("evt_7");
+});
+
+test("notifyIncidentOpened records and sends nothing when URL, secret, workspace id or site URL is unset", () => {
+  // after() would throw outside a request scope if it were reached.
+  configure("https://n8n.example.com/webhook/x", SECRET);
+  process.env.N8N_WEBHOOK_WORKSPACE_ID = WORKSPACE_ID;
+  process.env.NEXT_PUBLIC_SITE_URL = "https://support.example.com";
+  configure(null, SECRET);
+  expect(() => n8n.notifyIncidentOpened(INCIDENT_ID)).not.toThrow();
+  configure("https://n8n.example.com/webhook/x", null);
+  expect(() => n8n.notifyIncidentOpened(INCIDENT_ID)).not.toThrow();
+  configure();
+  delete process.env.N8N_WEBHOOK_WORKSPACE_ID;
+  expect(() => n8n.notifyIncidentOpened(INCIDENT_ID)).not.toThrow();
+  process.env.N8N_WEBHOOK_WORKSPACE_ID = WORKSPACE_ID;
+  delete process.env.NEXT_PUBLIC_SITE_URL;
+  expect(() => n8n.notifyIncidentOpened(INCIDENT_ID)).not.toThrow();
+});
+
+type WfNode = {
+  name: string;
+  type: string;
+  parameters: {
+    text?: string;
+    responseBody?: string;
+    conditions?: { conditions: { id: string; leftValue: string }[] };
+    rules?: { values: { conditions: { conditions: { leftValue: string; rightValue: string }[] } }[] };
+    options?: { fallbackOutput?: string; responseCode?: number };
+    otherOptions?: { includeLinkToWorkflow?: boolean };
+  };
+  credentials?: unknown;
+};
+type Workflow = { id?: unknown; nodes: WfNode[]; connections: Record<string, { main: { node: string }[][] }> };
+
+function loadWorkflow(): { wf: Workflow; node: (name: string) => WfNode } {
+  const wf = JSON.parse(fs.readFileSync(path.join(__dirname, "../docs/n8n/escalation-alert.json"), "utf8")) as Workflow;
+  return {
+    wf,
+    node: (name) => {
+      const n = wf.nodes.find((x) => x.name === name);
+      if (!n) throw new Error(`no node ${name}`);
+      return n;
+    },
+  };
+}
+
+// Evaluates the Slack expression's body the way n8n would for the parts that matter here.
+function renderField(expr: string, data: Record<string, unknown>): string {
+  const inner = expr.replace(/^\{\{\s*/, "").replace(/\s*\}\}$/, "");
+  const $json = { body: { data } };
+  return new Function("$json", `return (${inner});`)($json) as string;
+}
+
+test("workflow: the IF node checks secret, signature and age but not the event type", () => {
+  const { wf, node } = loadWorkflow();
+  const ifNode = node("Signed and fresh?");
+  const conds = ifNode.parameters.conditions!.conditions;
+  expect(conds.map((c) => c.id)).toEqual(["c0", "c1", "c2"]);
+  expect(JSON.stringify(conds)).not.toContain("body.type");
+  expect(conds[0].leftValue).toContain("$env.N8N_WEBHOOK_SECRET");
+  // The false branch posts nothing: only Respond 401.
+  expect(wf.connections["Signed and fresh?"].main[1].map((c) => c.node)).toEqual(["Respond 401"]);
+  expect(wf.connections["Respond 401"]).toBeUndefined();
+});
+
+test("workflow: the Switch routes both event types and sends anything else to a 422", () => {
+  const { wf, node } = loadWorkflow();
+  const sw = node("Route by event type");
+  expect(sw.type).toBe("n8n-nodes-base.switch");
+  const rules = sw.parameters.rules!.values;
+  expect(rules.map((r) => r.conditions.conditions[0].leftValue)).toEqual(["={{ $json.body.type }}", "={{ $json.body.type }}"]);
+  expect(rules.map((r) => r.conditions.conditions[0].rightValue)).toEqual(["ticket.escalation_flagged", "incident.opened"]);
+  expect(sw.parameters.options!.fallbackOutput).toBe("extra");
+  expect(wf.connections["Signed and fresh?"].main[0].map((c) => c.node)).toEqual(["Route by event type"]);
+  expect(wf.connections["Route by event type"].main.map((o) => o.map((c) => c.node))).toEqual([
+    ["Post to Slack"],
+    ["Post incident to Slack"],
+    ["Respond 422"],
+  ]);
+  expect(node("Respond 422").parameters.options!.responseCode).toBe(422);
+  expect(node("Respond 422").parameters.responseBody).toContain("unsupported event type");
+  expect(wf.connections["Post to Slack"].main[0].map((c) => c.node)).toEqual(["Respond 200"]);
+  expect(wf.connections["Post incident to Slack"].main[0].map((c) => c.node)).toEqual(["Respond 200"]);
+});
+
+test("workflow: no credentials and no top-level id", () => {
+  const { wf } = loadWorkflow();
+  expect(wf.id).toBeUndefined();
+  for (const n of wf.nodes) expect(n.credentials, n.name).toBeUndefined();
+});
+
+test("workflow: the incident Slack text escapes &, <, > and collapses whitespace in title and summary", () => {
+  const { node } = loadWorkflow();
+  const text = node("Post incident to Slack").parameters.text!;
+  expect(node("Post incident to Slack").parameters.otherOptions!.includeLinkToWorkflow).toBe(false);
+  expect(text).toContain("{{ $json.body.data.ticket_count }}");
+  expect(text).toContain("<{{ $json.body.data.link }}|View incident>");
+  const fields = [...text.matchAll(/\{\{[^}]*\}\}/g)].map((m) => m[0]);
+  const titleExpr = fields.find((f) => f.includes("data.title"))!;
+  const summaryExpr = fields.find((f) => f.includes("data.summary"))!;
+  expect(summaryExpr).toContain("??");
+  const messy = { title: "A  <b>\n&  c", summary: "x\t>  y & <z>", ticket_count: 3, link: "l" };
+  expect(renderField(titleExpr, messy)).toBe("A &lt;b&gt; &amp; c");
+  expect(renderField(summaryExpr, messy)).toBe("x &gt; y &amp; &lt;z&gt;");
+  expect(renderField(summaryExpr, { ...messy, summary: null })).toBe("No AI summary available. See the incident page.");
 });
