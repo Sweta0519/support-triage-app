@@ -11,6 +11,8 @@ import {
   summarizeIncidents,
 } from "../app/lib/incidents";
 import { login, requireEnv } from "./helpers";
+import { throwawayWithToken } from "./mcp-helpers";
+import { importServerModule } from "./server-only-shim";
 
 // SUP-42: a burst of similar tickets is grouped into one incident. These
 // seed tickets with controlled embeddings (so "similar" and "unrelated" are
@@ -114,6 +116,25 @@ test("the incident text keeps nothing customer-specific, but keeps dates and tim
     { status: "dismissed", first_seen_at: "2026-10-13T10:00:00Z", opened_at: "2026-10-13T10:20:00Z" },
   ]);
   expect(s).toEqual({ total: 3, open: 1, resolved: 1, dismissed: 1, medianDetectionMs: 20 * 60_000 });
+});
+
+test("bare domains and file names are removed; dotted words, versions, abbreviations and times stay", () => {
+  const removed: [string, string][] = [
+    ["Refund at evt-refund.com", "Refund at [removed]"],
+    ["Refund at EVT-REFUND.COM.", "Refund at [removed]."],
+    ["See sub.evt-refund.co.uk:8443/a", "See [removed]"],
+    ["From a_b.evil.com", "From [removed]"],
+    ["From node.js.evil.com", "From [removed]"],
+    ["Stadt münchen.de", "Stadt [removed]"],
+    ["Host xn--80ak6aa92e.com", "Host [removed]"],
+    // Removed, accepted: file names are caught with the domains.
+    ["Open index.html", "Open [removed]"],
+    ["Attach invoice.pdf", "Attach [removed]"],
+  ];
+  for (const [input, expected] of removed) expect(sanitizeIncidentText(input), input).toBe(expected);
+  for (const kept of ["Node.js", "Next.js", "v2.3.1", "10.5", "3.5GB", "e.g.", "i.e.", "a.m.", "U.S.", "Ph.D.", "2026-10-13", "14:00."]) {
+    expect(sanitizeIncidentText(kept), kept).toBe(kept);
+  }
 });
 
 test("a burst of similar tickets opens one incident; later ones join; unrelated and old ones don't", async () => {
@@ -251,15 +272,8 @@ const savedEnv: Record<string, string | undefined> = {};
 
 test.describe("incident alert (SUP-96)", () => {
   test.beforeAll(async () => {
-    // Same server-only patch as tests/n8n-webhook.spec.ts: plain Node can't resolve it.
-    const emptyServerOnly = path.join(path.dirname(require.resolve("next/package.json")), "dist/compiled/server-only/empty.js");
-    const hooked = Module as unknown as { _resolveFilename: (request: string, ...rest: unknown[]) => string };
-    const original = hooked._resolveFilename;
-    hooked._resolveFilename = function (request: string, ...rest: unknown[]) {
-      return original.call(this, request === "server-only" ? emptyServerOnly : request, ...rest);
-    };
-    delivery = await import("../app/lib/webhooks/n8n");
-    hooks = await import("../app/lib/db/webhooks");
+    delivery = await importServerModule<Delivery>("../app/lib/webhooks/n8n");
+    hooks = await importServerModule<Hooks>("../app/lib/db/webhooks");
     for (const k of ENV_KEYS) savedEnv[k] = process.env[k];
     process.env.N8N_WEBHOOK_URL = "https://n8n.example.com/webhook/x";
     process.env.N8N_WEBHOOK_SECRET = "whsec_test";
@@ -413,17 +427,39 @@ test.describe("incident alert (SUP-96)", () => {
   test("customers and agents see no event rows and cannot insert them", async () => {
     const inc = await openIncident(510);
     await delivery.deliverIncidentOpened(service() as never, inc.id, inc.workspaceId, { fetchImpl: stub().fetchImpl });
-    for (const [email, password] of [
-      [requireEnv("TEST_USER_EMAIL"), requireEnv("TEST_USER_PASSWORD")],
-      [requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD")],
-    ]) {
+    // Signs in on a fresh anon client; a failed sign-in fails the test here,
+    // so the empty reads below can only mean RLS.
+    const signedIn = async (email: string, password: string) => {
       const client = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
         db: { schema: "ticketing" },
         auth: { persistSession: false, autoRefreshToken: false },
       });
-      await client.auth.signInWithPassword({ email, password });
+      const { data, error } = await client.auth.signInWithPassword({ email, password });
+      expect(error, `sign-in as ${email}`).toBeNull();
+      expect(data.session, `session for ${email}`).not.toBeNull();
+      return client;
+    };
+    for (const [email, password] of [
+      [requireEnv("TEST_USER_EMAIL"), requireEnv("TEST_USER_PASSWORD")],
+      [requireEnv("TEST_AGENT_EMAIL"), requireEnv("TEST_AGENT_PASSWORD")],
+    ]) {
+      const client = await signedIn(email, password);
       expect((await client.from("webhook_events").select("id")).data ?? []).toEqual([]);
       expect((await client.from("webhook_events").insert({ event_type: "incident.opened", incident_id: inc.id })).error).not.toBeNull();
+    }
+    // Positive control: an admin of the incident's workspace reads the row,
+    // so the empty reads above are RLS and not a broken query.
+    const admin = await signedIn(requireEnv("TEST_ADMIN_EMAIL"), requireEnv("TEST_ADMIN_PASSWORD"));
+    const { data: adminRows, error: adminError } = await admin.from("webhook_events").select("id").eq("incident_id", inc.id);
+    expect(adminError).toBeNull();
+    expect(adminRows).toHaveLength(1);
+    // An admin of another workspace (its own throwaway workspace) reads nothing of this one.
+    const other = await throwawayWithToken("alert-other-admin", { workspace_name: `Alert other ${stamp}` });
+    try {
+      const otherAdmin = await signedIn(other.email, other.password);
+      expect((await otherAdmin.from("webhook_events").select("id").eq("incident_id", inc.id)).data ?? []).toEqual([]);
+    } finally {
+      await other.remove();
     }
   });
 
@@ -431,11 +467,118 @@ test.describe("incident alert (SUP-96)", () => {
     const t = await seed("Incident alert escalation regression", randomUnit(530));
     const { data: row } = await service().from("tickets").select("workspace_id").eq("id", t.id).single();
     const ws = row!.workspace_id as string;
-    const first = await hooks.recordWebhookEvent(service() as never, "ticket.escalation_flagged", t.id, ws);
+    const first = await hooks.recordWebhookEvent(service() as never, t.id, ws);
     expect(first).not.toBeNull();
-    expect(await hooks.recordWebhookEvent(service() as never, "ticket.escalation_flagged", t.id, ws)).toBeNull();
+    expect(await hooks.recordWebhookEvent(service() as never, t.id, ws)).toBeNull();
     await hooks.markWebhookEvent(service() as never, first!.id, "failed", "boom");
-    const reclaimed = await hooks.recordWebhookEvent(service() as never, "ticket.escalation_flagged", t.id, ws);
+    const reclaimed = await hooks.recordWebhookEvent(service() as never, t.id, ws);
     expect(reclaimed?.id).toBe(first!.id);
+  });
+
+  // checkForIncident is the caller that decides when to alert. Detection runs
+  // for real (the database decides created/joined). The model call and the
+  // alert are stand-ins from tests/stubs/, swapped in for ai/incidents.ts only:
+  // the unique row can't show a double alert from the caller, so these count
+  // the alert calls instead.
+  test.describe("checkForIncident alert gate", () => {
+    let ai: typeof import("../app/lib/ai/incidents");
+    let alertStub: typeof import("./stubs/n8n-alert");
+    let noteStub: typeof import("./stubs/openrouter-note");
+
+    // Makes ai/incidents.ts load the two stubs for its own imports. Other
+    // importers of the real modules are untouched.
+    function redirectIncidentAiImports() {
+      const hooked = Module as unknown as {
+        _resolveFilename: (request: string, parent: { filename?: string } | null, ...rest: unknown[]) => string;
+      };
+      const original = hooked._resolveFilename;
+      const stubs: [string, string][] = [
+        ["/app/lib/ai/openrouter.ts", path.join(__dirname, "stubs/openrouter-note.ts")],
+        ["/app/lib/webhooks/n8n.ts", path.join(__dirname, "stubs/n8n-alert.ts")],
+      ];
+      hooked._resolveFilename = function (request: string, parent: { filename?: string } | null, ...rest: unknown[]) {
+        const resolved = original.call(this, request, parent, ...rest);
+        if (parent?.filename?.endsWith("/app/lib/ai/incidents.ts")) {
+          for (const [suffix, stub] of stubs) if (resolved.endsWith(suffix)) return stub;
+        }
+        return resolved;
+      };
+    }
+
+    const restores: (() => void)[] = [];
+
+    // A look-alike with a triage summary: the note reads each grouped ticket's
+    // latest summary, and writes nothing when there are none.
+    async function seedTriaged(subject: string, embedding: number[]) {
+      const t = await seed(subject, embedding);
+      const { error } = await service()
+        .from("triage_results")
+        .insert({
+          ticket_id: t.id,
+          model: "test/seeded",
+          prompt_version: "test",
+          summary: `Summary of ${subject}`,
+          priority_reason: "Seeded.",
+          suggested_reply: "Seeded reply.",
+          missing_info: [],
+          is_escalation_risk: false,
+          confidence: 0.9,
+          priority: "high",
+          category: "billing",
+          team: "billing",
+        });
+      if (error) throw new Error(error.message);
+      return t;
+    }
+
+    test.beforeAll(async () => {
+      redirectIncidentAiImports();
+      ai = await importServerModule<typeof ai>("../app/lib/ai/incidents");
+      alertStub = await importServerModule<typeof alertStub>("./stubs/n8n-alert");
+      noteStub = await importServerModule<typeof noteStub>("./stubs/openrouter-note");
+    });
+
+    test.beforeEach(() => {
+      alertStub.alertSpy.active = true;
+      alertStub.alertSpy.calls.length = 0;
+      noteStub.noteSpy.mode = "pass";
+    });
+
+    test.afterEach(() => {
+      alertStub.alertSpy.active = false;
+      noteStub.noteSpy.mode = "real";
+      while (restores.length) restores.pop()!();
+    });
+
+    test("the ticket that opens an incident alerts once; a ticket joining it does not", async () => {
+      // One at a time, as tickets arrive: each is checked before the next is seeded.
+      const base = randomUnit(610);
+      for (let i = 0; i < 2; i++) await ai.checkForIncident((await seedTriaged(`Incident alert gate ${i}`, similar(base, 611 + i))).id);
+      expect(alertStub.alertSpy.calls).toEqual([]);
+      // The third look-alike opens the incident: one alert, for that incident.
+      const third = await seedTriaged("Incident alert gate 2", similar(base, 613));
+      await ai.checkForIncident(third.id);
+      const { data: link } = await service().from("incident_tickets").select("incident_id").eq("ticket_id", third.id).single();
+      expect(alertStub.alertSpy.calls).toEqual([link!.incident_id]);
+      // The fourth joins it: no second alert.
+      await ai.checkForIncident((await seedTriaged("Incident alert gate 3", similar(base, 614))).id);
+      expect(alertStub.alertSpy.calls).toHaveLength(1);
+    });
+
+    test("the alert still goes out when the note fails, and the failure is logged", async () => {
+      noteStub.noteSpy.mode = "fail";
+      const logged: string[] = [];
+      const realError = console.error;
+      console.error = (...args: unknown[]) => {
+        logged.push(args.map(String).join(" "));
+      };
+      restores.push(() => {
+        console.error = realError;
+      });
+      const base = randomUnit(620);
+      for (let i = 0; i < 3; i++) await ai.checkForIncident((await seedTriaged(`Incident alert note ${i}`, similar(base, 621 + i))).id);
+      expect(logged.some((line) => line.includes("[incident] note for") && line.includes("model unavailable"))).toBe(true);
+      expect(alertStub.alertSpy.calls).toHaveLength(1);
+    });
   });
 });

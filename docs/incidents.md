@@ -78,7 +78,8 @@ Privacy follows the same rule as the reply call (SUP-31):
   draft containing neither.
 - **The title and summary are scrubbed the same way.** Every staff member sees them, the title in
   the banner on every page, and an agent may not be able to see every grouped ticket.
-- **What the scrubbing removes:** email addresses, links, phone numbers in any format, reference
+- **What the scrubbing removes:** email addresses, links, phone numbers in any format, bare
+  domains and file names, reference
   codes (ORD-55120, INV 20431), money amounts, and any other number of 5 or more digits. Years,
   dates and times are kept, since they describe the incident rather than a customer.
 - **After staff post an update,** a growing incident still refreshes its title and summary, but
@@ -93,7 +94,7 @@ Privacy follows the same rule as the reply call (SUP-31):
 A newly opened incident can post one alert to the team's Slack through the same signed n8n webhook
 as escalations (workflow: `docs/n8n/escalation-alert.json`), as an
 `incident.opened` event.
-- **Once per incident:** `detect_incident()` says whether this ticket opened the incident
+- **At most once per incident:** `detect_incident()` says whether this ticket opened the incident
   (`created`); a ticket that joins one never alerts. The unique `(incident_id, event_type)` row in
   `ticketing.webhook_events` is the send-once guard.
 - **After the note attempt, success or not:** if the note's model call fails, the alert still goes,
@@ -104,6 +105,12 @@ as escalations (workflow: `docs/n8n/escalation-alert.json`), as an
 - **Staff-facing text only:** the scrubbed title, summary and ticket count, plus a link. It never
   carries `draft_update` (the customer update), and it never changes any status.
 - Only the workspace in `N8N_WEBHOOK_WORKSPACE_ID` sends.
+
+Known limits:
+- A run that dies during the note leaves no row and sends no alert.
+- A run that dies after the insert, or a failed `markWebhookEvent`, leaves the row `pending`, even if Slack got the post.
+- `failed` can mean n8n took longer than 10 seconds, so Slack may still have posted: check the `[webhook]` logs and the `ticketing.webhook_events` row.
+- The app never shows failures to staff. The incident banner on staff pages stays the main signal.
 
 ## What staff can do (`app/(app)/incidents/`)
 

@@ -52,6 +52,23 @@ type EscalationSource = {
   summary: string;
 };
 
+function siteUrl(): string {
+  return (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
+}
+
+// The one workspace allowed to send, or null when the webhook is off or
+// misconfigured. skipLabel names the thing being skipped in the log line.
+function allowedWorkspaceId(skipLabel: string): string | null {
+  if (!process.env.N8N_WEBHOOK_URL || !process.env.N8N_WEBHOOK_SECRET) return null;
+  const workspaceId = process.env.N8N_WEBHOOK_WORKSPACE_ID;
+  if (!workspaceId) return null;
+  if (!process.env.NEXT_PUBLIC_SITE_URL) {
+    console.error(`[webhook] ${skipLabel} skipped: NEXT_PUBLIC_SITE_URL unset`);
+    return null;
+  }
+  return workspaceId;
+}
+
 export function signWebhook(secret: string, timestamp: string | number, rawBody: string): string {
   return "sha256=" + createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
 }
@@ -62,7 +79,7 @@ export function buildEscalationPayload(
   workspaceId: string,
   o: EscalationSource,
 ): EscalationEvent {
-  const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
+  const site = siteUrl();
   return {
     id: eventId,
     type: "ticket.escalation_flagged",
@@ -86,7 +103,7 @@ export function buildIncidentOpenedPayload(
   workspaceId: string,
   source: IncidentSource,
 ): IncidentOpenedEvent {
-  const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
+  const site = siteUrl();
   return {
     id: eventId,
     type: "incident.opened",
@@ -127,7 +144,7 @@ export async function sendWebhook(
       method: "POST",
       redirect: "manual",
       cache: "no-store",
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(10_000),
       headers: {
         "Content-Type": "application/json",
         "X-Timestamp": timestamp,
@@ -145,23 +162,18 @@ export async function sendWebhook(
   }
 }
 
-// Called from triage once a ticket is flagged. Synchronous and never throws:
+// Called from triage once a ticket is flagged. Synchronous. Must run inside a request (after() throws outside one; every triage path does):
 // the work runs after the response, and a failure only lands in the log and
 // the webhook_events row. Only the one configured workspace ever sends.
 export function notifyEscalationFlagged(ticketId: string, output: EscalationSource): void {
   // Unconfigured: record nothing, so the ticket's one event isn't used up as
   // "skipped" before the webhook is switched on.
-  if (!process.env.N8N_WEBHOOK_URL || !process.env.N8N_WEBHOOK_SECRET) return;
-  const workspaceId = process.env.N8N_WEBHOOK_WORKSPACE_ID;
+  const workspaceId = allowedWorkspaceId(`escalation for ticket ${ticketId}`);
   if (!workspaceId) return;
-  if (!process.env.NEXT_PUBLIC_SITE_URL) {
-    console.error(`[webhook] escalation for ticket ${ticketId} skipped: NEXT_PUBLIC_SITE_URL unset`);
-    return;
-  }
   after(async () => {
     try {
       const db = createServiceSupabaseClient();
-      const ev = await recordWebhookEvent(db, "ticket.escalation_flagged", ticketId, workspaceId);
+      const ev = await recordWebhookEvent(db, ticketId, workspaceId);
       if (!ev) return;
       const { result, error } = await sendWebhook(buildEscalationPayload(ev.id, ticketId, ev.workspace_id, output));
       await markWebhookEvent(db, ev.id, result, error);
@@ -190,15 +202,10 @@ export async function deliverIncidentOpened(
 }
 
 // Called once from incident detection when a new incident opens. Same rules
-// as notifyEscalationFlagged: synchronous, never throws, one workspace only.
+// as notifyEscalationFlagged: synchronous, request scope only, one workspace only.
 export function notifyIncidentOpened(incidentId: string): void {
-  if (!process.env.N8N_WEBHOOK_URL || !process.env.N8N_WEBHOOK_SECRET) return;
-  const workspaceId = process.env.N8N_WEBHOOK_WORKSPACE_ID;
+  const workspaceId = allowedWorkspaceId(`alert for incident ${incidentId}`);
   if (!workspaceId) return;
-  if (!process.env.NEXT_PUBLIC_SITE_URL) {
-    console.error(`[webhook] alert for incident ${incidentId} skipped: NEXT_PUBLIC_SITE_URL unset`);
-    return;
-  }
   after(async () => {
     try {
       await deliverIncidentOpened(createServiceSupabaseClient(), incidentId, workspaceId);

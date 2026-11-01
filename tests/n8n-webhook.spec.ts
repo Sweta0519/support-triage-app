@@ -1,10 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { createHmac } from "node:crypto";
-import Module from "node:module";
 import fs from "node:fs";
 import path from "node:path";
 
 import type { WebhookEvent } from "../app/lib/webhooks/n8n";
+import { importServerModule } from "./server-only-shim";
 
 // SUP-94: the signed outbound webhook to n8n. Pure functions plus sendWebhook
 // with an injected fetch stub: no browser, no network, no database.
@@ -12,20 +12,9 @@ import type { WebhookEvent } from "../app/lib/webhooks/n8n";
 type N8n = typeof import("../app/lib/webhooks/n8n");
 let n8n: N8n;
 
-// Test-only patch: plain Node can't resolve "server-only" (Next handles it in
-// the app build), so map it to Next's own empty stub.
-// n8n.ts (and db/webhooks.ts) start with `import "server-only"`. Next replaces
-// that with an empty module at build time; plain Node has no such package, and
-// the one in next/dist/compiled throws. Point the bare specifier at Next's empty
-// module, for this spec's worker only, then load n8n.ts after the patch.
+// n8n.ts starts with `import "server-only"`: loaded through the shared shim.
 test.beforeAll(async () => {
-  const emptyServerOnly = path.join(path.dirname(require.resolve("next/package.json")), "dist/compiled/server-only/empty.js");
-  const hooked = Module as unknown as { _resolveFilename: (request: string, ...rest: unknown[]) => string };
-  const original = hooked._resolveFilename;
-  hooked._resolveFilename = function (request: string, ...rest: unknown[]) {
-    return original.call(this, request === "server-only" ? emptyServerOnly : request, ...rest);
-  };
-  n8n = await import("../app/lib/webhooks/n8n");
+  n8n = await importServerModule<N8n>("../app/lib/webhooks/n8n");
 });
 
 const ENV_KEYS = ["N8N_WEBHOOK_URL", "N8N_WEBHOOK_SECRET", "N8N_WEBHOOK_WORKSPACE_ID", "NEXT_PUBLIC_SITE_URL", "NODE_ENV"] as const;
@@ -243,7 +232,7 @@ test("sendWebhook returns failed when fetch rejects, without throwing", async ()
   await expect(n8n.sendWebhook(sampleEvent(), { fetchImpl })).resolves.toEqual({ result: "failed", error: "fetch failed" });
 });
 
-test("sendWebhook returns failed within about 3.5 s when fetch never resolves but honours the abort signal", async () => {
+test("sendWebhook returns failed within about 10.5 s when fetch never resolves but honours the abort signal", async () => {
   configure("https://n8n.example.com/webhook/x", SECRET);
   const fetchImpl = ((_url: URL, init: RequestInit) =>
     new Promise<Response>((_resolve, reject) => {
@@ -255,7 +244,7 @@ test("sendWebhook returns failed within about 3.5 s when fetch never resolves bu
   const elapsed = Date.now() - started;
   expect(result.result).toBe("failed");
   expect(result.error).toBe("aborted");
-  expect(elapsed).toBeLessThan(3500);
+  expect(elapsed).toBeLessThan(10_500);
 });
 
 test("assertWebhookUrl rejects non-https schemes and URLs with credentials", () => {
@@ -354,6 +343,26 @@ test("buildIncidentOpenedPayload scrubs title and summary, keeps dates, caps the
   expect(n8n.buildIncidentOpenedPayload("e", WORKSPACE_ID, incidentSource({ summary: null })).data.summary).toBeNull();
   expect(n8n.buildIncidentOpenedPayload("e", WORKSPACE_ID, incidentSource({ summary: "" })).data.summary).toBeNull();
   expect(n8n.buildIncidentOpenedPayload("e", WORKSPACE_ID, incidentSource({ title: "" })).data.title).toBe("Possible incident");
+});
+
+test("a bare domain in an incident title or summary, or an escalation summary, never reaches the payload data", () => {
+  process.env.NEXT_PUBLIC_SITE_URL = "https://support.example.com";
+  const incident = n8n.buildIncidentOpenedPayload(
+    "e",
+    WORKSPACE_ID,
+    incidentSource({ title: "Refunds at evt-refund.com", summary: "Seen on sub.evt-refund.co.uk:8443/a since 09:30." }),
+  );
+  expect(incident.data.title).toBe("Refunds at [removed]");
+  expect(incident.data.summary).toBe("Seen on [removed] since 09:30.");
+  const escalation = n8n.buildEscalationPayload("e", TICKET_ID, WORKSPACE_ID, {
+    ...source,
+    summary: "Charged twice by node.js.evil.com",
+  } as unknown as Parameters<N8n["buildEscalationPayload"]>[3]);
+  expect(escalation.data.summary).toBe("Charged twice by [removed]");
+  const serialized = JSON.stringify([incident.data, escalation.data]);
+  for (const leaked of ["evt-refund", "evil.com", "sub.evt"]) {
+    expect(serialized, leaked).not.toContain(leaked);
+  }
 });
 
 test("sendWebhook signs an incident.opened event so the signature verifies", async () => {
