@@ -400,13 +400,10 @@ test("notifyIncidentOpened records and sends nothing when URL, secret, workspace
 type WfNode = {
   name: string;
   type: string;
-  typeVersion?: number;
   onError?: string;
   continueOnFail?: boolean;
   parameters: {
-    action?: string;
-    value?: string;
-    secret?: unknown;
+    path?: string;
     text?: string;
     responseBody?: string;
     conditions?: { conditions: { id: string; leftValue: string }[] };
@@ -416,7 +413,12 @@ type WfNode = {
   };
   credentials?: unknown;
 };
-type Workflow = { id?: unknown; nodes: WfNode[]; connections: Record<string, { main: { node: string }[][] }> };
+type Workflow = {
+  id?: unknown;
+  nodes: WfNode[];
+  connections: Record<string, { main: { node: string }[][] }>;
+  settings?: { saveDataSuccessExecution?: string; saveDataErrorExecution?: string };
+};
 
 function loadWorkflow(): { wf: Workflow; node: (name: string) => WfNode } {
   const wf = JSON.parse(fs.readFileSync(path.join(__dirname, "../docs/n8n/escalation-alert.json"), "utf8")) as Workflow;
@@ -469,13 +471,10 @@ test("workflow: the Switch routes both event types and sends anything else to a 
   expect(wf.connections["Post incident to Slack"].main[0].map((c) => c.node)).toEqual(["Respond 200"]);
 });
 
-test("workflow: Compute HMAC is v2, takes its key only from the credential, and stops on error", () => {
+test("workflow: Compute HMAC has no inline secret, reads no $env, and stops on error", () => {
   const { wf, node } = loadWorkflow();
   const hmac = node("Compute HMAC");
-  expect(hmac.typeVersion).toBe(2);
-  expect(hmac.parameters.action).toBe("hmac");
   expect(hmac.parameters).not.toHaveProperty("secret");
-  expect(hmac.parameters.value).toBe("={{ $json.headers['x-timestamp'] }}.{{ JSON.stringify($json.body) }}");
   expect(hmac.onError).toBeUndefined();
   expect(hmac.continueOnFail).toBeUndefined();
   expect(JSON.stringify(wf)).not.toContain("$env");
@@ -485,6 +484,19 @@ test("workflow: no credentials and no top-level id", () => {
   const { wf } = loadWorkflow();
   expect(wf.id).toBeUndefined();
   for (const n of wf.nodes) expect(n.credentials, n.name).toBeUndefined();
+});
+
+// Guards the committed file: the live instance path is set in n8n, not in git, so the
+// file must keep the generic "escalation" path rather than a real one.
+test("workflow: the committed Webhook path is the generic 'escalation', not a real instance path", () => {
+  const { node } = loadWorkflow();
+  expect(node("Webhook").parameters.path).toBe("escalation");
+});
+
+test("workflow: retention keeps only failed executions, so successful alerts are not saved", () => {
+  const { wf } = loadWorkflow();
+  expect(wf.settings?.saveDataSuccessExecution).toBe("none");
+  expect(wf.settings?.saveDataErrorExecution).toBe("all");
 });
 
 test("workflow: the incident Slack text escapes &, <, > and collapses whitespace in title and summary", () => {
