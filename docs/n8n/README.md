@@ -69,7 +69,8 @@ though Slack posted. Failed incident alerts are never resent.
 
 Never set On Error to Continue on Compute HMAC. The `c0` condition would then only stop the
 empty-digest forgery. An empty secret is refused only because the Crypto node throws (checked on
-n8n 2.45.7). `c0` can't detect it, since an empty-key digest isn't empty.
+n8n 2.45.7). `c0` can't detect it, since an empty-key digest isn't empty. Re-check this with an emptied
+credential after any n8n upgrade.
 
 A captured request can be replayed for 5 minutes and repeats the same alert. There is no dedupe.
 
