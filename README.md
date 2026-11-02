@@ -150,9 +150,11 @@ AI visible and accountable. It states a reason for its priority, never acts on t
 itself, is measured against the team's own reviews, and is built privacy- and security-first.
 
 **What it doesn't have**, compared with a production help desk (this is a capstone project):
-- channels beyond the web form: no email, chat, phone or social;
+- channels beyond the web form: inbound email is only the signed webhook so far (SUP-88, via
+  Resend; it records deliveries but doesn't make tickets yet), and there is no chat, phone or social;
 - automation rules, saved reply templates and a public help centre;
-- integrations with Slack, CRMs or Jira;
+- integrations with CRMs or Jira (escalation and incident alerts go to Slack through an n8n
+  workflow, `docs/n8n/`);
 - testing at real scale.
 
 ## Stack

@@ -37,7 +37,7 @@ export default function PrivacyPolicyPage() {
           <p className={body}>
             This page explains what personal data Support Triage collects, why it is allowed to
             hold it, who else receives it, how long it is kept, and what you can ask us to do with
-            it. It describes this app as it is actually built. Last updated 16 September 2026.
+            it. It describes this app as it is actually built. Last updated 1 November 2026.
           </p>
         </header>
 
@@ -188,6 +188,24 @@ export default function PrivacyPolicyPage() {
               <strong>OpenAI</strong> runs the embedding model that turns ticket and note text into
               numeric vectors so we can find similar or duplicate tickets and search staff notes.
             </li>
+            <li>
+              <strong>n8n</strong> runs the automation that turns escalation and incident events into
+              staff alerts. It receives the AI-written summary of a flagged ticket, or an
+              incident&apos;s title and summary, with its priority, team and category, internal ids and
+              a link. Email addresses, links, domain names, phone numbers, reference codes, amounts and
+              long numbers are removed first. This removal is best effort, so an unusual detail can
+              slip through. The ticket&apos;s own text is never sent.
+            </li>
+            <li>
+              <strong>Slack</strong> receives the same alert text in a staff-only channel.
+            </li>
+            <li>
+              <strong>Resend</strong> receives the emails a team forwards to its support address and
+              tells the app that one arrived. The app stores only the delivery and email ids, which
+              team&apos;s address it was sent to, and what it did with it. The sender, subject and text
+              of the email are not stored by the app, and no ticket is made from them yet. Resend
+              holds the email itself.
+            </li>
           </ul>
           <p className={body}>
             When a new ticket is triaged, the subjects and AI summaries of up to five similar
@@ -217,6 +235,14 @@ export default function PrivacyPolicyPage() {
               requests.
             </li>
             <li>Staff notes and assistant chats are kept until the staff member deletes them.</li>
+            <li>
+              n8n keeps only failed alert runs, with the alert text, for up to 30 days. Slack alerts follow
+              the team&apos;s Slack retention settings.
+            </li>
+            <li>
+              Records of inbound emails for an address that matches no team are deleted after 30 days.
+              The rest are kept as long as the team&apos;s workspace exists.
+            </li>
           </ul>
         </section>
 

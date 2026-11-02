@@ -92,7 +92,8 @@ Privacy follows the same rule as the reply call (SUP-31):
 ## Alert to Slack (SUP-96)
 
 A newly opened incident can post one alert to the team's Slack through the same signed n8n webhook
-as escalations (workflow: `docs/n8n/escalation-alert.json`), as an
+as escalations (workflow: `docs/n8n/escalation-alert.json`, setup in
+`docs/n8n/README.md`), as an
 `incident.opened` event.
 - **At most once per incident:** `detect_incident()` says whether this ticket opened the incident
   (`created`); a ticket that joins one never alerts. The unique `(incident_id, event_type)` row in

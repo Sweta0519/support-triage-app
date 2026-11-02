@@ -24,13 +24,12 @@
         "type": "SHA256",
         "value": "={{ $json.headers['x-timestamp'] }}.{{ JSON.stringify($json.body) }}",
         "dataPropertyName": "expected_signature",
-        "secret": "={{ $env.N8N_WEBHOOK_SECRET }}",
         "encoding": "hex"
       },
       "id": "8f0b3c1e-0002-4a00-9000-000000000002",
       "name": "Compute HMAC",
       "type": "n8n-nodes-base.crypto",
-      "typeVersion": 1,
+      "typeVersion": 2,
       "position": [
         240,
         300
@@ -47,7 +46,7 @@
           "conditions": [
             {
               "id": "c0",
-              "leftValue": "={{ !!$env.N8N_WEBHOOK_SECRET }}",
+              "leftValue": "={{ !!$json.expected_signature }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -338,7 +337,9 @@
     }
   },
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all"
   },
   "pinData": {}
 }
